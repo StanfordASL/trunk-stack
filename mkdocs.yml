@@ -1,5 +1,5 @@
-site_name: ASL Trunk robot
-site_description: ASL Trunk robot documentation
+site_name: ASL Trunk Robot
+site_description: ASL Trunk Robot documentation
 site_url: https://stanfordasl.github.io/trunk-stack
 
 repo_url: https://github.com/StanfordASL/trunk-stack
@@ -22,7 +22,7 @@ nav:
     - Mechanical: mechanical_design.md 
     - Electrical: electrical_design.md 
     - Software: software_design.md 
-  - Robot Setup:
+  - Setup:
     - 3D Printing: 3dprinting.md 
     - OpiTrack System: optitrack.md 
   - Usage:
@@ -37,13 +37,18 @@ nav:
 
 markdown_extensions:
   - attr_list
+  - md_in_html
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+            - name: mermaid
+              class: mermaid
+              format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.arithmatex:
       generic: true
 extra_javascript:
