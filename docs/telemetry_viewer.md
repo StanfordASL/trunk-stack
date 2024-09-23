@@ -10,7 +10,7 @@ ros2 launch foxglove_bridge foxglove_bridge.launch.xml
 Note that Foxglove is installed for a particular ROS2 distribution, but you can install it for any distribution, see below.
 Then, just open the Foxglove web interface via their website and connect.
 You will be able to visualize almost any data type.
-Finally, particular settings, such as topics to listen to, are stored and can be found [in the repo](https://github.com/hbuurmei/asl_trunk/tree/main/asl_trunk/asl_trunk_ws/foxglove).
+Finally, particular settings, such as topics to listen to, are stored and can be found [in the repo](https://github.com/StanfordASL/trunk-stack/tree/main/stack/main/foxglove).
 
 ## Installing Foxglove
 The only thing to do to run Foxglove is to install the WebSocket server. This can be done by running the following command:
