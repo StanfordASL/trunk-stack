@@ -10,4 +10,4 @@ On the Bambu X1C, we used default print settings (infill of 15% and 2 wall loops
 We found that an offset of 7 thousandths of an inch (0.18 mm) for a friction fit between manufacturer parts and 3D printed parts. For example, if a manufacturer part is friction fit into a custom 3D printed part, and the outer diameter of a manufacturer part is 1.000", then our 3D printed part would have an internal diameter of 1.007". This tolerance may change on other 3D printers, but we found it to be consistent across prints on the Bambu X1C.
 
 ## Assets
-All 3D printed assets are available in the full CAD assembly. All assets are editable and fully configurable in Fusion360. Please email mleone@stanford.edu if you need access to STL files or other filetypes.
+All 3D printed assets are available in the full CAD assembly. All assets are editable and fully configurable in Fusion360. Please email [mleone@stanford.edu](mailto:mleone@stanford.edu) if you need access to STL files or other filetypes.
