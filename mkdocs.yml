@@ -25,6 +25,7 @@ nav:
   - Setup:
     - 3D Printing: 3dprinting.md 
     - OpiTrack System: optitrack.md 
+    - ROS2 Workspaces: ros2_workspaces.md
   - Usage:
     - Motion Capture: mocap.md
     - Motor Control: motor_control.md

@@ -1,40 +1,36 @@
-# Contributing to the ASL Trunk robot project
+# Contributing to the ASL Trunk Robot project
 
 Contributions are welcome! Here are some guidelines to follow when contributing to the project.
 
 ## Getting started
-Start by cloning this repository using the following command:
+Start by cloning this repository, e.g. using the following command:
 ```bash
-gh repo clone hbuurmei/asl_trunk
+gh repo clone StanfordASL/trunk-stack
 ```
-where the GitHub CLI is required to use the `gh` command (I highly recommend it).
+where the GitHub CLI is required to use the `gh` command.
 
 ## Project layout
 The project is organized as follows:
     
-    asl_trunk/
+    trunk-stack/
         README.md  # The project README file.
-        asl_trunk/  # The main package.
-            asl_trunk_ws/  # The main ROS2 workspace, incl. data collection etc.
-            mocap_ws/  # The ROS2 workspace for interfacing with the motion capture system.
-            motor_control_ws/  # The ROS2 workspace for controlling the motors.
-        docs/
-            mkdocs.yml    # The website configuration file.
+        stack/  # The main package.
+            main/  # The main ROS2 workspace, incl. data collection etc.
+            mocap/  # The ROS2 workspace for interfacing with the motion capture system.
+            motors/  # The ROS2 workspace for controlling the motors.
+        docs/  # Documentation directory.
             docs/
                 index.md  # The documentation homepage.
                 contributing.md  # This file.
                 ...       # Other markdown pages, images and other files.
+        mkdocs.yml    # The website configuration file.
 
-## Code contributions
-All the ROS2 packages are located in the `asl_trunk/` directory, and each workspace is their own repository.
-These are added via git subtrees to have everything in one place.
-Therefore, just contribute to the respective workspace repository, which will most likely be the [asl_trunk_ws](https://github.com/hbuurmei/asl_trunk_ws) repository.
-Afterwards, the main repository can be updated with the new changes using the following command:
-```bash
-git subtree pull --prefix=asl_trunk/asl_trunk_ws https://github.com/hbuurmei/asl_trunk_ws.git main
-```
+## Code Contributions
+All the ROS2 packages are located within the `stack/` directory.
+For simplicity, this is a monorepo, meaning that all the packages are in the same repository.
+However, most likely contributions will be made to the `main/` package, where e.g. the controller and the main logic are located.
 
-## Contributing to the documentation
+## Contributing to Documentation
 After cloning this repository, one can make updates to the documentation by editing the files in the `docs/` directory.
 The documentation is built using [MkDocs](https://www.mkdocs.org/), a static site generator that's geared towards project documentation.
 Specifically, we use the [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) theme.

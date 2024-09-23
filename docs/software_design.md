@@ -1,9 +1,10 @@
 # Software Design
 
 ## Description
+The software stack of the ASL Trunk Robot is primarily developed in ROS2, and can be divided into three components: main, motion capture and motor control.
 
-## ROS Graph
-Generated using [ros2_graph](https://github.com/kiwicampus/ros2_graph/).
+## ROS2 Graph
+The diagrams are generated using [ros2_graph](https://github.com/kiwicampus/ros2_graph/).
 
 ```mermaid
 flowchart LR
