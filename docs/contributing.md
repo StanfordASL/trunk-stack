@@ -38,9 +38,13 @@ This should be installed using the following command:
 ```bash
 pip install mkdocs-material
 ```
+Additionally, we make use of a number of plugins, that can be installed as:
+```bash
+pip install pymdown-extensions mkdocs-git-committers-plugin-2 mkdocs-git-revision-date-localized-plugin
+```
 **Note:** The documentation is built automatically using GitHub Actions, so there is no need to build it locally. Always push to the `main` branch.
 In case you want to preview the updates locally, simply use:
 ```bash
 mkdocs serve
 ```
-in the main directory, and open the browser as instructed.
+in the main directory, and open the preview in the browser as instructed.
