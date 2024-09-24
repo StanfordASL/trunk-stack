@@ -1,5 +1,13 @@
+# Cache files
 .DS_Store
 .cache
+
+# ROS2 compilation files
 **/build/
 **/install/
 **/log/
+
+# External packages
+**/mocap_msgs/
+**/mocap4r2/
+**/mocap4ros2_optitrack/

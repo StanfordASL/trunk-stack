@@ -2,6 +2,7 @@
 
 ## Description
 The software stack of the ASL Trunk Robot is primarily developed in ROS2, and can be divided into three components: main, motion capture and motor control.
+We assume that several computing resources are available: a Rapsberry Pi for executing the motor control, a main linux machine for running the experiments, and a Windows machine for running the motion capture Motive software.
 
 ## ROS2 Graph
 The diagrams are generated using [ros2_graph](https://github.com/kiwicampus/ros2_graph/).

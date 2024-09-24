@@ -24,7 +24,7 @@ nav:
     - Software: software_design.md 
   - Setup:
     - 3D Printing: 3d_printing.md 
-    - OpiTrack System: optitrack.md 
+    - OptiTrack System: optitrack.md 
     - ROS2 Workspaces: ros2_workspaces.md
   - Usage:
     - Motion Capture: mocap.md
