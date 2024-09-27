@@ -24,7 +24,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AllMotorsStatus.msg"
   "msg/SingleMotorControl.msg"
   "msg/SingleMotorStatus.msg"
-  "srv/MPCCommand.srv"
 )
 
 if(BUILD_TESTING)

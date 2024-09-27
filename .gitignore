@@ -11,3 +11,9 @@
 **/mocap_msgs/
 **/mocap4r2/
 **/mocap4ros2_optitrack/
+**/ros_phoenix/*
+
+# Maintain version control of launch files
+!**/ros_phoenix/launch/
+**/ros_phoenix/launch/*
+!**/ros_phoenix/launch/trunk.launch.py
