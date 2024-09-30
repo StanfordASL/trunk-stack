@@ -24,6 +24,13 @@ source install/setup.bash
 ```
 Check that the build process runs without any errors.
 
+??? note "General note"
+
+    It is highly recommended to build individual packages (within a workspace) upon changes, using the syntax:
+    ```bash
+    colcon build --packages-select interfaces
+    ```
+
 ## Motion Capture Workspace
 **Note:** This workspace runs on the main machine.
 
@@ -71,3 +78,16 @@ Due to compatibility constraints of this package, we use ROS2 Foxy for this work
 
 Clone the `trunk-stack` repository on the Pi and enter the `motors/` folder.
 
+Enter the source directory and clone the package:
+```bash
+cd src/
+git clone https://github.com/vanderbiltrobotics/ros_phoenix
+```
+
+Note that the launch script `trunk.launch.py` is also being version controlled, therefore ensure that is placed in its respective location.
+
+Again, build the workspace:
+```bash
+cd .. # enter 'motors' dir.
+colcon build --symlink-install
+```
