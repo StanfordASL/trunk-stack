@@ -1,6 +1,7 @@
 # Cache files
 .DS_Store
 .cache
+**/__pycache__/
 
 # ROS2 compilation files
 **/build/
@@ -12,8 +13,12 @@
 **/mocap4r2/
 **/mocap4ros2_optitrack/
 **/ros_phoenix/*
+**/image_common/
+**/image_transport_plugins/
+**/ros2_v4l2_camera/
+**/vision_opencv/
 
-# Maintain version control of launch files
+# Maintain version control of custom launch file
 !**/ros_phoenix/launch/
 **/ros_phoenix/launch/*
 !**/ros_phoenix/launch/trunk.launch.py
