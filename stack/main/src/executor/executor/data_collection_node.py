@@ -51,7 +51,7 @@ class DataCollectionNode(Node):
         self.current_control_id = -1
         self.stored_positions = []
         self.control_inputs = None
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/asl/Documents/asl_trunk_ws/data')
+        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         if self.data_type == 'steady_state':
             control_input_csv_file = os.path.join(self.data_dir, 'trajectories/steady_state/control_inputs_uniform.csv')
