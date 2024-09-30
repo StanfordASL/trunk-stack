@@ -18,11 +18,7 @@ For actually building the workspace, we use Colcon, i.e. run:
 ```bash
 colcon build
 ```
-in the `main/` directory and subsequently source the new install:
-```bash
-source install/setup.bash
-```
-Check that the build process runs without any errors.
+in the `main/` directory and check that the build process runs without any errors.
 
 ??? note "General note"
 
@@ -41,11 +37,12 @@ For completeness, we also list the steps here.
 
 Enter the `src/` directory.
 Download the plugin's repository:
-```
+```bash
+cd src/
 git clone https://github.com/MOCAP4ROS2-Project/mocap4ros2_optitrack.git
 ```
 Install dependencies:
-```
+```bash
 rosdep install --from-paths src --ignore-src -r -y
 vcs import < mocap4ros2_optitrack/dependency_repos.repos
 ```
@@ -54,18 +51,20 @@ Specifically, the `server_address` should be equal to the address that Motive is
 
 Once that information is entered correctly, compile the workspace:
 ```bash
-cd .. # enter 'mocap' dir.
+cd ..
 colcon build --symlink-install
 ```
 Do make sure that ROS2 Humble is sourced again before building. Certain warnings can come up but may be ignored.
 
 Then, check that the Optitrack configuration works fine and is connected by running it once:
 ```bash
+source install/setup.bash
 ros2 launch mocap4r2_optitrack_driver optitrack2.launch.py
 ```
 This should say "Configured!" as a last message.
-As the driver node is a lifecycle node, you should transition to activate:
-```
+As the driver node is a lifecycle node, you should transition to activate by running in a separate terminal:
+```bash
+source install/setup.bash
 ros2 lifecycle set /mocap4r2_optitrack_driver_node activate
 ```
 which should return "Transitioning successful".
@@ -88,6 +87,37 @@ Note that the launch script `trunk.launch.py` is also being version controlled, 
 
 Again, build the workspace:
 ```bash
-cd .. # enter 'motors' dir.
+cd ..
 colcon build --symlink-install
 ```
+
+## Camera Workspace
+**Note:** This workspace runs on the Raspberry Pi.
+
+First, change directory into the `camera/` folder.
+
+We closely follow [this tutorial](https://medium.com/swlh/raspberry-pi-ros-2-camera-eef8f8b94304) to install the camera driver, with the difference being that the Pi has Ubuntu 20.04 installed, not Raspberry Pi OS (previously Raspbian).
+Specifically, once ROS2 is installed, the following commands can be used to install the camera packages:
+```bash
+cd src/
+git clone --branch foxy https://gitlab.com/boldhearts/ros2_v4l2_camera.git
+git clone --branch foxy https://github.com/ros-perception/vision_opencv.git
+git clone --branch foxy https://github.com/ros-perception/image_common.git
+git clone --branch foxy-devel https://github.com/ros-perception/image_transport_plugins.git
+cd ..
+rosdep install --from-paths src -r -y
+colcon build
+```
+You may need allow the camera to be accessed by the user, which can be done by adding the user to the `video` group, or by adding the following udev rule:
+```bash
+sudo nano /etc/udev/rules.d/99-webcam.rules
+KERNEL=="video[0-9]*", MODE="0666"  # add this to the file
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+## Gripper Workspace
+**Note:** This workspace runs on the Raspberry Pi.
+
+## Setup Testing
+To test the correct workings of the ROS2 workspaces, it is recommended to 
