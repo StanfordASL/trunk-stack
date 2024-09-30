@@ -8,7 +8,7 @@ from interfaces.srv import ControlSolver
 import numpy as np
 from sensor_msgs.msg import Image, CompressedImage
 from cv_bridge import CvBridge
-from .data_aug import crop_image, plot_predictions_on_image
+from .data_aug_utils import crop_image, plot_predictions_on_image
 import torch 
 from torchvision import transforms
 import torch.nn as nn
@@ -18,7 +18,6 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
-# from .plot_tools import plot_predictions_on_image
 
 
 # Future todo:
