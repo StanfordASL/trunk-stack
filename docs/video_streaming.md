@@ -20,27 +20,3 @@ ros2 run rqt_image_view rqt_image_view
 ```
 and select the appropriate topic to view the video stream, e.g. `/image/theora`.
 This can also be viewed directly with all the other data, as described in the [telemetry viewer](telemetry_viewer.md) page.
-
-## Re-installing
-For instance, [this tutorial](https://medium.com/swlh/raspberry-pi-ros-2-camera-eef8f8b94304) can be followed to re-install the camera driver.
-However, note that we installed Ubuntu 20.04 on the Pi, not Raspberry Pi OS (previously Raspbian), such that the ROS2 installation is different (much simpler).
-Specifically, once ROS2 is installed, the following commands can be used to install the camera packages:
-```bash
-mkdir -p Documents/cam_ws/src && cd Documents/cam_ws/src
-git clone --branch foxy https://gitlab.com/boldhearts/ros2_v4l2_camera.git
-git clone --branch foxy https://github.com/ros-perception/vision_opencv.git
-git clone --branch foxy https://github.com/ros-perception/image_common.git
-git clone --branch foxy-devel https://github.com/ros-perception/image_transport_plugins.git
-cd ..
-rosdep install --from-paths src -r -y
-colcon build
-source install/setup.bash
-```
-Then, the camera can be started as described above.
-You may need allow the camera to be accessed by the user, which can be done by adding the user to the `video` group, or by adding the following udev rule:
-```bash
-sudo nano /etc/udev/rules.d/99-webcam.rules
-KERNEL=="video[0-9]*", MODE="0666"  # add this to the file
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
