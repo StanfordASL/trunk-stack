@@ -37,7 +37,6 @@ class ConverterNode(Node):
         trunk_msg.frame_number = msg.frame_number
         trunk_msg.translations = [marker.translation for marker in msg.markers]
         self.publisher.publish(trunk_msg)
-        # self.get_logger().info('Published TrunkMarkers message.')
 
     def rigid_body_callback(self, msg):
         trunk_msg = TrunkRigidBodies()
@@ -46,7 +45,6 @@ class ConverterNode(Node):
         trunk_msg.rigid_body_names = [rigid_body.rigid_body_name for rigid_body in msg.rigidbodies]
         trunk_msg.positions = [rigid_body.pose.position for rigid_body in msg.rigidbodies]
         self.publisher.publish(trunk_msg)
-        # self.get_logger().info('Published TrunkRigidBodies message.')
 
 
 def main(args=None):
