@@ -91,7 +91,6 @@ class DataCollectionNode(Node):
             self.store_positions(msg)
             
             # Publish new motor control inputs
-            # Publish new motor control inputs
             self.current_control_id += 1
             self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
             if self.control_inputs is None:
@@ -223,7 +222,7 @@ class DataCollectionNode(Node):
         # Populate the header row of the CSV file with states if it does not exist
         trajectory_csv_file = os.path.join(self.data_dir, f'trajectories/{self.data_type}/{self.results_name}.csv')
         if not os.path.exists(trajectory_csv_file):
-            header = ['ID'] + ['ID'] + [f'{axis}{name}' for name in names for axis in ['x', 'y', 'z']]
+            header = ['ID'] + [f'{axis}{name}' for name in names for axis in ['x', 'y', 'z']]
             with open(trajectory_csv_file, 'w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(header)
