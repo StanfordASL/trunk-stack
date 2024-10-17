@@ -54,8 +54,8 @@ def sine_trajectory():
     num_cycles = 4  # number of cycles per control
     sampling_rate = 100  # [Hz]
     period = 5  # [s], period of the sine wave
-    max_amp = 0.35  # maximum amplitude of the sine wave
-    gamma = 0.8  # decrease amplitude with this factor
+    max_amp = 0.55  # maximum amplitude of the sine wave
+    gamma = 0.9  # decrease amplitude with this factor
 
     ts = np.arange(0, period, 1/sampling_rate)
 
@@ -88,6 +88,7 @@ def main(control_inputs_file, control_type):
 
 if __name__ == '__main__':
     control_type = 'sinusoidal'
-    data_dir = os.getenv('TRUNK_DATA', '/home/asl/Documents/asl_trunk_ws/data')
-    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_{control_type}.csv')
+    data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+    # control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_{control_type}.csv')
+    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled.csv')
     main(control_inputs_file, control_type=control_type)
