@@ -2,6 +2,7 @@
 .DS_Store
 .cache
 **/__pycache__/
+.aider*
 
 # ROS2 compilation files
 **/build/
