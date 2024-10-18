@@ -7,7 +7,7 @@ from rclpy.qos import QoSProfile  # type: ignore
 from interfaces.msg import TrunkRigidBodies
 from geometry_msgs.msg import Point
 from .avp_subscriber import AVPSubscriber
-from interfaces.srv import TriggerImageSaving
+from interfaces.srv import TriggerImageSaving, GripperAction
 
 
 class AVPStreamerNode(Node):
@@ -34,7 +34,7 @@ class AVPStreamerNode(Node):
         # Initialize stored positions and gripper states
         self.stored_positions = []
         self.stored_gripper_states = []
-
+        
         # Keep track of trajectory ID
         self.recording_id = -1
 
@@ -43,7 +43,16 @@ class AVPStreamerNode(Node):
             '/avp_des_positions',
             QoSProfile(depth=10)
         )
-        
+
+        # Create a gripper service client
+        self.gripper_client = self.create_client(
+            GripperAction,
+            'move_gripper'
+        )
+        # Wait for service to become available
+        while not self.gripper_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Gripper service not available, waiting...')
+
         # subscribe to mocap positions
         self.subscription_rigid_bodies = self.create_subscription(
                 TrunkRigidBodies,
@@ -54,13 +63,32 @@ class AVPStreamerNode(Node):
 
         self.streamer = AVPSubscriber(ip='10.93.181.122')
         self._timer = self.create_timer(1.0 / 10.0, self.streamer_data_sampling_callback) # runs at 10Hz
+        self.last_isGripperOpen = self.streamer.isGripperOpen #should start as closed
+        
         self.get_logger().info('AVP streaming node has been started.')
+
+    def process_gripper_state(self):
+        request = GripperAction.Request()
+
+        # process state switching
+        if self.last_isGripperOpen == 1 and self.streamer.isGripperOpen == 0:
+            request.action = "close"
+        elif self.last_isGripperOpen == 0 and self.streamer.isGripperOpen == 1:
+            request.action = "open"
+        
+        # Update last gripper state
+        self.last_isGripperOpen = self.streamer.isGripperOpen
+
+        # Call the service
+        self.async_response = self.gripper_client.call_async(request)
+
 
     def mocap_listener_callback(self, msg):
         self.latest_mocap_positions = msg
 
-
     def streamer_data_sampling_callback(self):
+        self.process_gripper_state()
+        
         # Determine trajectory ID - when recording starts
         if self.streamer.isRecording and not self.streamer.previousRecordingState:
             self.get_logger().info('New traj.')
