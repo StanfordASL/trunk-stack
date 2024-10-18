@@ -29,8 +29,12 @@ def sinusoidal_sampling(control_variables):
 def uniform_sampling(control_variables):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     tip_range = 0.15
-    mid_range = 0.15
-    base_range = 0.2
+    mid_range = 0.25
+    base_range = 0.35
+    # reasonable for src demo:
+    # tip_range = 0.20
+    # mid_range = 0.25
+    # base_range = 0.25
     ranges = [np.linspace(-val, val, 3) for val in [tip_range, mid_range, base_range]*2]
     combinations = list(product(*ranges))
 
@@ -42,7 +46,7 @@ def uniform_sampling(control_variables):
 
 def main(data_type='dynamic', sampling_type='uniform'):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
-    data_dir = os.getenv('TRUNK_DATA', '/home/asl/Documents/asl_trunk_ws/data')
+    data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}.csv')
     
     if sampling_type=='sinusoidal':
@@ -56,6 +60,6 @@ def main(data_type='dynamic', sampling_type='uniform'):
 
 
 if __name__ == '__main__':
-    data_type = 'dynamic'       # 'steady_state' or 'dynamic'
+    data_type = 'steady_state'       # 'steady_state' or 'dynamic'
     sampling_type = 'uniform'   # 'uniform' or 'sinusoidal'
     main(data_type, sampling_type)

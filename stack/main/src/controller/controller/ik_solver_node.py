@@ -28,7 +28,7 @@ class IKSolverNode(Node):
         self.u_opt_previous = np.array([0, 0, 0, 0, 0, 0]) # initially no control input
 
         # Get mappings
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/asl/Documents/asl_trunk_ws/data')
+        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
         self.u2y = np.load(os.path.join(self.data_dir, f'models/ik/{self.u2y_file}'))
         self.y2u = np.load(os.path.join(self.data_dir, f'models/ik/{self.y2u_file}'))
 
