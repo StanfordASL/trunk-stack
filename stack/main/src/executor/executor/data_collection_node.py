@@ -70,7 +70,7 @@ class DataCollectionNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         if self.data_type == 'steady_state':
-            control_input_csv_file = os.path.join(self.data_dir, 'trajectories/steady_state/control_inputs_uniform_pt2.csv')
+            control_input_csv_file = os.path.join(self.data_dir, 'trajectories/steady_state/control_inputs_uniform_pt3.csv')
         elif self.data_type == 'dynamic':
             control_input_csv_file = os.path.join(self.data_dir, f'trajectories/dynamic/control_inputs_{self.data_subtype}.csv')
         else:
@@ -254,7 +254,8 @@ class DataCollectionNode(Node):
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)            
                 writer.writerow(average_positions)
-            self.get_logger().info('Stored new sample with positions: ' + str(average_positions) + ' [m].')
+            if self.debug:
+                self.get_logger().info('Stored new sample with positions: ' + str(average_positions) + ' [m].')
         
         elif self.data_type == 'dynamic' and self.data_subtype == 'decay':
             # Store all positions in a CSV file
