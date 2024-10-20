@@ -9,13 +9,29 @@ from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkMarkers, T
 
 def load_control_inputs(control_input_csv_file):
     control_inputs_dict = {}
+    
+    # Read the control inputs first
     with open(control_input_csv_file, mode='r') as file:
         csv_reader = csv.reader(file)
-        next(csv_reader, None)  # skip the header row
-        for row in csv_reader:
-            control_id = int(row[0])
-            control_inputs = [float(u) for u in row[1:]]
-            control_inputs_dict[control_id] = control_inputs
+        next(csv_reader, None)  # Skip the header row
+        rows = [row for row in csv_reader]
+    
+    # Extract the control ids and find the minimum control id
+    control_ids = [int(row[0]) for row in rows]
+    min_control_id = min(control_ids)
+    
+    # Shift the control ids if the minimum control id is not zero
+    if min_control_id != 0:
+        shift = -min_control_id
+    else:
+        shift = 0
+    
+    # Now process the rows and update control_ids
+    for row in rows:
+        control_id = int(row[0]) + shift
+        control_inputs = [float(u) for u in row[1:]]
+        control_inputs_dict[control_id] = control_inputs
+    
     return control_inputs_dict
 
 
@@ -54,7 +70,7 @@ class DataCollectionNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         if self.data_type == 'steady_state':
-            control_input_csv_file = os.path.join(self.data_dir, 'trajectories/steady_state/control_inputs_uniform.csv')
+            control_input_csv_file = os.path.join(self.data_dir, 'trajectories/steady_state/control_inputs_uniform_pt2.csv')
         elif self.data_type == 'dynamic':
             control_input_csv_file = os.path.join(self.data_dir, f'trajectories/dynamic/control_inputs_{self.data_subtype}.csv')
         else:
