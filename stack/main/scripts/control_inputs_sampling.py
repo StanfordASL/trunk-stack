@@ -77,20 +77,36 @@ def beta_sampling(control_variables, sample_size=150):
     # Beta parameters
     a, b = 0.5, 0.5
 
-    # Sample from Beta distribution, then shift and scale to match desired ranges
-    u1 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * tip_range
-    u6 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * tip_range
-    u2 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * mid_range
-    u5 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * mid_range
-    u3 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * base_range
-    u4 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * base_range
+    # Initialize an empty list to collect valid samples
+    valid_samples = []
+    num_valid_samples = 0
 
-    # Stack the generated control inputs into columns
-    data = np.column_stack([u1, u2, u3, u4, u5, u6])
+    while num_valid_samples < sample_size:
+        # Sample from Beta distribution, then shift and scale to match desired ranges
+        u1 = (np.random.beta(a, b) - 0.5) * 2 * tip_range
+        u6 = (np.random.beta(a, b) - 0.5) * 2 * tip_range
+        u2 = (np.random.beta(a, b) - 0.5) * 2 * mid_range
+        u5 = (np.random.beta(a, b) - 0.5) * 2 * mid_range
+        u3 = (np.random.beta(a, b) - 0.5) * 2 * base_range
+        u4 = (np.random.beta(a, b) - 0.5) * 2 * base_range
+
+        # Calculate the norm based on the constraint
+        vector_sum = (
+            0.75 * (u3 + u4) +
+            1.0 * (u2 + u5) +
+            1.25 * (u1 + u6)
+        )
+        norm_value = np.linalg.norm(vector_sum)
+
+        # Check the constraint: if the sample is valid, keep it
+        if norm_value <= 0.6:
+            valid_samples.append([u1, u2, u3, u4, u5, u6])
+            num_valid_samples += 1
+
+    # Convert valid samples to a DataFrame
     ids = np.arange(0, sample_size)
-    
-    # Create the DataFrame with control variables and insert the ID column
-    control_inputs_df = pd.DataFrame(data, columns=control_variables)
+    valid_samples = np.array(valid_samples)
+    control_inputs_df = pd.DataFrame(valid_samples, columns=control_variables)
     control_inputs_df.insert(0, 'ID', ids)
 
     return control_inputs_df
