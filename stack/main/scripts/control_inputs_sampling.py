@@ -1,7 +1,9 @@
 import os
 import numpy as np
 import pandas as pd  # type: ignore
+import matplotlib.pyplot as plt
 from itertools import product
+from scipy.stats import norm
 
 
 def save_to_csv(df, control_inputs_file):
@@ -41,6 +43,7 @@ def uniform_sampling(control_variables):
 
     return control_inputs_df
 
+
 def random_sampling(control_variables):
     sample_size = 250
     np.random.seed(9)
@@ -65,7 +68,46 @@ def random_sampling(control_variables):
     return control_inputs_df
     
 
+def beta_sampling(control_variables, sample_size=150):
+    np.random.seed(0)
+    tip_range, mid_range, base_range = 0.15, 0.25, 0.35 
 
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    
+    # Beta parameters
+    a, b = 0.5, 0.5
+
+    # Sample from Beta distribution, then shift and scale to match desired ranges
+    u1 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * tip_range
+    u6 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * tip_range
+    u2 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * mid_range
+    u5 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * mid_range
+    u3 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * base_range
+    u4 = (np.random.beta(a, b, size=(sample_size,)) - 0.5) * 2 * base_range
+
+    # Stack the generated control inputs into columns
+    data = np.column_stack([u1, u2, u3, u4, u5, u6])
+    ids = np.arange(0, sample_size)
+    
+    # Create the DataFrame with control variables and insert the ID column
+    control_inputs_df = pd.DataFrame(data, columns=control_variables)
+    control_inputs_df.insert(0, 'ID', ids)
+
+    return control_inputs_df
+
+
+def visualize_samples(control_inputs_df):
+    control_variables = control_inputs_df.columns[1:]
+    num_vars = len(control_variables)
+    _, axes = plt.subplots(num_vars, 1, figsize=(8, 8))
+    
+    for i, var in enumerate(control_variables):
+        axes[i].hist(control_inputs_df[var], bins=30, alpha=0.7, color='blue')
+        axes[i].set_xlabel(var)
+        axes[i].set_ylabel('Frequency')
+    
+    plt.tight_layout()
+    plt.show()
 
 
 def main(data_type='dynamic', sampling_type='uniform'):
@@ -77,15 +119,18 @@ def main(data_type='dynamic', sampling_type='uniform'):
         control_inputs_df = sinusoidal_sampling(control_variables)
     elif sampling_type=='uniform':
         control_inputs_df = uniform_sampling(control_variables)
+    elif sampling_type=='beta':
+        control_inputs_df = beta_sampling(control_variables)
     elif sampling_type=='random':
         control_inputs_df = random_sampling(control_variables)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
     save_to_csv(control_inputs_df, control_inputs_file)
+    visualize_samples(control_inputs_df)
 
 
 if __name__ == '__main__':
     data_type = 'steady_state'       # 'steady_state' or 'dynamic'
-    sampling_type = 'random'   # 'uniform' or 'sinusoidal' or 'random'
+    sampling_type = 'beta'           # 'beta', 'uniform', 'sinusoidal' or 'random'
     main(data_type, sampling_type)
