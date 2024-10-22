@@ -43,8 +43,8 @@ class DataCollectionNode(Node):
             ('sample_size', 10),                # for checking settling condition and averaging (steady state)
             ('update_period', 0.1),             # for steady state and avoiding dynamic trajectories to interrupt each other, in [s]
             ('max_traj_length', 600),           # maximum number of samples in a dynamic trajectory
-            ('data_type', 'dynamic'),           # 'steady_state' or 'dynamic'
-            ('data_subtype', 'controlled'),     # 'decay' or 'controlled' (for dynamic trajectories)
+            ('data_type', 'steady_state'),      # 'steady_state' or 'dynamic'
+            ('data_subtype', 'beta'),           # 'decay' or 'controlled' for dynamic and e.g. 'beta' or 'uniform' for steady_state
             ('mocap_type', 'rigid_bodies'),     # 'rigid_bodies' or 'markers'
             ('control_type', 'output'),         # 'output' or 'position'
             ('results_name', 'observations')
@@ -70,7 +70,7 @@ class DataCollectionNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         if self.data_type == 'steady_state':
-            control_input_csv_file = os.path.join(self.data_dir, 'trajectories/steady_state/control_inputs_uniform_pt3.csv')
+            control_input_csv_file = os.path.join(self.data_dir, f'trajectories/steady_state/control_inputs_{self.data_subtype}.csv')
         elif self.data_type == 'dynamic':
             control_input_csv_file = os.path.join(self.data_dir, f'trajectories/dynamic/control_inputs_{self.data_subtype}.csv')
         else:
@@ -272,8 +272,8 @@ class DataCollectionNode(Node):
                 for id, pos_list in enumerate(self.stored_positions):
                     row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]]
                     writer.writerow(row)
-            # if self.debug:
-            #     self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
+            if self.debug:
+                self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
 
 
 def main(args=None):
