@@ -137,5 +137,5 @@ def main(data_type='dynamic', sampling_type='uniform', seed=None):
 if __name__ == '__main__':
     data_type = 'steady_state'       # 'steady_state' or 'dynamic'
     sampling_type = 'beta'           # 'beta', 'uniform' or 'sinusoidal'
-    seed = 7                         # choose integer seed number
+    seed = 8                         # choose integer seed number
     main(data_type, sampling_type, seed)
