@@ -43,9 +43,9 @@ def uniform_sampling(control_variables):
     return control_inputs_df
     
 
-def beta_sampling(control_variables, seed, sample_size=150):
+def beta_sampling(control_variables, seed, sample_size=100):
     np.random.seed(seed)
-    tip_range, mid_range, base_range = 0.2, 0.3, 0.4 
+    tip_range, mid_range, base_range = 0.4, 0.35, 0.3
 
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
@@ -56,6 +56,7 @@ def beta_sampling(control_variables, seed, sample_size=150):
     valid_samples = []
     num_valid_samples = 0
 
+    rejection_count = 0
     while num_valid_samples < sample_size:
         # Sample from Beta distribution, then shift and scale to match desired ranges
         u1 = (np.random.beta(a, b) - 0.5) * 2 * tip_range
@@ -82,9 +83,12 @@ def beta_sampling(control_variables, seed, sample_size=150):
         norm_value = np.linalg.norm(vector_sum)
 
         # Check the constraint: if the sample is valid, keep it
-        if norm_value <= 0.6:
+        if norm_value <= 0.75:
             valid_samples.append([u1, u2, u3, u4, u5, u6])
             num_valid_samples += 1
+        else:   
+            rejection_count += 1
+            print(f'Rejected {u1, u2, u3, u4, u5, u6} count: {rejection_count}')
 
     # Convert valid samples to a DataFrame
     ids = np.arange(0, sample_size)
@@ -133,5 +137,5 @@ def main(data_type='dynamic', sampling_type='uniform', seed=None):
 if __name__ == '__main__':
     data_type = 'steady_state'       # 'steady_state' or 'dynamic'
     sampling_type = 'beta'           # 'beta', 'uniform' or 'sinusoidal'
-    seed = 1                         # choose integer seed number
+    seed = 5                         # choose integer seed number
     main(data_type, sampling_type, seed)
