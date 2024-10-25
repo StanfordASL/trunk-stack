@@ -76,6 +76,7 @@ class DataCollectionNode(Node):
         else:
             raise ValueError('Invalid data type: ' + self.data_type + '. Valid options are: "steady_state" or "dynamic".')
         self.control_inputs_dict = load_control_inputs(control_input_csv_file)
+        self.num_control_inputs = len(self.control_inputs_dict)
 
         if self.mocap_type == 'markers':
             self.subscription_markers = self.create_subscription(
@@ -128,8 +129,9 @@ class DataCollectionNode(Node):
                 self.check_settled_positions = []
                 self.is_collecting = True
 
-                # Publish new motor control inputs
+                # Print and publish new motor control inputs
                 self.current_control_id += 1
+                self.get_logger().info(f'Publishing motor command {self.current_control_id} / {self.num_control_inputs}.')
                 self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
                 if self.control_inputs is None:
                     self.get_logger().info('Data collection has finished.')
@@ -253,7 +255,7 @@ class DataCollectionNode(Node):
             # Save data to CSV
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)            
-                writer.writerow(average_positions)
+                writer.writerow([self.current_control_id] + average_positions)
             if self.debug:
                 self.get_logger().info('Stored new sample with positions: ' + str(average_positions) + ' [m].')
         
