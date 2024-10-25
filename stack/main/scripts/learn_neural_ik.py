@@ -23,16 +23,18 @@ class UYPairsDataset(Dataset):
 
 
 # Load data
-us_df = pd.read_csv('../data/trajectories/steady_state/control_inputs_beta.csv')
-us_df = pd.concat([us_df, pd.read_csv('../data/trajectories/steady_state/control_inputs_uniform_pt1.csv')])
-us_df = pd.concat([us_df, pd.read_csv('../data/trajectories/steady_state/control_inputs_uniform_pt2.csv')])
-us_df = pd.concat([us_df, pd.read_csv('../data/trajectories/steady_state/control_inputs_uniform_pt3.csv')])
+num_seeds = 7
+
+us_df = pd.read_csv('../data/trajectories/steady_state/control_inputs_beta_seed0.csv')
+for seed in range(1, num_seeds + 1):
+    us_df = pd.concat([us_df, pd.read_csv(f'../data/trajectories/steady_state/control_inputs_beta_seed{seed}.csv')])
+us_df = us_df.drop(columns=['ID'])
 
 # Observations
-ys_df = pd.read_csv('../data/trajectories/steady_state/observations_steady_state_beta_src_demo.csv')
-ys_df = pd.concat([ys_df, pd.read_csv('../data/trajectories/steady_state/observations_steady_state_uniform_src_demo_pt1.csv')])
-ys_df = pd.concat([ys_df, pd.read_csv('../data/trajectories/steady_state/observations_steady_state_uniform_src_demo_pt2.csv')])
-ys_df = pd.concat([ys_df, pd.read_csv('../data/trajectories/steady_state/observations_steady_state_uniform_src_demo_pt3.csv')])
+ys_df = pd.read_csv('../data/trajectories/steady_state/observations_steady_state_beta_seed0.csv')
+for seed in range(1, num_seeds + 1):
+    ys_df = pd.concat([ys_df, pd.read_csv(f'../data/trajectories/steady_state/observations_steady_state_beta_seed{seed}.csv')])
+ys_df = ys_df.drop(columns=['ID'])
 
 rest_positions = np.array([0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
 ys_df = ys_df - rest_positions
@@ -41,7 +43,7 @@ if len(us_df) != N:
     us_df = us_df[:N]
 
 # Convert to numpy arrays
-us = us_df.to_numpy()[:, 1:]
+us = us_df.to_numpy()
 ys = ys_df.to_numpy()
 
 # Randomly split dataset into train and test
