@@ -78,12 +78,12 @@ def beta_sampling(control_variables, seed, sample_size=100):
         vector_sum = (
             0.75 * (u3_vec + u4_vec) +
             1.0 * (u2_vec + u5_vec) +
-            1.25 * (u1_vec + u6_vec)
+            1.4 * (u1_vec + u6_vec)
         )
         norm_value = np.linalg.norm(vector_sum)
 
         # Check the constraint: if the sample is valid, keep it
-        if norm_value <= 0.80:
+        if norm_value <= 0.7:
             valid_samples.append([u1, u2, u3, u4, u5, u6])
             num_valid_samples += 1
         else:   
@@ -137,5 +137,5 @@ def main(data_type='dynamic', sampling_type='uniform', seed=None):
 if __name__ == '__main__':
     data_type = 'steady_state'       # 'steady_state' or 'dynamic'
     sampling_type = 'beta'           # 'beta', 'uniform' or 'sinusoidal'
-    seed = 6                         # choose integer seed number
+    seed = 7                         # choose integer seed number
     main(data_type, sampling_type, seed)
