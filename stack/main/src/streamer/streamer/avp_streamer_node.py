@@ -5,7 +5,7 @@ import rclpy  # type: ignore
 from rclpy.node import Node  # type: ignore
 from rclpy.qos import QoSProfile  # type: ignore
 from interfaces.msg import TrunkRigidBodies
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point  # type: ignore
 from .avp_subscriber import AVPSubscriber
 from interfaces.srv import TriggerImageSaving, GripperAction
 
@@ -16,7 +16,7 @@ class AVPStreamerNode(Node):
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True
             ('recording_name', 'test_task_recording'),
-            ('mocap_type', 'rigid_bodies')                  # 'rigid_bodies' or 'markers' - always going to be 'rigid_bodies' for now
+            ('mocap_type', False)                  # False, 'rigid_bodies' or 'markers' - always going to be 'rigid_bodies' for now
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -54,12 +54,13 @@ class AVPStreamerNode(Node):
             self.get_logger().info('Gripper service not available, waiting...')
 
         # subscribe to mocap positions
-        self.subscription_rigid_bodies = self.create_subscription(
-                TrunkRigidBodies,
-                '/trunk_rigid_bodies',
-                self.mocap_listener_callback,
-                QoSProfile(depth=10)
-            )
+        if self.mocap_type:
+            self.subscription_rigid_bodies = self.create_subscription(
+                    TrunkRigidBodies,
+                    '/trunk_rigid_bodies',
+                    self.mocap_listener_callback,
+                    QoSProfile(depth=10)
+                )
 
         self.streamer = AVPSubscriber(ip='10.93.181.122')
         self._timer = self.create_timer(1.0 / 10.0, self.streamer_data_sampling_callback) # runs at 10Hz
@@ -75,13 +76,16 @@ class AVPStreamerNode(Node):
             request.action = "close"
         elif self.last_isGripperOpen == 0 and self.streamer.isGripperOpen == 1:
             request.action = "open"
+        elif self.last_isGripperOpen == 0 and self.streamer.isGripperOpen == 0:
+            request.action = "close"  # only executed upon initialization
+        elif self.last_isGripperOpen == 1 and self.streamer.isGripperOpen == 1:
+            request.action = "open"  # only executed upon initialization
         
         # Update last gripper state
         self.last_isGripperOpen = self.streamer.isGripperOpen
 
         # Call the service
         self.async_response = self.gripper_client.call_async(request)
-
 
     def mocap_listener_callback(self, msg):
         self.latest_mocap_positions = msg
@@ -103,10 +107,11 @@ class AVPStreamerNode(Node):
         avp_positions = self.streamer.get_latest()
         avp_rigid_bodies_msg = self.convert_avp_positions_to_trunk_rigid_bodies(avp_positions)
         
-        # save real rigid body positions
-        trunk_rigid_bodies_msg = self.latest_mocap_positions
-        print(self.latest_mocap_positions)
-        self.stored_positions.append(trunk_rigid_bodies_msg.positions)
+        if self.mocap_type:
+            # save real rigid body positions
+            trunk_rigid_bodies_msg = self.latest_mocap_positions
+            print(self.latest_mocap_positions)
+            self.stored_positions.append(trunk_rigid_bodies_msg.positions)
 
         self.stored_gripper_states.append(self.streamer.isGripperOpen)
         self.avp_publisher.publish(avp_rigid_bodies_msg)
@@ -176,7 +181,6 @@ class AVPStreamerNode(Node):
                 self.get_logger().error('Image saving failed')
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}')
-        
 
 
 def main(args=None):
