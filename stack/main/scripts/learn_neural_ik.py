@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -23,17 +24,18 @@ class UYPairsDataset(Dataset):
 
 
 # Load data
-num_seeds = 7
+num_seeds = 8
+data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
-us_df = pd.read_csv('../data/trajectories/steady_state/control_inputs_beta_seed0.csv')
+us_df = pd.read_csv(os.path.join(data_dir, 'trajectories/steady_state/control_inputs_beta_seed0.csv'))
 for seed in range(1, num_seeds + 1):
-    us_df = pd.concat([us_df, pd.read_csv(f'../data/trajectories/steady_state/control_inputs_beta_seed{seed}.csv')])
+    us_df = pd.concat([us_df, pd.read_csv(os.path.join(data_dir, f'trajectories/steady_state/control_inputs_beta_seed{seed}.csv'))])
 us_df = us_df.drop(columns=['ID'])
 
 # Observations
-ys_df = pd.read_csv('../data/trajectories/steady_state/observations_steady_state_beta_seed0.csv')
+ys_df = pd.read_csv(os.path.join(data_dir, 'trajectories/steady_state/observations_steady_state_beta_seed0.csv'))
 for seed in range(1, num_seeds + 1):
-    ys_df = pd.concat([ys_df, pd.read_csv(f'../data/trajectories/steady_state/observations_steady_state_beta_seed{seed}.csv')])
+    ys_df = pd.concat([ys_df, pd.read_csv(os.path.join(data_dir, f'trajectories/steady_state/observations_steady_state_beta_seed{seed}.csv'))])
 ys_df = ys_df.drop(columns=['ID'])
 
 rest_positions = np.array([0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
@@ -48,8 +50,8 @@ ys = ys_df.to_numpy()
 
 # Randomly split dataset into train and test
 dataset = UYPairsDataset(us, ys)
-train_size = int(0.8 * N)
-val_size = int(0.1 * N)
+train_size = int(0.85 * N)
+val_size = int(0.05 * N)
 test_size = N - train_size - val_size
 train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
@@ -58,19 +60,19 @@ train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-    
+
 # Spectrally-normalized Relu MLP
 class MLP(nn.Module):
     def __init__(self,
                  num_inputs: int = 9,
                  num_outputs: int = 6,
                  num_neurons: list = [32, 32],
-                 act: nn.Module = nn.ReLU(),
+                 act: nn.Module = nn.Tanh(),  # should be relu for spectral norm to make sense
                  spectral_normalize: bool = False):
         super(MLP, self).__init__()
 
         layers = []
-        
+
         # Input layer
         if spectral_normalize:
             input_layer = spectral_norm(nn.Linear(num_inputs, num_neurons[0]))
@@ -109,7 +111,7 @@ class MLP(nn.Module):
 # Instantiate the model, loss function, and optimizer
 inverse_kinematic_model = MLP()
 criterion = nn.MSELoss()
-optimizer = optim.Adam(inverse_kinematic_model.parameters(), lr=0.0025, weight_decay=1e-6)
+optimizer = optim.Adam(inverse_kinematic_model.parameters(), lr=0.001)
 
 # Training loop
 num_epochs = 10000
@@ -127,10 +129,28 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 
-        running_loss += loss.item()
+        running_loss += loss.item() * ys_batch.size(0)
 
-    if (epoch + 1) % 100 == 0:
-        print(f'Epoch [{epoch+1}/{num_epochs}], RMSE: {np.sqrt(running_loss/len(train_loader)):.4f}')
+    # Calculate training RMSE
+    rmse_train = np.sqrt(running_loss / len(train_dataset))
+
+    # Calculate validation RMSE
+    inverse_kinematic_model.eval()
+    running_val_loss = 0.0
+    with torch.no_grad():
+        for ys_batch, us_batch in val_loader:
+            outputs = inverse_kinematic_model(ys_batch)
+            loss = criterion(outputs, us_batch)
+            running_val_loss += loss.item() * ys_batch.size(0)
+
+    rmse_val = np.sqrt(running_val_loss / len(val_dataset))
+
+    # Print RMSE for training and validation
+    if (epoch + 1) % 100 == 0 or epoch == 0:
+        print(f'Epoch [{epoch+1}/{num_epochs}], Train RMSE: {rmse_train:.4f}, Val RMSE: {rmse_val:.4f}')
+
+# Save model
+torch.save(inverse_kinematic_model, os.path.join(data_dir, 'models/ik/neural_ik_model.pth'))
 
 # Evaluation on test dataset
 inverse_kinematic_model.eval()
@@ -139,22 +159,24 @@ with torch.no_grad():
     for ys_batch, us_batch in test_loader:
         outputs = inverse_kinematic_model(ys_batch)
         loss = criterion(outputs, us_batch)
-        test_loss += loss.item()
+        test_loss += loss.item() * ys_batch.size(0)
 
-print(f'Test RMSE: {np.sqrt(test_loss)/len(test_loader):.4f}')
+rmse_test = np.sqrt(test_loss / len(test_dataset))
+print(f'Test RMSE: {rmse_test:.4f}')
 
 # Evaluate random model performance
 u_min, u_max = -0.35, 0.35
-test_loss_random = 0.0
+test_loss_rnd = 0.0
 mse_criterion = nn.MSELoss()
 inverse_kinematic_model.eval()
 with torch.no_grad():
     for ys_batch, us_batch in test_loader:
-        random_preds = torch.FloatTensor(us_batch.size()).uniform_(u_min, u_max)
-        mse_loss = mse_criterion(random_preds, us_batch)
-        test_loss_random += mse_loss.item()
+        rnd_preds = torch.FloatTensor(us_batch.size()).uniform_(u_min, u_max)
+        mse_loss = mse_criterion(rnd_preds, us_batch)
+        test_loss_rnd += mse_loss.item() * ys_batch.size(0)
 
-print(f'Random Model Test RMSE: {np.sqrt(test_loss_random/len(test_loader)):.4f}')
+rmse_rnd = np.sqrt(test_loss_rnd / len(test_dataset))
+print(f'Random Model Test RMSE: {rmse_rnd:.4f}')
 
 # Simple linear IK model
 us_train = us[:train_size]
