@@ -62,7 +62,7 @@ class IKSolverNode(Node):
             ('y2u_file', 'y2u_8seeds.npy'),  # for least=squares (lq)
             ('u_min', -0.25),
             ('u_max', 0.25),
-            ('du_max', 0.04),
+            ('du_max', 0.02),
             ('limit_delta', False), # False or True, if limit_delta, constrains the difference in u between timesteps
             ('tip_only', False)     # False or True
         ])
@@ -110,11 +110,11 @@ class IKSolverNode(Node):
         u_opt = self.check_control_inputs(self.y2u @ zf_des)
 
         if self.limit_delta:
-            du = u_opt - self.u_opt_previous # delta u between timesteps
-            du_clipped = np.clip(du, -self.du_max, self.du_max) # clip delta u
-            u_opt = self.u_opt_previous + du_clipped # update u with clipped du
-            self.u_opt_previous = u_opt # update previous u
-
+            du = u_opt - self.u_opt_previous  # delta u between timesteps
+            du_clipped = np.clip(du, -self.du_max, self.du_max)  # clip delta u
+            u_opt = self.u_opt_previous + du_clipped  # update u with clipped du
+        
+        self.u_opt_previous = u_opt # update previous u
         response.uopt = u_opt.tolist()
         return response
     
