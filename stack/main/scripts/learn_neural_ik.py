@@ -114,7 +114,7 @@ criterion = nn.MSELoss()
 optimizer = optim.Adam(inverse_kinematic_model.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 10000
+num_epochs = 2000
 for epoch in range(num_epochs):
     inverse_kinematic_model.train()
     running_loss = 0.0
@@ -150,7 +150,7 @@ for epoch in range(num_epochs):
         print(f'Epoch [{epoch+1}/{num_epochs}], Train RMSE: {rmse_train:.4f}, Val RMSE: {rmse_val:.4f}')
 
 # Save model
-torch.save(inverse_kinematic_model, os.path.join(data_dir, 'models/ik/neural_ik_model.pth'))
+torch.save(inverse_kinematic_model.state_dict(), os.path.join(data_dir, 'models/ik/neural_ik_model_state.pth'))
 
 # Evaluation on test dataset
 inverse_kinematic_model.eval()

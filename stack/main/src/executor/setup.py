@@ -23,6 +23,7 @@ setup(
         'console_scripts': [
             'data_collection_node = executor.data_collection_node:main',
             'run_experiment_node = executor.run_experiment_node:main',
+            'run_teleop_ik_node = executor.run_teleop_ik_node:main',
             'visuomotor_node = executor.visuomotor_node:main'
         ],
     },
