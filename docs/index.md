@@ -1,7 +1,7 @@
 # Welcome to the ASL Trunk Robot documentation
 This documentation provides a detailed guide to the setup, configuration, and use of the Trunk Robot. It is intended for internal use by the team involved in the development, deployment, and maintenance of the robot.
 
-![Trunk robot](assets/trunk-closeup.jpg){ align=right width=40% }
+![Trunk robot](assets/trunk-white-bg-closeup.jpeg){ align=right width=45% }
 
 ## Contents
 - **Design:** Documentation for full-system software, electrical, and mechanical design. Inlcudes BOM, CAD assets, circuit diagram, and design considerations.
