@@ -1,18 +1,17 @@
 # Motor Control
-The motor controllers are connected to the Raspberry Pi 4 (4GB RAM), which has Ubuntu 20.04 installed. The motor controllers are controlled using the [ROS2 Foxy](https://docs.ros.org/en/foxy/index.html) framework (note not Humble distro!), which is already installed on the Pi.
+The motor controllers are connected to the Raspberry Pi 4 (4GB RAM), which has Ubuntu 20.04 installed. The motor controllers are controlled using the [ROS2 Foxy](https://docs.ros.org/en/foxy/index.html) framework.
 
 ## Usage
 In the first terminal, run:
 ```bash
-cd Phoenix-Linux-SocketCAN-Example
-sudo ./canableStart.sh  # start the CANable interface
-cd ../motor_control_ws
+cd motors/
+sudo ./scripts/canableStart.sh  # start the CANable interface
 source install/setup.bash
 ros2 launch ros_phoenix trunk.launch.py
 ```
 In the second terminal, run:
 ```bash
-cd motor_control_ws
+cd motors/
 source install/setup.bash
 ros2 run converter converter_node  # optionally add --ros-args -p debug:=true
 ```
@@ -41,7 +40,8 @@ ros2 topic pub --once /all_motors_control interfaces/msg/AllMotorsControl "{moto
 The motor control limits are empirically established as follows:
 
 $$
-\operatorname{norm}\left(0.75\left(\vec{u}_3+\vec{u}_4\right)+1.0\left(\vec{u}_2+\vec{u}_5\right)+1.25\left(\vec{u}_1+\vec{u}_6\right)\right) \leq 0.6
+\operatorname{norm}\left(0.75\left(\vec{u}_3+\vec{u}_4\right)+1.0\left(\vec{u}_2+\vec{u}_5\right)+1.4\left(\vec{u}_1+\vec{u}_6\right)\right) \leq 0.6
 $$
 
 Going beyond this limit can result in the robot going outside of the workspace, which can be dangerous.
+Therefore, we enforce this limit in our controllers.

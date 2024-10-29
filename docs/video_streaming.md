@@ -4,7 +4,7 @@ The Trunk robot is equipped with a camera that can be used to stream video data 
 ## Usage
 To start the video stream, run the following command on the PI:
 ```bash
-cd cam_ws
+cd camera/
 source install/setup.bash
 ros2 run v4l2_camera v4l2_camera_node --ros-args -p image_size:=[1920,1080]
 ```
@@ -14,7 +14,7 @@ To alter for instance the frame rate or resolution, simply add the arguments as:
 ros2 run v4l2_camera v4l2_camera_node --ros-args -p image_size:=[1920,1080] -p framerate:=15
 ```
 
-To subscribe to the video stream, run the following command on the remote computer inside any ROS2 workspace:
+To subscribe to the video stream, run the following command on the main computer inside any ROS2 workspace:
 ```bash
 ros2 run rqt_image_view rqt_image_view
 ```

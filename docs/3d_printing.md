@@ -1,6 +1,6 @@
 # 3D Printing
 
-Many of the components for the trunk robot are custom and 3D printed. All of the 3D printed components in the assembly can eaily be printed on any commercial or hobbyist FDM printer. We utilized a Bambu X1C with AMS to print all 3D printed components with PLA, but other materials could alternately be used.
+Many of the components for the trunk robot are custom and 3D printed. All of the 3D printed components in the assembly can easily be printed on any commercial or hobbyist FDM printer. We utilized a Bambu X1C with AMS to print all 3D printed components with PLA, but other materials could alternately be used.
 
 ## Printer Settings
 On the Bambu X1C, we used default print settings (infill of 15% and 2 wall loops) on the Bambu Cool Plate, with PLA as the primary material, PLA as the support material, and support PLA as the support/raft interface material on all prints except those listed below:

@@ -4,30 +4,30 @@ To collect data for visuomotor policies using the Trunk robot with teleoperation
 ## Usage
 Initialize a control solver node:
 ```bash
-cd asl_trunk_ws
+cd main/
 source install/setup.bash
 ros2 run controller ik_solver_node
 ```
 
-Start an image storing node:
+Start an image storing node if you want to save the recorded data:
 ```bash
-cd asl_trunk_ws
+cd main/
 source install/setup.bash
 ros2 run streamer image_storing_node
 ```
 
-Start an executor node:
+Initialize the AVP streaming node:
 ```bash
-cd asl_trunk_ws
-source install/setup.bash
-ros2 run executor run_experiment_node 
-```
-
-Then initialize the AVP streaming node:
-```bash
-cd asl_trunk_ws
+cd main/
 source install/setup.bash
 ros2 run streamer avp_streamer_node
+```
+
+Finally, begin an executor node:
+```bash
+cd main/
+source install/setup.bash
+ros2 run executor run_teleop_ik_node 
 ```
 
 You can then follow the prompts in the TrunkTeleop App on the AVP to calibrate the virtual trunk to the hardware trunk, then start streaming and recording data from trunk teleoperation. 
