@@ -22,7 +22,7 @@ def generate_launch_description():
                 package="ros_phoenix",
                 plugin="ros_phoenix::TalonSRX",
                 name="talon2",
-                parameters=[{"id": 2, "P": 1, "D": 0.0, "period_ms": 1000, "watchdog_ms": 2000}],
+                parameters=[{"id": 2, "P": 0.1, "D": 0.0, "period_ms": 1000, "watchdog_ms": 2000}],
             ),
             ComposableNode(
                 package="ros_phoenix",
