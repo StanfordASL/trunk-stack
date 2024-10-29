@@ -6,6 +6,8 @@ import numpy as np
 import rclpy  # type: ignore
 from rclpy.node import Node  # type: ignore
 from interfaces.srv import ControlSolver
+import pandas as pd
+from sklearn.neighbors import NearestNeighbors #type: ignore
 
 
 class MLP(nn.Module):
@@ -57,12 +59,12 @@ class IKSolverNode(Node):
     def __init__(self):
         super().__init__('ik_solver_node')
         self.declare_parameters(namespace='', parameters=[
-            ('ik_type', 'nn'),  # 'nn' or 'lq'
+            ('ik_type', 'interp'),  # 'nn' or 'lq' or 'interp'
             ('u2y_file', 'u2y.npy'),  # for least=squares (lq)
             ('y2u_file', 'y2u_8seeds.npy'),  # for least=squares (lq)
             ('u_min', -0.25),
             ('u_max', 0.25),
-            ('du_max', 0.02),
+            ('du_max', 0.15), # 0.2 is too reactive, 0.1 is too slow
             ('limit_delta', False), # False or True, if limit_delta, constrains the difference in u between timesteps
             ('tip_only', False)     # False or True
         ])
@@ -86,6 +88,36 @@ class IKSolverNode(Node):
             self.neural_ik_model = MLP()
             self.neural_ik_model.load_state_dict(torch.load(os.path.join(data_dir, 'models/ik/neural_ik_model_state.pth'), weights_only=False))
             self.neural_ik_model.eval()
+        elif self.ik_type == 'interp': 
+            # load position the data
+            self.ys_ik = pd.read_csv(data_dir + '/trajectories/steady_state/observations_steady_state_beta_seed0.csv')
+            max_seed = 8
+            max_targeted_seed = 3
+            for seed in range(1, max_seed+1):
+                self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_steady_state_beta_seed{seed}.csv')])
+            for seed in range(0, max_targeted_seed+1):
+                self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_steady_state_targeted_seed{seed}.csv')])
+            self.ys_ik = self.ys_ik.drop(columns='ID')
+            rest_positions = np.array([0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
+            self.ys_ik = self.ys_ik - rest_positions # center about zero
+            self.ys_ik = self.ys_ik.values  # Convert to numpy array
+
+             # Load control inputs data
+            self.us_ik = pd.read_csv(data_dir + '/trajectories/steady_state/control_inputs_beta_seed0.csv')
+            for seed in range(1, max_seed + 1):
+                self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/control_inputs_beta_seed{seed}.csv')])
+            for seed in range(0, max_targeted_seed+1):
+                self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/control_inputs_targeted_seed{seed}.csv')])
+            self.us_ik = self.us_ik.drop(columns='ID')
+            self.us_ik = self.us_ik.values  # Convert to numpy array
+
+            # Initialize NearestNeighbors
+            self.n_neighbors = 3
+            self.knn = NearestNeighbors(n_neighbors=self.n_neighbors, algorithm='auto')
+            # Fit the k-nearest neighbors model
+            self.knn.fit(self.ys_ik[:, [6, 8]])  # Using 7th and 9th values for ys_ik (x and z of tip)  
+
+
         else:
             raise ValueError(f"{self.ik_type} is not a valid option, choose from 'lq' or 'nn'")
 
@@ -96,7 +128,44 @@ class IKSolverNode(Node):
         elif self.ik_type == 'nn':
             self.srv = self.create_service(ControlSolver, 'ik_solver', self.nn_ik_callback)
             self.get_logger().info('Control solver (nn) service has been created.')
+        elif self.ik_type == 'interp':
+            self.srv = self.create_service(ControlSolver, 'ik_solver', self.interp_ik_callback)
+            self.get_logger().info('Control solver (interp) service has been created.')
 
+    def interp_ik_callback(self, request, response):
+        """
+        Callback function that runs when the service is queried.
+        Request contains: z (desired performance variable trajectory)
+        Response contains: uopt (the found control inputs)
+        """
+        zf_des = np.array(request.zf)
+
+        # Extract the relevant indices (x and z position of tip)
+        zf_des_relevant = zf_des[[6, 8]].reshape(1, -1)
+        distances, indices = self.knn.kneighbors(zf_des_relevant)
+
+        # Get the corresponding u values from us_ik
+        u_neighbors = self.us_ik[indices.flatten()]
+
+        # Inverse distance weighting
+        weights = 1 / distances.flatten()
+        weights /= weights.sum()  # Normalize weights
+
+        # Calculate the optimal control inputs u_opt
+        u_opt = np.dot(weights, u_neighbors)
+
+        # check control inputs are within the workspace
+        u_opt = self.check_control_inputs(u_opt)
+
+        if self.limit_delta:
+            du = u_opt - self.u_opt_previous  # delta u between timesteps
+            du_clipped = np.clip(du, -self.du_max, self.du_max)  # clip delta u
+            u_opt = self.u_opt_previous + du_clipped  # update u with clipped du
+            u_opt = self.check_control_inputs(u_opt) 
+
+        self.u_opt_previous = u_opt # update previous u
+        response.uopt = u_opt.tolist()
+        return response
 
     def lq_ik_callback(self, request, response):
         """
@@ -113,6 +182,7 @@ class IKSolverNode(Node):
             du = u_opt - self.u_opt_previous  # delta u between timesteps
             du_clipped = np.clip(du, -self.du_max, self.du_max)  # clip delta u
             u_opt = self.u_opt_previous + du_clipped  # update u with clipped du
+            u_opt = self.check_control_inputs(u_opt) 
         
         self.u_opt_previous = u_opt # update previous u
         response.uopt = u_opt.tolist()
@@ -146,7 +216,7 @@ class IKSolverNode(Node):
     
     def check_control_inputs(self, u_opt):
         # reject vector norms of u that are too large
-        tip_range, mid_range, base_range = 0.4, 0.35, 0.3
+        tip_range, mid_range, base_range = 0.65, 0.35, 0.3 #changed tip range from 0.45 to 0.55 to account for circle samples
 
         u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
@@ -175,7 +245,7 @@ class IKSolverNode(Node):
         norm_value = np.linalg.norm(vector_sum)
 
         # Check the constraint: if the constraint is met, then keep previous control command
-        if norm_value > 0.7:
+        if norm_value > 0.9:
             u_opt = self.u_opt_previous
         else:
             # Else the clipped command is published
