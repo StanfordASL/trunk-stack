@@ -62,9 +62,9 @@ class AVPStreamerNode(Node):
                     QoSProfile(depth=10)
                 )
 
-        self.streamer = AVPSubscriber(ip='10.93.181.166') # SET IP ADDRESS HERE
-        self._timer = self.create_timer(1.0 / 10.0, self.streamer_data_sampling_callback) # runs at 10Hz
-        self.last_isGripperOpen = self.streamer.isGripperOpen #should start as closed
+        self.streamer = AVPSubscriber(ip='10.93.181.166')  # SET IP ADDRESS HERE
+        self._timer = self.create_timer(1.0 / 100.0, self.streamer_data_sampling_callback)  # this defines the Hz we operate the teleop at
+        self.last_isGripperOpen = self.streamer.isGripperOpen  # should start as closed
         
         self.get_logger().info('AVP streaming node has been started.')
 

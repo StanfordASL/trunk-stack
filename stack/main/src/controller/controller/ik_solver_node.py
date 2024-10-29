@@ -77,7 +77,11 @@ class IKSolverNode(Node):
         self.limit_delta = self.get_parameter('limit_delta').value
         self.du_max = self.get_parameter('du_max').value
         self.tip_only = self.get_parameter('tip_only').value
-        self.u_opt_previous = np.array([0., 0., 0., 0., 0., 0.]) # initially no control input
+
+        # Initializations
+        self.u_opt_previous = np.array([0., 0., 0., 0., 0., 0.])  # initially no control input
+        self.smooth_stat = self.u_opt_previous  # expontential smoothing
+        self.alpha = 0.5
 
         # Get inverse kinematics mappings
         data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
@@ -92,7 +96,7 @@ class IKSolverNode(Node):
             # load position the data
             self.ys_ik = pd.read_csv(data_dir + '/trajectories/steady_state/observations_steady_state_beta_seed0.csv')
             max_seed = 8
-            max_targeted_seed = 3
+            max_targeted_seed = 4
             for seed in range(1, max_seed+1):
                 self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_steady_state_beta_seed{seed}.csv')])
             for seed in range(0, max_targeted_seed+1):
@@ -115,9 +119,7 @@ class IKSolverNode(Node):
             self.n_neighbors = 3
             self.knn = NearestNeighbors(n_neighbors=self.n_neighbors, algorithm='auto')
             # Fit the k-nearest neighbors model
-            self.knn.fit(self.ys_ik[:, [6, 8]])  # Using 7th and 9th values for ys_ik (x and z of tip)  
-
-
+            self.knn.fit(self.ys_ik[:, -3:])  
         else:
             raise ValueError(f"{self.ik_type} is not a valid option, choose from 'lq' or 'nn'")
 
@@ -141,7 +143,7 @@ class IKSolverNode(Node):
         zf_des = np.array(request.zf)
 
         # Extract the relevant indices (x and z position of tip)
-        zf_des_relevant = zf_des[[6, 8]].reshape(1, -1)
+        zf_des_relevant = zf_des[-3:].reshape(1, -1)
         distances, indices = self.knn.kneighbors(zf_des_relevant)
 
         # Get the corresponding u values from us_ik
@@ -157,13 +159,13 @@ class IKSolverNode(Node):
         # check control inputs are within the workspace
         u_opt = self.check_control_inputs(u_opt)
 
-        if self.limit_delta:
-            du = u_opt - self.u_opt_previous  # delta u between timesteps
-            du_clipped = np.clip(du, -self.du_max, self.du_max)  # clip delta u
-            u_opt = self.u_opt_previous + du_clipped  # update u with clipped du
-            u_opt = self.check_control_inputs(u_opt) 
+        # Do exponential smoothing
+        self.smooth_stat = self.alpha * u_opt + (1 - self.alpha) * self.smooth_stat
+        u_opt = self.smooth_stat
 
-        self.u_opt_previous = u_opt # update previous u
+        # Update previous u_opt
+        self.u_opt_previous = u_opt
+
         response.uopt = u_opt.tolist()
         return response
 

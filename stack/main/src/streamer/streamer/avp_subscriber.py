@@ -48,8 +48,8 @@ class AVPSubscriber:
                         self.isGripperOpen = response.isGripperOpen
                         self.latest = positions
 
-                        # Force an operating frequency of 10 Hz
-                        time.sleep(0.1)
+                        # Force the operating frequency
+                        time.sleep(1 / 100.0)
 
             except Exception as e:
                 if e.details() != self.last_error_message: # only print error message if its new
