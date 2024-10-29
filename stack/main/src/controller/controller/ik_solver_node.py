@@ -81,7 +81,7 @@ class IKSolverNode(Node):
         # Initializations
         self.u_opt_previous = np.array([0., 0., 0., 0., 0., 0.])  # initially no control input
         self.smooth_stat = self.u_opt_previous  # expontential smoothing
-        self.alpha = 0.5
+        self.alpha = 0.25
 
         # Get inverse kinematics mappings
         data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
