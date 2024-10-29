@@ -119,5 +119,17 @@ sudo udevadm trigger
 ## Gripper Workspace
 **Note:** This workspace runs on the Raspberry Pi.
 
-## Setup Testing
-To test the correct workings of the ROS2 workspaces, it is recommended to 
+The gripper workspace is the simplest workspace of all.
+Change directory into the `gripper/` folder.
+
+Make sure that the `pigpio` is installed on the Pi.
+If this library is not installed yet, one can find a straightforward description [here](https://gist.github.com/tstellanova/8b1fb350a148eace6541b5fbd2c021ca).
+Also the associated Python package should be installed:
+```bash
+pip install pigpio
+```
+
+Then, directly build the workspace:
+```bash
+colcon build
+```

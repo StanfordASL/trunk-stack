@@ -4,15 +4,14 @@ To test a visuomotor policy using the Trunk robot hardware, first set up the rob
 ## Usage
 Initialize a control solver node:
 ```bash 
-cd asl_trunk_ws
+cd main/
 source install/setup.bash
 ros2 run controller ik_solver_node
 ```
 
-
 To start the visuomotor rollout, run these commands in a new terminal:
 ```bash
-cd asl_trunk_ws
+cd main/
 source install/setup.bash
 ros2 run executor visuomotor_node
 ```
@@ -24,6 +23,5 @@ In the following video, a ResNet18 was trained to output desired trunk pose from
 
 <iframe width="800" height="450" src="https://www.youtube.com/embed/5in-zQf-avg" frameborder="0" allowfullscreen></iframe>
 
-
 ## Visuomotor Policy Code
-All code for training and testing visuomotor policies is available in this [Github repo](https://github.com/markeleone/trunk-visuomotor).
+All code for training and testing visuomotor policies is available in this [GitHub repository](https://github.com/markeleone/trunk-visuomotor).

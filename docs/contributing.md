@@ -14,15 +14,17 @@ The project is organized as follows:
     
     trunk-stack/
         README.md  # The project README file.
-        stack/  # The main package.
-            main/  # The main ROS2 workspace, incl. data collection etc.
-            mocap/  # The ROS2 workspace for interfacing with the motion capture system.
-            motors/  # The ROS2 workspace for controlling the motors.
+        stack/  # The stack.
+            camera/   # The ROS2 workspace running the camera.
+            gripper/  # The ROS2 workspace enabling the gripper operation.
+            main/     # The main ROS2 workspace, incl. data collection etc.
+            mocap/    # The ROS2 workspace for interfacing with the motion capture system.
+            motors/   # The ROS2 workspace for controlling the motors.
         docs/  # Documentation directory.
             docs/
-                index.md  # The documentation homepage.
+                index.md         # The documentation homepage.
                 contributing.md  # This file.
-                ...       # Other markdown pages, images and other files.
+                ...              # Other markdown pages, images and other files.
         mkdocs.yml    # The website configuration file.
 
 ## Code Contributions

@@ -4,8 +4,8 @@ To collect data using the Trunk robot, after setting up the robot using the [mot
 ## Usage
 Essentially, all you need to run is contained in:
 ```bash
-cd asl_trunk_ws
-./scripts/run_data_collection.sh
+cd main/
+source install/setup.bash
+ros2 run executor data_collection_node
 ```
-Currently, this script will only collect steady-state data according to the control inputs as specified in [control_inputs.csv](https://github.com/hbuurmei/asl_trunk/blob/main/asl_trunk/asl_trunk_ws/data/trajectories/steady_state/control_inputs.csv) in the `asl_trunk_ws`.
-The data will be saved in the `data/steady_state/` directory.
+The data will be saved in the `main/data/trajectories/` directory.
