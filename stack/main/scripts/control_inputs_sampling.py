@@ -98,6 +98,36 @@ def beta_sampling(control_variables, seed, sample_size=100):
 
     return control_inputs_df
 
+def circle_sampling(control_variables, random_seed):
+    np.random.seed(random_seed)
+    tip_radius, mid_radius, base_radius = 0.40, 0.30, 0.25 # always fits within check control inputs with 0.45, 0.35, 0.30 - change these for bigger/smaller circles
+    noise_amplitude = 0.05 # was 0.05
+
+    num_samples_on_circle = 60
+    sampled_angles_fwd = np.linspace(0, 2*np.pi, num_samples_on_circle)
+    sampled_angles_bkwd = sampled_angles_fwd[::-1] # flip it
+    sampled_angles = np.concatenate((sampled_angles_fwd, sampled_angles_bkwd))
+
+    angle_offset = (1/6)*np.pi #30 degrees
+    
+    # set control inputs based on geometry of cable arrangement
+    u1s = tip_radius * np.cos(sampled_angles)
+    u6s = - tip_radius * np.sin(sampled_angles)
+    u5s = - mid_radius * np.cos(sampled_angles + angle_offset) 
+    u2s = mid_radius * np.sin(sampled_angles + angle_offset)
+    u4s = base_radius * np.cos(sampled_angles + 2 * angle_offset) #todo add offset
+    u3s = - base_radius * np.sin(sampled_angles + 2 * angle_offset)
+    print(u1s.shape)
+
+    circle_samples = np.column_stack((u1s, u2s, u3s, u4s, u5s, u6s))
+    print(circle_samples.shape)
+    circle_samples += np.random.uniform(-noise_amplitude, noise_amplitude, (num_samples_on_circle*2, circle_samples.shape[1]))
+    # we are not checking the circle values with check_control_inputs
+
+    control_inputs_df = pd.DataFrame(circle_samples, columns=control_variables)
+    control_inputs_df.insert(0, 'ID', np.arange(0, len(circle_samples)))
+
+    return control_inputs_df
 
 def targeted_sampling(control_variables, random_seed):
     # Load data
@@ -164,7 +194,7 @@ def targeted_sampling(control_variables, random_seed):
 
 def check_control_inputs(u_opt, u_opt_previous):
     # reject vector norms of u that are too large
-    tip_range, mid_range, base_range = 0.55, 0.35, 0.3 #changed tip range to 0.55 to account for circle samples
+    tip_range, mid_range, base_range = 0.45, 0.35, 0.3 #changed tip range to 0.55 to account for circle samples
 
     u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
@@ -219,6 +249,7 @@ def visualize_samples(control_inputs_df):
 
 def main(data_type, sampling_type, seed=None):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
+    # data_dir for mark's mac starts with '/Users/asltrunk/trunk-stack/stack/main/data'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     if seed is not None:
         control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}_seed{seed}.csv')
@@ -233,6 +264,8 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = beta_sampling(control_variables, seed)
     elif sampling_type=='targeted':
         control_inputs_df = targeted_sampling(control_variables, seed)
+    elif sampling_type =='circle':
+        control_inputs_df = circle_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -242,6 +275,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'steady_state'           # 'steady_state' or 'dynamic'
-    sampling_type = 'targeted'           # 'beta', 'targeted', 'uniform' or 'sinusoidal'
-    seed = 4                             # choose integer seed number
+    sampling_type = 'circle'           # 'circle', 'beta', 'targeted', 'uniform' or 'sinusoidal'
+    seed = 0                             # choose integer seed number
     main(data_type, sampling_type, seed)
