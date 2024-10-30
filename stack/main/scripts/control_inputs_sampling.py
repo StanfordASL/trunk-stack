@@ -100,7 +100,7 @@ def beta_sampling(control_variables, seed, sample_size=100):
 
 def circle_sampling(control_variables, random_seed):
     np.random.seed(random_seed)
-    tip_radius, mid_radius, base_radius = 0.40, 0.30, 0.25 # always fits within check control inputs with 0.45, 0.35, 0.30 - change these for bigger/smaller circles
+    tip_radius, mid_radius, base_radius = 0.25, 0.20, 0.15 # always fits within check control inputs with 0.45, 0.35, 0.30 - change these for bigger/smaller circles
     noise_amplitude = 0.05 # was 0.05
 
     num_samples_on_circle = 60
@@ -115,12 +115,10 @@ def circle_sampling(control_variables, random_seed):
     u6s = - tip_radius * np.sin(sampled_angles)
     u5s = - mid_radius * np.cos(sampled_angles + angle_offset) 
     u2s = mid_radius * np.sin(sampled_angles + angle_offset)
-    u4s = base_radius * np.cos(sampled_angles + 2 * angle_offset) #todo add offset
+    u4s = base_radius * np.cos(sampled_angles + 2 * angle_offset) 
     u3s = - base_radius * np.sin(sampled_angles + 2 * angle_offset)
-    print(u1s.shape)
 
     circle_samples = np.column_stack((u1s, u2s, u3s, u4s, u5s, u6s))
-    print(circle_samples.shape)
     circle_samples += np.random.uniform(-noise_amplitude, noise_amplitude, (num_samples_on_circle*2, circle_samples.shape[1]))
     # we are not checking the circle values with check_control_inputs
 
@@ -275,6 +273,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'steady_state'           # 'steady_state' or 'dynamic'
-    sampling_type = 'circle'           # 'circle', 'beta', 'targeted', 'uniform' or 'sinusoidal'
-    seed = 0                             # choose integer seed number
+    sampling_type = 'circle'             # 'circle', 'beta', 'targeted', 'uniform' or 'sinusoidal'
+    seed = 10                             # choose integer seed number
     main(data_type, sampling_type, seed)

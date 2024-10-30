@@ -1,0 +1,37 @@
+        tip     mid     base    noise       notes
+seed0:  0.40   0.30     0.25    0.05        pretty solidly over the buckets, could probably run again with different seed or increase limits slightly
+seed1:  0.40   0.30     0.25    0.05        goes well over the buckets, heated up a bit but should collect one/2 more at this limit
+seed2:  0.20   0.15     0.10    0.05        got hot after running these 3, takes ~5.5 mins for 120 points
+seed3:  0.30   0.20     0.15    0.05        
+seed4:  0.0    0.0      0.0     0.05        to learn around the origin -  doesn't even move the robot
+seed5:  0.15   0.10     0.05    0.05        slightly moves the robot - maybe 1 step smaller than this is useful but I doubt anything further
+seed6:  0.10   0.10     0.05    0.05        for tiny displacements around origin - perhaps 1 smaller step is useful
+seed7:  0.05   0.05     0.00    0.05        miniscule displacements- hysteresis dominant
+seed8:  0.40   0.30     0.25    0.05        3rd full power sampling
+seed9:  0.35   0.25     0.20    0.05
+seed10: 0.25   0.20     0.15    0.05
+
+
+todo: 
+- collect points with zero input (no noise) so that when trunk is straight it knows u should equal [0,0,0,0,0,0] 
+
+
+
+
+
+
+
+5
+
+
+
+
+
+
+
+
+
+
+
+
+
