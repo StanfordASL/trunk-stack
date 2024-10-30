@@ -44,7 +44,7 @@ class DataCollectionNode(Node):
             ('update_period', 0.1),             # for steady state and avoiding dynamic trajectories to interrupt each other, in [s]
             ('max_traj_length', 600),           # maximum number of samples in a dynamic trajectory
             ('data_type', 'steady_state'),      # 'steady_state' or 'dynamic'
-            ('data_subtype', 'beta'),           # 'decay' or 'controlled' for dynamic and e.g. 'beta' or 'uniform' for steady_state
+            ('data_subtype', 'circle'),           # 'decay' or 'controlled' for dynamic and e.g. 'circle' or 'beta' or 'uniform' for steady_state
             ('mocap_type', 'rigid_bodies'),     # 'rigid_bodies' or 'markers'
             ('control_type', 'output'),         # 'output' or 'position'
             ('results_name', 'observations')
