@@ -1,0 +1,32 @@
+all_motors_control:
+    type: interfaces/msg/AllMotorsControl
+    u1:
+        min: -0.45
+        max: 0.45
+        to: motors_control[0].value
+        default: 0.0
+    u2: 
+        min: -0.45
+        max: 0.45
+        to: motors_control[1].value
+        default: 0.0
+    u3:
+        min: -0.45
+        max: 0.45
+        to: motors_control[2].value
+        default: 0.0
+    u4: 
+        min: -0.45
+        max: 0.45
+        to: motors_control[3].value
+        default: 0.0
+    u5:
+        min: -0.45
+        max: 0.45
+        to: motors_control[4].value
+        default: 0.0
+    u6: 
+        min: -0.45
+        max: 0.45
+        to: motors_control[5].value
+        default: 0.0
