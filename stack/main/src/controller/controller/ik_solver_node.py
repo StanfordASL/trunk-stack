@@ -64,9 +64,11 @@ class IKSolverNode(Node):
             ('y2u_file', 'y2u_8seeds.npy'),  # for least=squares (lq)
             ('u_min', -0.25),
             ('u_max', 0.25),
-            ('du_max', 0.15), # 0.2 is too reactive, 0.1 is too slow
-            ('limit_delta', False), # False or True, if limit_delta, constrains the difference in u between timesteps
-            ('tip_only', False)     # False or True
+            ('du_max', 0.15),        # 0.2 is too reactive, 0.1 is too slow
+            ('limit_delta', False),  # False or True, if limit_delta, constrains the difference in u between timesteps
+            ('tip_only', False),     # False or True
+            ('knn_k', 3),            # k, number of nearest neighbors in KNN
+            ('alpha', 0.25)          # smoothing coefficient, closer to 0 is more smooth
         ])
         
         self.ik_type = self.get_parameter('ik_type').value
@@ -77,11 +79,11 @@ class IKSolverNode(Node):
         self.limit_delta = self.get_parameter('limit_delta').value
         self.du_max = self.get_parameter('du_max').value
         self.tip_only = self.get_parameter('tip_only').value
+        self.alpha = self.get_parameter('alpha').value
 
         # Initializations
         self.u_opt_previous = np.array([0., 0., 0., 0., 0., 0.])  # initially no control input
         self.smooth_stat = self.u_opt_previous  # expontential smoothing
-        self.alpha = 0.25
 
         # Get inverse kinematics mappings
         data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
@@ -94,29 +96,24 @@ class IKSolverNode(Node):
             self.neural_ik_model.eval()
         elif self.ik_type == 'interp': 
             # load position the data
-            self.ys_ik = pd.read_csv(data_dir + '/trajectories/steady_state/observations_steady_state_beta_seed0.csv')
-            max_seed = 8
-            max_targeted_seed = 4
+            self.ys_ik = pd.read_csv(data_dir + '/trajectories/steady_state/observations_circle_seed0.csv')
+            max_seed = 10
             for seed in range(1, max_seed+1):
-                self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_steady_state_beta_seed{seed}.csv')])
-            for seed in range(0, max_targeted_seed+1):
-                self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_steady_state_targeted_seed{seed}.csv')])
+                self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_circle_seed{seed}.csv')])
             self.ys_ik = self.ys_ik.drop(columns='ID')
             rest_positions = np.array([0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
             self.ys_ik = self.ys_ik - rest_positions # center about zero
             self.ys_ik = self.ys_ik.values  # Convert to numpy array
 
              # Load control inputs data
-            self.us_ik = pd.read_csv(data_dir + '/trajectories/steady_state/control_inputs_beta_seed0.csv')
+            self.us_ik = pd.read_csv(data_dir + '/trajectories/steady_state/control_inputs_circle_seed0.csv')
             for seed in range(1, max_seed + 1):
-                self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/control_inputs_beta_seed{seed}.csv')])
-            for seed in range(0, max_targeted_seed+1):
-                self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/control_inputs_targeted_seed{seed}.csv')])
+                self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/control_inputs_circle_seed{seed}.csv')])
             self.us_ik = self.us_ik.drop(columns='ID')
             self.us_ik = self.us_ik.values  # Convert to numpy array
 
             # Initialize NearestNeighbors
-            self.n_neighbors = 3
+            self.n_neighbors = self.get_parameter('knn_k').value
             self.knn = NearestNeighbors(n_neighbors=self.n_neighbors, algorithm='auto')
             # Fit the k-nearest neighbors model
             self.knn.fit(self.ys_ik[:, -3:])  
