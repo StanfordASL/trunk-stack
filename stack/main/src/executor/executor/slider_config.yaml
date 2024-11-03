@@ -30,3 +30,8 @@ all_motors_control:
         max: 0.45
         to: motors_control[5].value
         default: 0.0
+move_gripper:
+    type: interfaces/srv/GripperAction
+    gripper:
+        to: action
+        default: 'open'
