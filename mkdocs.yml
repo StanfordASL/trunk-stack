@@ -31,7 +31,7 @@ nav:
     - ROS2 Workspaces: ros2_workspaces.md
   - Usage:
     - Motion Capture: mocap.md
-    - Motor Control: motor_control.md
+    - Motors and Gripper: motors_gripper.md
     - Collecting data: collecting_data.md
     - Video Streaming: video_streaming.md
     - Telemetry Viewer: telemetry_viewer.md
