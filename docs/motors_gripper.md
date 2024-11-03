@@ -1,5 +1,6 @@
-# Motor Control
+# Motors and Gripper
 The motor controllers are connected to the Raspberry Pi 4 (4GB RAM), which has Ubuntu 20.04 installed. The motor controllers are controlled using the [ROS2 Foxy](https://docs.ros.org/en/foxy/index.html) framework.
+Optionally one can enable the servo-driven gripper as well.
 
 ## Usage
 In the first terminal, run:
@@ -14,6 +15,19 @@ In the second terminal, run:
 cd motors/
 source install/setup.bash
 ros2 run converter converter_node  # optionally add --ros-args -p debug:=true
+```
+Last, in a third terminal, run:
+```bash
+cd gripper/
+source install/setup.bash
+ros2 run servo_control servo_control_node
+```
+
+Now that the motors are set up, in the `main/` folder one can launch a slider interface to control each motor and the grippper:
+```bash
+cd main/
+source install/setup.bash
+ros2 run executor slider_node
 ```
 
 ## Motor control modes
