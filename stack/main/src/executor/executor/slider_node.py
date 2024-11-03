@@ -498,7 +498,7 @@ def main(args=None):
     # read passed param file
     filename = len(sys.argv) > 1 and sys.argv[1] or ''
     if not os.path.exists(filename):
-        filename ='slider_control_config.yaml'
+        filename ='slider_config.yaml'
         
     # build GUI
     full_namespace = '{}/{}'.format(node.get_namespace().strip('/'), node.get_name())
