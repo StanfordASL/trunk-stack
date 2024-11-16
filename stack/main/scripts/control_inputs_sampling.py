@@ -100,15 +100,16 @@ def beta_sampling(control_variables, seed, sample_size=100):
 
 def circle_sampling(control_variables, random_seed):
     np.random.seed(random_seed)
-    tip_radius, mid_radius, base_radius = 0.25, 0.20, 0.15 # always fits within check control inputs with 0.45, 0.35, 0.30 - change these for bigger/smaller circles
-    noise_amplitude = 0.05 # was 0.05
+    tip_radius, mid_radius, base_radius = 0.4, 0.35, 0.3 # always fits within check control inputs with 0.45, 0.35, 0.30 - change these for bigger/smaller circles
+    noise_amplitude = 0.05
 
-    num_samples_on_circle = 60
-    sampled_angles_fwd = np.linspace(0, 2*np.pi, num_samples_on_circle)
-    sampled_angles_bkwd = sampled_angles_fwd[::-1] # flip it
-    sampled_angles = np.concatenate((sampled_angles_fwd, sampled_angles_bkwd))
+    num_samples_on_circle = 40
+    sampled_angles = np.linspace(0, 2*np.pi, num_samples_on_circle)  # no flipping for now
+    # sampled_angles_fwd = np.linspace(0, 2*np.pi, num_samples_on_circle)
+    # sampled_angles_bkwd = sampled_angles_fwd[::-1] # flip it
+    # sampled_angles = np.concatenate((sampled_angles_fwd, sampled_angles_bkwd))
 
-    angle_offset = (1/6)*np.pi #30 degrees
+    angle_offset = (1/6)*np.pi # 30 deg
     
     # set control inputs based on geometry of cable arrangement
     u1s = tip_radius * np.cos(sampled_angles)
@@ -119,7 +120,7 @@ def circle_sampling(control_variables, random_seed):
     u3s = - base_radius * np.sin(sampled_angles + 2 * angle_offset)
 
     circle_samples = np.column_stack((u1s, u2s, u3s, u4s, u5s, u6s))
-    circle_samples += np.random.uniform(-noise_amplitude, noise_amplitude, (num_samples_on_circle*2, circle_samples.shape[1]))
+    circle_samples += np.random.uniform(-noise_amplitude, noise_amplitude, circle_samples.shape)
     # we are not checking the circle values with check_control_inputs
 
     control_inputs_df = pd.DataFrame(circle_samples, columns=control_variables)
@@ -272,7 +273,7 @@ def main(data_type, sampling_type, seed=None):
 
 
 if __name__ == '__main__':
-    data_type = 'steady_state'           # 'steady_state' or 'dynamic'
+    data_type = 'dynamic'           # 'steady_state' or 'dynamic'
     sampling_type = 'circle'             # 'circle', 'beta', 'targeted', 'uniform' or 'sinusoidal'
     seed = 10                             # choose integer seed number
     main(data_type, sampling_type, seed)

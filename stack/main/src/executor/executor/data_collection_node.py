@@ -43,8 +43,8 @@ class DataCollectionNode(Node):
             ('sample_size', 10),                # for checking settling condition and averaging (steady state)
             ('update_period', 0.1),             # for steady state and avoiding dynamic trajectories to interrupt each other, in [s]
             ('max_traj_length', 600),           # maximum number of samples in a dynamic trajectory
-            ('data_type', 'steady_state'),      # 'steady_state' or 'dynamic'
-            ('data_subtype', 'circle'),           # 'decay' or 'controlled' for dynamic and e.g. 'circle' or 'beta' or 'uniform' for steady_state
+            ('data_type', 'dynamic'),           # 'steady_state' or 'dynamic'
+            ('data_subtype', 'decay'),          # 'decay' or 'controlled' for dynamic and e.g. 'circle' or 'beta' or 'uniform' for steady_state
             ('mocap_type', 'rigid_bodies'),     # 'rigid_bodies' or 'markers'
             ('control_type', 'output'),         # 'output' or 'position'
             ('results_name', 'observations')
@@ -60,7 +60,7 @@ class DataCollectionNode(Node):
         self.mocap_type = self.get_parameter('mocap_type').value
         self.control_type = self.get_parameter('control_type').value
         self.results_name = self.get_parameter('results_name').value
-        
+
         self.is_collecting = False
         self.ic_settled = False
         self.previous_time = time.time()
