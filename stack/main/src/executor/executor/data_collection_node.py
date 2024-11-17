@@ -54,7 +54,6 @@ class DataCollectionNode(Node):
         self.sample_size = self.get_parameter('sample_size').value
         self.update_period = self.get_parameter('update_period').value
         self.max_traj_length = self.get_parameter('max_traj_length').value
-        self.max_traj_length = self.get_parameter('max_traj_length').value
         self.data_type = self.get_parameter('data_type').value
         self.data_subtype = self.get_parameter('data_subtype').value
         self.mocap_type = self.get_parameter('mocap_type').value
