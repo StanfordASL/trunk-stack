@@ -118,7 +118,7 @@ class DataCollectorNode(Node):
     def store_positions(self, msg):
         self.stored_positions.append(self.extract_positions(msg))
 
-    def check_settled(self, tolerance=0.00025, window=5):
+    def check_settled(self, tolerance=0.0003, window=5):
         if len(self.check_settled_positions) < window:
             # Not enough positions to determine if settled
             return False
