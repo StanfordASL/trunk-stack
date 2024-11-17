@@ -25,7 +25,8 @@ setup(
             'run_experiment_node = executor.run_experiment_node:main',
             'run_teleop_ik_node = executor.run_teleop_ik_node:main',
             'visuomotor_node = executor.visuomotor_node:main',
-            'slider_node = executor.slider_node:main'
+            'slider_node = executor.slider_node:main',
+            'manual_decay_node = executor.manual_decay_node:main',
         ],
     },
 )
