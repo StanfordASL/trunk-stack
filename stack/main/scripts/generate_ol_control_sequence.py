@@ -80,9 +80,8 @@ def sine_trajectory():
 
 def interpolated_beta(seed=0):
     # Parameters
-    n_u = 6
-    sample_size = 40
-    sec_per_sample = 3
+    sample_size = 45
+    sec_per_sample = 2
     sampling_rate = 100  # [Hz]
     np.random.seed(seed)
     tip_range, mid_range, base_range = 0.45, 0.35, 0.3
@@ -125,7 +124,7 @@ def interpolated_beta(seed=0):
         norm_value = np.linalg.norm(vector_sum)
 
         # Check the constraint: if the sample is valid, keep it
-        if norm_value <= 0.7:
+        if norm_value <= 0.75:
             valid_samples.append([u1, u2, u3, u4, u5, u6])
             num_valid_samples += 1
         else:   
