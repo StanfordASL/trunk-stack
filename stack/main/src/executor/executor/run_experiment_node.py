@@ -5,13 +5,14 @@ import jax.numpy as jnp
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from rclpy.qos import QoSProfile    # type: ignore
-from controller.controller.mpc_solver_node import run_mpc_solver_node, MPCClientNode
-from controller.controller.mpc import GuSTOConfig
+from controller.mpc_solver_node import run_mpc_solver_node, MPCClientNode  # type: ignore
+from controller.mpc.gusto import GuSTOConfig  # type: ignore
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
-from .models.ssm import DelaySSM
-from .models.models import SSMR
-from .models.residual import ResidualBr, NeuralBr
+from . import utils
+from .utils.ssm import DelaySSM
+from .utils.models import SSMR
+from .utils.residual import ResidualBr, NeuralBr
 
 
 class RunExperimentNode(Node):
@@ -23,26 +24,27 @@ class RunExperimentNode(Node):
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
             ('experiment_type', 'traj'),                    # 'traj' or 'user' (what input is being tracked)
-            ('model', 'poly'),                              # 'nn' or 'poly' (what model to use)
+            ('model_name', 'ssmr_200g'),                              # 'nn' or 'poly' (what model to use)
             ('controller_type', 'mpc'),                     # 'ik' or 'mpc' (what controller to use)
-            ('output_name', 'base_experiment')              # name of the output file
+            ('results_name', 'base_experiment')             # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
         self.experiment_type = self.get_parameter('experiment_type').value
-        self.model_type = self.get_parameter('model').value
+        self.model_name = self.get_parameter('model_name').value
         self.controller_type = self.get_parameter('controller_type').value
-        self.output_name = self.get_parameter('output_name').value
+        self.results_name = self.get_parameter('results_name').value
 
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/asl/Documents/asl_trunk_ws/data')
+        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Settled positions of the rigid bodies
-        self.settled_positions = jnp.array([0, -0.10665, 0, 0, -0.20432, 0, 0, -0.320682, 0])
+        self.rest_position = jnp.array([0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
+        self.avp_offset = jnp.array([0, -0.10698, 0, 0, -0.20407, 0, 0, -0.32308, 0])
 
         # Get desired states
-        if self.experiment_type == 'trajectory':
+        if self.experiment_type == 'traj':
             # Generate reference trajectory
-            z_ref, t = self._generate_ref_trajectory(3, 0.01, 'circle', 0.1)
+            z_ref, t = self._generate_ref_trajectory(4, 0.01, 'circle', 0.15)
         elif self.experiment_type == 'user':
             # We track positions as defined by the user (through the AVP)
             self.avp_subscription = self.create_subscription(
@@ -69,9 +71,9 @@ class RunExperimentNode(Node):
                 Qz=jnp.eye(self.model.n_z),
                 Qzf=10*jnp.eye(self.model.n_z),
                 R=0.0001*jnp.eye(self.model.n_u),
-                x_char=jnp.ones(self.model.n_x),
-                f_char=jnp.ones(self.model.n_x),
-                N=6
+                x_char=0.05*jnp.ones(self.model.n_x),
+                f_char=0.5*jnp.ones(self.model.n_x),
+                N=7
             )
             x0 = jnp.zeros(self.model.n_x)
             self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref)
@@ -90,31 +92,27 @@ class RunExperimentNode(Node):
             raise ValueError('Invalid controller type: ' + self.controller_type + '. Valid options are: "ik" or "mpc".')
 
         # Create publisher to execute found control inputs
+        """ TODO: enable control execution
         self.controls_publisher = self.create_publisher(
             AllMotorsControl,
             '/all_motors_control',
             QoSProfile(depth=10)
         )
-        self.clock = self.get_clock()
-        self.start_time = self.clock.now().nanoseconds / 1e9
-
+        """
         # Maintain current observations because of the delay embedding
-        self.y = jnp.zeros(6)
+        self.y = jnp.zeros(self.model.n_y)
 
         self.get_logger().info('Run experiment node has been started.')
+
+        self.clock = self.get_clock()
+        # self.start_time = self.clock.now().nanoseconds / 1e9
 
     def _load_model(self):
         """
         Load the learned dynamics model of the system used for control.
         """
-        # Get location of model file
-        if self.model_type == 'nn':
-            model_file = os.path.join(self.data_dir, 'models/nn_ssmr.pkl')
-        elif self.model_type == 'poly':
-            model_file = os.path.join(self.data_dir, 'models/poly_ssmr.pkl')
-        else:
-            raise ValueError('Invalid model type: ' + self.model_type + '. Valid options are: "nn" or "poly".')
-        
+        model_file = os.path.join(self.data_dir, f'models/ssmr/{self.model_name}.pkl')
+
         # Load the model
         with open(model_file, 'rb') as f:
             self.model = dill.load(f)
@@ -152,13 +150,13 @@ class RunExperimentNode(Node):
         y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
 
         # Center the data around settled positions
-        y_centered = y_new - self.settled_positions
+        y_centered = y_new - self.settled_position
 
-        # Currently we only use the tip positions
-        y_centered_tip = y_centered[-3:]
+        # Subselect bottom two segments
+        y_centered_midtip = y_centered[3:]
 
         # Update the current observations, including *single* delay embedding
-        self.y = jnp.concatenate([y_centered_tip, self.y[:3]])
+        self.y = jnp.concatenate([y_centered_midtip, self.y[:6]])
 
         t0 = self.clock.now().nanoseconds / 1e9
         x0 = self.model.encode(self.y)
@@ -188,7 +186,8 @@ class RunExperimentNode(Node):
     def service_callback(self, async_response):
         try:
             response = async_response.result()
-            self.publish_control_inputs(response.uopt)
+            # TODO: enable control execution
+            # self.publish_control_inputs(response.uopt)
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
