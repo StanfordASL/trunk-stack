@@ -11,7 +11,7 @@ from sklearn.utils.extmath import randomized_svd
 from scipy.linalg import orth
 import numpy as np
 import sympy as sp
-from utils.misc import trajectories_delay_embedding
+from .misc import trajectories_delay_embedding
 
 
 class DelaySSM:

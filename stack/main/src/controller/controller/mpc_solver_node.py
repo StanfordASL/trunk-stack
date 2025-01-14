@@ -5,7 +5,7 @@ from rclpy.node import Node         # type: ignore
 from rclpy.qos import QoSProfile    # type: ignore
 from scipy.interpolate import interp1d
 from interfaces.srv import ControlSolver
-from controller.mpc.gusto import GuSTO
+from .mpc.gusto import GuSTO
 
 
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
@@ -182,7 +182,7 @@ class MPCClientNode(Node):
         # Request message definition
         self.req = ControlSolver.Request()
 
-    def send_request(self, t0, x0, wait=True):
+    def send_request(self, t0, x0, wait=False):
         """
         :param t0:
         :param x0:
