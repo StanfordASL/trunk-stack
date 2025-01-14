@@ -10,6 +10,44 @@ def save_to_csv(df, control_inputs_file):
     df.to_csv(control_inputs_file, index=False)
     print(f'Control inputs have been saved to {control_inputs_file}')
 
+# TODO: write this function
+def adiabatic_jolt_sampling(control_variables, seed):
+    pass
+
+# TODO: write this function
+def adiabatic_step_sampling(control_variables, seed):
+    pass
+
+# TODO: write this function
+def adiabatic_manual_sampling(control_variables):
+    n_samples = 12000   # 120s * 100Hz = 12000 (2 min)
+
+    # tip
+    u1_offset = 0.4 # for now just in one control input
+    u6_offset = 0 
+    u1 = np.full(n_samples, u1_offset)
+    u6 = np.full(n_samples, u6_offset)
+
+    # mid
+    u2_offset = 0
+    u5_offset = 0
+    u2 = np.full(n_samples, u2_offset)
+    u5 = np.full(n_samples, u5_offset)
+
+    # base
+    u3_offset = 0
+    u4_offset = 0
+    u3 = np.full(n_samples, u3_offset)
+    u4 = np.full(n_samples, u4_offset)
+
+    print(u4.shape)
+
+    ids = np.arange(0, n_samples)
+    df = np.array([u1, u2, u3, u4, u5, u6]).T
+    control_inputs_df = pd.DataFrame(df, columns=control_variables)
+    control_inputs_df.insert(0, 'ID', ids)
+
+    return control_inputs_df
 
 def sinusoidal_sampling(control_variables):
     num_controls = len(control_variables)
@@ -265,6 +303,12 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = targeted_sampling(control_variables, seed)
     elif sampling_type =='circle':
         control_inputs_df = circle_sampling(control_variables, seed)
+    elif sampling_type == 'adiabatic_manual':
+        control_inputs_df = adiabatic_manual_sampling(control_variables)
+    elif sampling_type == 'adiabatic_step':
+        control_inputs_df = adiabatic_step_sampling(control_variables, seed)
+    elif sampling_type == 'adiabatic_jolt':
+        control_inputs_df = adiabatic_jolt_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -273,7 +317,7 @@ def main(data_type, sampling_type, seed=None):
 
 
 if __name__ == '__main__':
-    data_type = 'dynamic'           # 'steady_state' or 'dynamic'
-    sampling_type = 'circle'             # 'circle', 'beta', 'targeted', 'uniform' or 'sinusoidal'
-    seed = 10                             # choose integer seed number
+    data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
+    sampling_type = 'adiabatic_manual'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', or 'adiabatic_jolt'
+    seed = None                             # choose integer seed number
     main(data_type, sampling_type, seed)

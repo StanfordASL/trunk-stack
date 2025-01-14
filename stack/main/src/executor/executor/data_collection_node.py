@@ -44,7 +44,7 @@ class DataCollectionNode(Node):
             ('update_period', 0.1),             # for steady state and avoiding dynamic trajectories to interrupt each other, in [s]
             ('max_traj_length', 600),           # maximum number of samples in a dynamic trajectory
             ('data_type', 'dynamic'),           # 'steady_state' or 'dynamic'
-            ('data_subtype', 'decay'),          # 'decay' or 'controlled' for dynamic and e.g. 'circle' or 'beta' or 'uniform' for steady_state
+            ('data_subtype', 'decay'),          # 'decay' or 'controlled' or 'adiabatic_manual' or 'adiabatic_step' or 'adiabatic_jolt' for dynamic and e.g. 'circle' or 'beta' or 'uniform' for steady_state
             ('mocap_type', 'rigid_bodies'),     # 'rigid_bodies' or 'markers'
             ('control_type', 'output'),         # 'output' or 'position'
             ('results_name', 'observations')
@@ -177,6 +177,25 @@ class DataCollectionNode(Node):
                     else:
                         self.check_settled_positions.append(self.extract_positions(msg))
 
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual':
+            # Store current positions
+            self.store_positions(msg)
+            
+            # Publish new motor control inputs
+            self.current_control_id += 1
+            self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
+            if self.control_inputs is None:
+                # Process data
+                names = self.extract_names(msg)
+                self.process_data(names)
+
+                # Finish
+                self.get_logger().info('Adiabatic manual data collection has finished.')
+                self.destroy_node()
+                rclpy.shutdown()
+            else:
+                self.publish_control_inputs()
+
     def publish_control_inputs(self, control_inputs=None):
         if control_inputs is None:
             control_inputs = self.control_inputs
@@ -267,6 +286,16 @@ class DataCollectionNode(Node):
                     writer.writerow(row)
 
         elif self.data_type == 'dynamic' and self.data_subtype == 'controlled':
+            # Store all positions in a CSV file
+            with open(trajectory_csv_file, 'a', newline='') as file:
+                writer = csv.writer(file)
+                for id, pos_list in enumerate(self.stored_positions):
+                    row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]]
+                    writer.writerow(row)
+            if self.debug:
+                self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
+
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual':
             # Store all positions in a CSV file
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)
