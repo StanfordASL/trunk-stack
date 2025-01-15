@@ -10,18 +10,8 @@ def save_to_csv(df, control_inputs_file):
     df.to_csv(control_inputs_file, index=False)
     print(f'Control inputs have been saved to {control_inputs_file}')
 
-# TODO: write this function
-def adiabatic_jolt_sampling(control_variables, seed):
-    pass
-
-# TODO: write this function
-def adiabatic_step_sampling(control_variables, seed):
-    pass
-
-# TODO: write this function
-def adiabatic_manual_sampling(control_variables):
-    n_samples = 12000   # 120s * 100Hz = 12000 (2 min)
-
+# sets the DC offset for an equilibrium of adiabatic data collection
+def set_adiabatic_control_offset(n_samples):
     # tip
     u1_offset = 0.4 # for now just in one control input
     u6_offset = 0 
@@ -40,11 +30,56 @@ def adiabatic_manual_sampling(control_variables):
     u3 = np.full(n_samples, u3_offset)
     u4 = np.full(n_samples, u4_offset)
 
-    print(u4.shape)
+    const_input = np.array([u1, u2, u3, u4, u5, u6])
+
+    return const_input
+
+# TODO: write this function
+def adiabatic_jolt_sampling(control_variables, seed):
+    pass
+
+# TODO: maybe use check_settled instead of this simplification where I just wait a certain number of seconds
+# for sampling n_perturbations perturbations about a single constant equilibrium point for automatic adiabatic data collection
+# jolt will just be the same except it has a shorter t_step
+def adiabatic_step_sampling(control_variables, seed):
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    np.random.seed(seed)
+    n_samples = 1 
+    const_input = set_adiabatic_control_offset(n_samples) 
+
+    # add perturbations
+    n_perturbations = 20    # number of perturbations per data collection round
+    perturb_min = - 0.1
+    perturb_max = 0.1
+    t_settle = 1 * 300  # number of timesteps to allow for settling [seconds * 100Hz]
+    t_step = 1 * 100 # number of timesteps to allow for step input [seconds * 100Hz]
+
+    for i in range(n_perturbations):
+        # sample random (small) perturbation in each control input
+        perturbation = np.random.uniform(perturb_min, perturb_max, size=6)
+
+        # set perturbation and hold for t_step seconds
+        perturbed_control_input = const_input + perturbation
+        step_inputs = np.tile(perturbed_control_input, (t_step, 1))
+
+        # release to equilibrium and hold at equilibrium for t_settle seconds
+        const_inputs = np.tile(const_inputs, (t_settle, 1))
+        inputs = np.vstack((step_inputs, const_inputs)) # concatenate the step inputs and the return to constant
+
+        control_inputs_df = control_inputs_df._append(dict(zip(['ID'] + control_variables, inputs)))
+
+    return control_inputs_df
+
+
+
+# for creating control inputs for a single constant equilibrium point for manual adiabatic data collection
+def adiabatic_manual_sampling(control_variables):
+    # set constant offset
+    n_samples = 12000 # 120s * 100Hz = 12000 (2 min)
+    const_input = set_adiabatic_control_offset(n_samples) 
 
     ids = np.arange(0, n_samples)
-    df = np.array([u1, u2, u3, u4, u5, u6]).T
-    control_inputs_df = pd.DataFrame(df, columns=control_variables)
+    control_inputs_df = pd.DataFrame(const_input.T, columns=control_variables)
     control_inputs_df.insert(0, 'ID', ids)
 
     return control_inputs_df
