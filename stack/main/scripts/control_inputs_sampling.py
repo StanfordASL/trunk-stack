@@ -45,15 +45,27 @@ def adiabatic_step_sampling(control_variables, seed):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     np.random.seed(seed)
     n_samples = 1 
-    const_input = set_adiabatic_control_offset(n_samples) 
+    const_input = set_adiabatic_control_offset(n_samples).flatten()
+    print(const_input)
+    print(const_input.shape)
 
     # add perturbations
     n_perturbations = 20    # number of perturbations per data collection round
     perturb_min = - 0.1
     perturb_max = 0.1
-    t_settle = 1 * 300  # number of timesteps to allow for settling [seconds * 100Hz]
+    t_initial = 3 * 100 # number of timesteps at initial point [seconds * 100Hz]
+    t_settle = 3 * 100  # number of timesteps to allow for settling [seconds * 100Hz]
     t_step = 1 * 100 # number of timesteps to allow for step input [seconds * 100Hz]
 
+    # initial time at equilibrium point
+    initial_inputs = np.tile(const_input, (t_initial, 1))
+    ids = np.zeros(t_initial)
+    ids = ids[:, np.newaxis]
+    initial_inputs = np.hstack((ids, initial_inputs))
+    initial_inputs_df = pd.DataFrame(initial_inputs, columns = control_inputs_df.columns)
+    control_inputs_df = pd.concat([control_inputs_df, initial_inputs_df], ignore_index=True)
+
+    # create perturbation inputs
     for i in range(n_perturbations):
         # sample random (small) perturbation in each control input
         perturbation = np.random.uniform(perturb_min, perturb_max, size=6)
@@ -63,10 +75,15 @@ def adiabatic_step_sampling(control_variables, seed):
         step_inputs = np.tile(perturbed_control_input, (t_step, 1))
 
         # release to equilibrium and hold at equilibrium for t_settle seconds
-        const_inputs = np.tile(const_inputs, (t_settle, 1))
+        const_inputs = np.tile(const_input, (t_settle, 1))
         inputs = np.vstack((step_inputs, const_inputs)) # concatenate the step inputs and the return to constant
 
-        control_inputs_df = control_inputs_df._append(dict(zip(['ID'] + control_variables, inputs)))
+        ids = np.full(t_step + t_settle, i + 1)
+        ids = ids[:, np.newaxis]
+        inputs = np.hstack((ids, inputs))
+        inputs_df = pd.DataFrame(inputs, columns = control_inputs_df.columns)
+        control_inputs_df = pd.concat([control_inputs_df, inputs_df], ignore_index=True)
+
 
     return control_inputs_df
 
@@ -353,6 +370,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'adiabatic_manual'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', or 'adiabatic_jolt'
+    sampling_type = 'adiabatic_step'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', or 'adiabatic_jolt'
     seed = None                             # choose integer seed number
     main(data_type, sampling_type, seed)

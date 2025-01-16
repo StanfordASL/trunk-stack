@@ -196,6 +196,25 @@ class DataCollectionNode(Node):
             else:
                 self.publish_control_inputs()
 
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual':
+            # Store current positions
+            self.store_positions(msg)
+            
+            # Publish new motor control inputs
+            self.current_control_id += 1
+            self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
+            if self.control_inputs is None:
+                # Process data
+                names = self.extract_names(msg)
+                self.process_data(names)
+
+                # Finish
+                self.get_logger().info('Adiabatic manual data collection has finished.')
+                self.destroy_node()
+                rclpy.shutdown()
+            else:
+                self.publish_control_inputs()
+
     def publish_control_inputs(self, control_inputs=None):
         if control_inputs is None:
             control_inputs = self.control_inputs
