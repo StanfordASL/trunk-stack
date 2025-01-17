@@ -196,7 +196,8 @@ class DataCollectionNode(Node):
             else:
                 self.publish_control_inputs()
 
-        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual':
+        # TODO: finish this code block
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_automatic':
             # Store current positions
             self.store_positions(msg)
             
@@ -214,6 +215,35 @@ class DataCollectionNode(Node):
                 rclpy.shutdown()
             else:
                 self.publish_control_inputs()
+        
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_global':
+            # always store the message
+            # send a new control input once settled
+            # have IDs correspond
+            if self.is_collecting: 
+                if not self.ic_settled: # not settled: wait
+                    self.ic_settled = self.check_settled(window=20)
+                    if self.ic_settled:
+                        # Publish new control input
+                        self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
+                        self.publish_control_inputs()
+                        self.check_settled_positions = []
+                    else:
+                        self.check_settled_positions.append(self.extract_positions(msg))
+                    
+                else: 
+                    self.store_positions(msg)
+                    # Check settled because then the dynamic trajectory is done and we can continue
+                    if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
+                    (time.time() - self.previous_time) >= self.update_period:
+                        self.previous_time = time.time()
+                        self.is_collecting = False
+                        self.ic_settled = False
+                        names = self.extract_names(msg)
+                        self.process_data(names)
+                    else:
+                        self.check_settled_positions.append(self.extract_positions(msg))
+
 
     def publish_control_inputs(self, control_inputs=None):
         if control_inputs is None:
@@ -320,6 +350,16 @@ class DataCollectionNode(Node):
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
                     row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]]
+                    writer.writerow(row)
+            if self.debug:
+                self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
+
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_global':
+            # Store all positions in a CSV file
+            with open(trajectory_csv_file, 'a', newline='') as file:
+                writer = csv.writer(file)
+                for id, pos_list in enumerate(self.stored_positions):
+                    row = [self.current_control_id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]]
                     writer.writerow(row)
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
