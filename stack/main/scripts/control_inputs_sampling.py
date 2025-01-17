@@ -34,6 +34,47 @@ def set_adiabatic_control_offset(n_samples):
 
     return const_input
 
+def adiabatic_global_sampling(control_variables, random_seed):
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    np.random.seed(random_seed)
+
+    phase_shift_large = 0.0 # 0 deg
+    phase_shift_small = (1/4)*np.pi # small circle rotated by 45 deg from large circle
+    control_inputs_large_circle = circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.30, base_radius = 0.25, phase_shift=phase_shift_large, noise_amplitude=0.0, num_samples_on_circle=4)
+    control_inputs_small_circle = circle_sampling(control_variables, random_seed, tip_radius = 0.3, mid_radius = 0.25, base_radius = 0.2, phase_shift=phase_shift_small, noise_amplitude=0.0, num_samples_on_circle=4)
+    
+    # form the df of control input options
+    origin_df = pd.DataFrame([[0]*7], columns=control_inputs_df.columns)
+    control_inputs_equil_points = pd.concat([control_inputs_large_circle, control_inputs_small_circle, origin_df], ignore_index=True)
+    n_equil_points = len(control_inputs_equil_points)
+
+    # #uncomment this block and comment out for loop to check what control inputs look like
+    # control_inputs_df = control_inputs_equil_points
+    # control_inputs_df["ID"] = np.arange(n_equil_points)
+
+    run_time = 10 * 60 * 100 # total run time (10 mins * 60s * 100Hz)
+    t_settle = 3 * 100  # number of timesteps to allow for settling [seconds * 100Hz]
+    num_traj = int(run_time/t_settle) # total number of trajectories
+    print(f'Total run timesteps: {run_time}, n trajectories: {num_traj}')
+
+    last_rand = None
+    for i in range(num_traj):
+        rand = np.random.randint(0, n_equil_points)
+
+        if last_rand is not None:
+            while True:
+                if last_rand == rand:
+                    rand = np.random.randint(0, n_equil_points)
+                else:
+                    break
+                
+        row = control_inputs_equil_points.iloc[rand]
+        row["ID"] = i
+        df = pd.DataFrame([row]*1, columns=control_inputs_df.columns) # change to [row]*t_settle if you want to manually do control inputs
+        control_inputs_df = pd.concat([control_inputs_df, df], ignore_index=True)
+        last_rand = rand
+
+    return control_inputs_df
 
 # TODO: maybe use check_settled instead of this simplification where I just wait a certain number of seconds
 # for sampling n_perturbations perturbations about a single constant equilibrium point for automatic adiabatic data collection
@@ -185,26 +226,25 @@ def beta_sampling(control_variables, seed, sample_size=100):
 
     return control_inputs_df
 
-def circle_sampling(control_variables, random_seed):
-    np.random.seed(random_seed)
-    tip_radius, mid_radius, base_radius = 0.4, 0.35, 0.3 # always fits within check control inputs with 0.45, 0.35, 0.30 - change these for bigger/smaller circles
-    noise_amplitude = 0.05
 
-    num_samples_on_circle = 40
-    sampled_angles = np.linspace(0, 2*np.pi, num_samples_on_circle)  # no flipping for now
+def circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.3, base_radius = 0.25, phase_shift=(1/4)*np.pi, noise_amplitude=0.05, num_samples_on_circle=4):
+    np.random.seed(random_seed)
+
+    sampled_angles = np.linspace(0, 2*np.pi, num_samples_on_circle + 1) + phase_shift  # no flipping for now
+    sampled_angles = sampled_angles[:-1] # cut off the last value (repeated since 0 deg = 360 deg)
+    print(sampled_angles * 180/np.pi)
     # sampled_angles_fwd = np.linspace(0, 2*np.pi, num_samples_on_circle)
     # sampled_angles_bkwd = sampled_angles_fwd[::-1] # flip it
     # sampled_angles = np.concatenate((sampled_angles_fwd, sampled_angles_bkwd))
 
-    angle_offset = (1/6)*np.pi # 30 deg
-    
+    offset = (1/6)*np.pi # 30 degree angle offset between cables
     # set control inputs based on geometry of cable arrangement
     u1s = tip_radius * np.cos(sampled_angles)
     u6s = - tip_radius * np.sin(sampled_angles)
-    u5s = - mid_radius * np.cos(sampled_angles + angle_offset) 
-    u2s = mid_radius * np.sin(sampled_angles + angle_offset)
-    u4s = base_radius * np.cos(sampled_angles + 2 * angle_offset) 
-    u3s = - base_radius * np.sin(sampled_angles + 2 * angle_offset)
+    u5s = - mid_radius * np.cos(sampled_angles + offset) 
+    u2s = mid_radius * np.sin(sampled_angles + offset)
+    u4s = base_radius * np.cos(sampled_angles + 2 * offset) 
+    u3s = - base_radius * np.sin(sampled_angles + 2 * offset)
 
     circle_samples = np.column_stack((u1s, u2s, u3s, u4s, u5s, u6s))
     circle_samples += np.random.uniform(-noise_amplitude, noise_amplitude, circle_samples.shape)
@@ -356,6 +396,8 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = adiabatic_manual_sampling(control_variables)
     elif sampling_type == 'adiabatic_step':
         control_inputs_df = adiabatic_step_sampling(control_variables, seed)
+    elif sampling_type == 'adiabatic_global':
+        control_inputs_df = adiabatic_global_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -365,6 +407,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'adiabatic_step'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', or 'adiabatic_step'
+    sampling_type = 'adiabatic_global'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', or 'adiabatic_global'
     seed = None                             # choose integer seed number
     main(data_type, sampling_type, seed)
