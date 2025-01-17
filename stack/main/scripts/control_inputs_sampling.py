@@ -34,9 +34,6 @@ def set_adiabatic_control_offset(n_samples):
 
     return const_input
 
-# TODO: write this function
-def adiabatic_jolt_sampling(control_variables, seed):
-    pass
 
 # TODO: maybe use check_settled instead of this simplification where I just wait a certain number of seconds
 # for sampling n_perturbations perturbations about a single constant equilibrium point for automatic adiabatic data collection
@@ -359,8 +356,6 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = adiabatic_manual_sampling(control_variables)
     elif sampling_type == 'adiabatic_step':
         control_inputs_df = adiabatic_step_sampling(control_variables, seed)
-    elif sampling_type == 'adiabatic_jolt':
-        control_inputs_df = adiabatic_jolt_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -370,6 +365,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'adiabatic_step'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', or 'adiabatic_jolt'
+    sampling_type = 'adiabatic_step'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', or 'adiabatic_step'
     seed = None                             # choose integer seed number
     main(data_type, sampling_type, seed)
