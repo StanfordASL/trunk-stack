@@ -17,14 +17,14 @@ from .utils.residual import ResidualBr, NeuralBr
 
 class RunExperimentNode(Node):
     """
-    This node is responsible for running the experiment, which can be either a trajectory tracking or user-defined position tracking.
+    This node is responsible for running experiments, which can be either trajectory tracking or user-defined position tracking.
     """
     def __init__(self):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
             ('experiment_type', 'traj'),                    # 'traj' or 'user' (what input is being tracked)
-            ('model_name', 'ssmr_200g'),                              # 'nn' or 'poly' (what model to use)
+            ('model_name', 'ssmr_200g'),                    # 'ssmr_200g' (what model to use)
             ('controller_type', 'mpc'),                     # 'ik' or 'mpc' (what controller to use)
             ('results_name', 'base_experiment')             # name of the results file
         ])
