@@ -47,7 +47,8 @@ class DataCollectionNode(Node):
             ('data_subtype', 'decay'),          # 'decay' or 'controlled' or 'adiabatic_manual' or 'adiabatic_step' or 'adiabatic_jolt' for dynamic and e.g. 'circle' or 'beta' or 'uniform' for steady_state
             ('mocap_type', 'rigid_bodies'),     # 'rigid_bodies' or 'markers'
             ('control_type', 'output'),         # 'output' or 'position'
-            ('results_name', 'observations')
+            ('results_name', 'observations'),
+            ('input_num', 1)                     # number of the input file type i.e. control_inputs_controlled_1
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -59,6 +60,7 @@ class DataCollectionNode(Node):
         self.mocap_type = self.get_parameter('mocap_type').value
         self.control_type = self.get_parameter('control_type').value
         self.results_name = self.get_parameter('results_name').value
+        self.input_num = str(self.get_parameter('input_num').value)
 
         self.is_collecting = False
         self.ic_settled = False
@@ -71,7 +73,7 @@ class DataCollectionNode(Node):
         if self.data_type == 'steady_state':
             control_input_csv_file = os.path.join(self.data_dir, f'trajectories/steady_state/control_inputs_{self.data_subtype}.csv')
         elif self.data_type == 'dynamic':
-            control_input_csv_file = os.path.join(self.data_dir, f'trajectories/dynamic/control_inputs_{self.data_subtype}.csv')
+            control_input_csv_file = os.path.join(self.data_dir, f'trajectories/dynamic/control_inputs_{self.data_subtype}_{self.input_num}.csv')
         else:
             raise ValueError('Invalid data type: ' + self.data_type + '. Valid options are: "steady_state" or "dynamic".')
         self.control_inputs_dict = load_control_inputs(control_input_csv_file)
