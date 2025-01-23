@@ -164,5 +164,5 @@ if __name__ == '__main__':
     control_type = 'interp_beta'  # 'random', 'interp_beta' or 'sinusoidal'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     # control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_{control_type}.csv')
-    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled.csv')
+    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_1.csv')
     main(control_inputs_file, control_type=control_type)
