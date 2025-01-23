@@ -38,8 +38,8 @@ def adiabatic_global_sampling(control_variables, random_seed):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     np.random.seed(random_seed)
 
-    phase_shift_large = 0.0 # 0 deg
-    phase_shift_small = (1/4)*np.pi # small circle rotated by 45 deg from large circle
+    phase_shift_large = (1/4)*np.pi # 0 deg
+    phase_shift_small = 0.0 # small circle rotated by 45 deg from large circle
     control_inputs_large_circle = circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.30, base_radius = 0.25, phase_shift=phase_shift_large, noise_amplitude=0.0, num_samples_on_circle=4)
     control_inputs_small_circle = circle_sampling(control_variables, random_seed, tip_radius = 0.3, mid_radius = 0.25, base_radius = 0.2, phase_shift=phase_shift_small, noise_amplitude=0.0, num_samples_on_circle=4)
     
@@ -227,10 +227,10 @@ def beta_sampling(control_variables, seed, sample_size=100):
     return control_inputs_df
 
 
-def circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.3, base_radius = 0.25, phase_shift=(1/4)*np.pi, noise_amplitude=0.05, num_samples_on_circle=4):
+def circle_sampling(control_variables, random_seed, tip_radius = 0.325, mid_radius = 0.275, base_radius = 0.225, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
     np.random.seed(random_seed)
 
-    sampled_angles = np.linspace(0, 2*np.pi, num_samples_on_circle + 1) + phase_shift  # no flipping for now
+    sampled_angles = np.linspace(0, 2*2*np.pi, num_samples_on_circle + 1) + phase_shift  # CHange back to 2*np.pi to get only one circle no flipping for now
     sampled_angles = sampled_angles[:-1] # cut off the last value (repeated since 0 deg = 360 deg)
     print(sampled_angles * 180/np.pi)
     # sampled_angles_fwd = np.linspace(0, 2*np.pi, num_samples_on_circle)
@@ -378,7 +378,7 @@ def main(data_type, sampling_type, seed=None):
     # data_dir for mark's mac starts with '/Users/asltrunk/trunk-stack/stack/main/data'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     if seed is not None:
-        control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}_seed{seed}.csv')
+        control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}_{seed}.csv')
     else:
         control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}.csv')
     
@@ -407,6 +407,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'adiabatic_global'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', or 'adiabatic_global'
-    seed = None                             # choose integer seed number
+    sampling_type = 'circle'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', or 'adiabatic_global'
+    seed = 3                             # choose integer seed number
     main(data_type, sampling_type, seed)
