@@ -80,8 +80,8 @@ def sine_trajectory():
 
 def interpolated_beta(seed=0):
     # Parameters
-    sample_size = 45
-    sec_per_sample = 2
+    sample_size = 90
+    sec_per_sample = 1
     sampling_rate = 100  # [Hz]
     np.random.seed(seed)
     tip_range, mid_range, base_range = 0.45, 0.35, 0.3
@@ -164,5 +164,5 @@ if __name__ == '__main__':
     control_type = 'interp_beta'  # 'random', 'interp_beta' or 'sinusoidal'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     # control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_{control_type}.csv')
-    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_1.csv')
+    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_2.csv')
     main(control_inputs_file, control_type=control_type)
