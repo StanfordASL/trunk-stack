@@ -1,5 +1,4 @@
 import os
-import dill
 import jax
 import jax.numpy as jnp
 import rclpy                        # type: ignore
@@ -9,15 +8,13 @@ from controller.mpc_solver_node import run_mpc_solver_node, MPCClientNode  # typ
 from controller.mpc.gusto import GuSTOConfig  # type: ignore
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
-from . import utils
-from .utils.ssm import DelaySSM
 from .utils.models import SSMR
-from .utils.residual import ResidualBr
 
 
 class RunExperimentNode(Node):
     """
-    This node is responsible for running experiments, which can be either trajectory tracking or user-defined position tracking.
+    This node is responsible for running the main experiment,
+    which can be either trajectory tracking or user-defined position tracking.
     """
     def __init__(self):
         super().__init__('run_experiment_node')
@@ -109,14 +106,13 @@ class RunExperimentNode(Node):
 
     def _load_model(self):
         """
-        Load the learned dynamics model of the system used for control.
+        Load the learned (non-autonomous) dynamics model of the system.
         """
-        model_file = os.path.join(self.data_dir, f'models/ssmr/{self.model_name}.pkl')
+        model_path = os.path.join(self.data_dir, f'models/ssmr/{self.model_name}.npz')
 
         # Load the model
-        with open(model_file, 'rb') as f:
-            self.model = dill.load(f)
-        print('Model loaded. Dimensions:')
+        self.model = SSMR(model_path=model_path)
+        print('---- Model loaded. Dimensions:')
         print('     n_x:', self.model.n_x)
         print('     n_u:', self.model.n_u)
         print('     n_z:', self.model.n_z)
