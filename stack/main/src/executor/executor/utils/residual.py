@@ -4,8 +4,8 @@ Residual models to add control dependency to models of autonomous systems.
 
 import jax
 import jax.numpy as jnp
-from utils.nn import MLP
-from utils.misc import polynomial_features, fit_linear_regression
+from .nn import MLP
+from .misc import polynomial_features, fit_linear_regression
 
 
 class ResidualNN:
