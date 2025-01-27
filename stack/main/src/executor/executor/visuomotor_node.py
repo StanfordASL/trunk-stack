@@ -3,11 +3,11 @@ import rclpy  # type: ignore
 from rclpy.node import Node  # type: ignore
 from rclpy.qos import QoSProfile  # type: ignore
 from interfaces.msg import TrunkRigidBodies, AllMotorsControl, SingleMotorControl
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point  # type: ignore
 from interfaces.srv import ControlSolver
 import numpy as np
-from sensor_msgs.msg import Image, CompressedImage
-from cv_bridge import CvBridge
+from sensor_msgs.msg import Image, CompressedImage  # type: ignore
+from cv_bridge import CvBridge  # type: ignore
 from .utils.data_aug import crop_image, plot_predictions_on_image
 import torch 
 from torchvision import transforms
