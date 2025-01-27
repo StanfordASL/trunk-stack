@@ -8,7 +8,7 @@ from interfaces.srv import ControlSolver
 import numpy as np
 from sensor_msgs.msg import Image, CompressedImage
 from cv_bridge import CvBridge
-from .data_aug_utils import crop_image, plot_predictions_on_image
+from .utils.data_aug import crop_image, plot_predictions_on_image
 import torch 
 from torchvision import transforms
 import torch.nn as nn

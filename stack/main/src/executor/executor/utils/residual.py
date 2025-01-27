@@ -4,8 +4,8 @@ Residual models to add control dependency to models of autonomous systems.
 
 import jax
 import jax.numpy as jnp
-from .nn import MLP
-from .misc import polynomial_features, fit_linear_regression
+from utils.nn import MLP
+from utils.misc import polynomial_features, fit_linear_regression
 
 
 class ResidualNN:
@@ -35,9 +35,15 @@ class ResidualBr:
     """
     B_r based residual dynamics model.
     """
-    def __init__(self, learned_B_r):
-        self.n_x, self.n_u = learned_B_r.n_x, learned_B_r.n_u
-        self.learned_B_r = learned_B_r
+    def __init__(self, learned_B_r=None, model_data=None):
+        if model_data is not None:
+            # NOTE: only for constant B_r implemented (else you would have to extract the polynomial degree)
+            self.n_x, self.n_u = model_data['B_r_coeff'].shape
+            self.learned_B_r = PolyBr(self.n_x, self.n_u, poly_degree=0)
+            self.learned_B_r.B_r_coeff = model_data['B_r_coeff']
+        else:
+            self.n_x, self.n_u = learned_B_r.n_x, learned_B_r.n_u
+            self.learned_B_r = learned_B_r
 
     def __call__(self, x, u):
         """
@@ -114,10 +120,13 @@ class PolyBr(LearnedBr):
         """
         Evaluate B_r(x).
         """
-        B_r = jnp.zeros((self.n_x, self.n_u))
-        x_poly = polynomial_features(x, self.poly_degree)
-        for i in range(self.n_u):
-            B_r = B_r.at[:, i].set((self.B_r_coeff[:, i*self.k:(i+1)*self.k] @ x_poly.T).squeeze())
+        if self.poly_degree == 0:
+            return self.B_r_coeff
+        else:
+            B_r = jnp.zeros((self.n_x, self.n_u))
+            x_poly = polynomial_features(x, self.poly_degree)
+            for i in range(self.n_u):
+                B_r = B_r.at[:, i].set((self.B_r_coeff[:, i*self.k:(i+1)*self.k] @ x_poly.T).squeeze())
         return B_r
 
 
