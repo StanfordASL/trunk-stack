@@ -4,7 +4,6 @@ Miscellaneous utility functions.
 
 import jax
 import jax.numpy as jnp
-from jax.scipy.stats import truncnorm
 from functools import partial
 from scipy import sparse
 from itertools import combinations_with_replacement
@@ -163,18 +162,22 @@ def trajectories_derivatives(trajs, time):
     return derivatives
 
 
-def polynomial_features(x, degree=1):
+def polynomial_features(x, degree=1, start_degree=0):
     """
-    Generate polynomial features for input array x up to a given degree,
+    Generate polynomial features for input array x from start_degree up to a given degree,
     including interaction features.
     """
     if x.ndim == 1:
         x = x.reshape(1, -1)
     n_samples, n_features = x.shape
-    features = [jnp.ones((n_samples, 1))]  # bias term
+    features = []
 
-    # Iterate over each degree up to the given degree
-    for d in range(1, degree + 1):
+    # Add bias (ones) term if start_degree is 0
+    if start_degree == 0:
+        features.append(jnp.ones((n_samples, 1)))
+
+    # Iterate over each degree from start_degree to the given degree
+    for d in range(max(1, start_degree), degree + 1):
         for item in combinations_with_replacement(range(n_features), d):
             # Multiply the features corresponding to each combination
             feature = x[:, item[0]]
@@ -182,7 +185,7 @@ def polynomial_features(x, degree=1):
                 feature = feature * x[:, i]
             features.append(feature[:, None])  # ensure feature is a 2D array
 
-    return jnp.concatenate(features, axis=1)
+    return jnp.concatenate(features, axis=1) if features else jnp.ones((n_samples, 1))
 
 
 def compute_rmse(ground_truth, predictions, norm_axis=1, mean_axis=-1):
@@ -231,25 +234,27 @@ def sample_truncated_normal(mean, cov, N, lower_bound, upper_bound, key_number=0
     return samples
 
 
-def exponential_smoothing(trajectories, alpha):
+def exponential_smoothing(data, alpha):
     """
-    Perform simple exponential smoothing on trajectories.
+    Perform simple exponential smoothing along the last axis.
     """
     if not (0 <= alpha <= 1):
         raise ValueError("Alpha should be between 0 and 1.")
 
-    N_traj, _, len_t = trajectories.shape
-    
-    # Initialize the smoothed array with the same shape
-    smoothed_trajectories = jnp.zeros_like(trajectories)
-    
-    # Loop over each trajectory
-    for i in range(N_traj):
-        # For each trajectory, initialize the first value
-        smoothed_trajectories = smoothed_trajectories.at[i, :, 0].set(trajectories[i, :, 0])
-        
-        # Apply exponential smoothing to the rest of the trajectory
-        for t in range(1, len_t):
-            smoothed_trajectories = smoothed_trajectories.at[i, :, t].set(alpha * trajectories[i, :, t] + (1 - alpha) * smoothed_trajectories[i, :, t - 1])
-    
-    return smoothed_trajectories
+    # Get the shape of data
+    data_shape = data.shape
+    len_t = data_shape[-1]
+
+    # Initialize smoothed_data with the same shape as data
+    smoothed_data = jnp.zeros_like(data)
+
+    # Initialize the first value
+    smoothed_data = smoothed_data.at[..., 0].set(data[..., 0])
+
+    # Apply exponential smoothing along the last axis
+    for t in range(1, len_t):
+        smoothed_data = smoothed_data.at[..., t].set(
+            alpha * data[..., t] + (1 - alpha) * smoothed_data[..., t - 1]
+        )
+
+    return smoothed_data

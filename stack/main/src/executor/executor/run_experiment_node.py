@@ -12,7 +12,7 @@ from interfaces.srv import ControlSolver
 from . import utils
 from .utils.ssm import DelaySSM
 from .utils.models import SSMR
-from .utils.residual import ResidualBr, NeuralBr
+from .utils.residual import ResidualBr
 
 
 class RunExperimentNode(Node):
