@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from controller.mpc.gusto import GuSTOConfig  # type: ignore
-from controller.mpc_solver_node import run_mpc_solver_node, MPCClientNode  # type: ignore
+from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
 from .utils.models import SSMR
 
 
