@@ -4,8 +4,8 @@ import jax.numpy as jnp
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from rclpy.qos import QoSProfile    # type: ignore
-from controller.mpc_solver_node import run_mpc_solver_node, MPCClientNode  # type: ignore
 from controller.mpc.gusto import GuSTOConfig  # type: ignore
+from controller.mpc_solver_node import run_mpc_solver_node, MPCClientNode  # type: ignore
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
 from .utils.models import SSMR
@@ -13,17 +13,14 @@ from .utils.models import SSMR
 
 class RunExperimentNode(Node):
     """
-    This node is responsible for running the main experiment,
-    which can be either trajectory tracking or user-defined position tracking.
+    This node is responsible for running the main experiment.
     """
     def __init__(self):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('experiment_type', 'traj'),                    # 'traj' or 'user' (what input is being tracked)
-            ('model_name', 'ssmr_200g'),                    # 'ssmr_200g' (what model to use)
             ('controller_type', 'mpc'),                     # 'ik' or 'mpc' (what controller to use)
-            ('results_name', 'base_experiment')             # name of the results file
+            ('results_name', 'test_experiment')             # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -74,8 +71,11 @@ class RunExperimentNode(Node):
             )
             x0 = jnp.zeros(self.model.n_x)
             self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref)
+            self.get_logger().info('mpc solver node created')
             # Create MPC solver service client
             self.mpc_client = MPCClientNode()
+            self.get_logger().info('mpc client node created')
+
         elif self.controller_type == 'ik':
             # Create control solver service client
             self.ik_client = self.create_client(
