@@ -5,7 +5,9 @@ LOCP (Linear Optimal Control Problem) implementation, adopted from original GuST
 import cvxpy as cp
 import numpy as np
 from scipy.linalg import block_diag
-from cvxpy.atoms.affine.reshape import reshape
+from functools import partial
+from cvxpy.atoms.affine.reshape import reshape as cvxpy_reshape
+reshape = partial(cvxpy_reshape, order='F')  # future proof
 import time
 import scipy.sparse as sp
 import jax
@@ -290,7 +292,7 @@ class LOCP:
         # Trust region constraints
         if self.tr_active:
             X_scale = self.x_scale.reshape(-1, 1).repeat(self.N + 1, axis=1)
-            dx = cp.reshape(self.x, (self.n_x, self.N + 1)) - self.xk.T
+            dx = reshape(self.x, (self.n_x, self.N + 1)) - self.xk.T
             dx_scaled = cp.multiply(X_scale, dx)
             constr += [cp.norm(dx_scaled, 'inf', axis=0) <= self.delta + self.st]
 

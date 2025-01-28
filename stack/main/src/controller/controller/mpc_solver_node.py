@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
-from rclpy.qos import QoSProfile    # type: ignore
 from scipy.interpolate import interp1d
 from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
@@ -32,7 +31,7 @@ def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=N
     (https://osqp.org/docs/interfaces/solver_settings.html)
     """
     assert t is not None or dt is not None, "Either t array or dt must be provided."
-    rclpy.init()
+    # rclpy.init()
     node = MPCSolverNode(model, config, x0, t=t, dt=dt, z=z, u=u, zf=zf,
                            U=U, X=X, Xf=Xf, dU=dU, **kwargs)
     rclpy.spin(node)
@@ -66,6 +65,7 @@ class MPCSolverNode(Node):
         self.model = model
         if dt is None and t is not None:
             self.dt = t[1] - t[0]
+        self.N = config.N
 
         # Define target values
         self.z = z
@@ -80,7 +80,7 @@ class MPCSolverNode(Node):
 
         # Set up GuSTO and run first solve with a simple initial guess
         u_init = jnp.zeros((config.N, self.model.n_u))
-        x_init, _ = self.model.rollout(x0, u_init, self.dt)
+        x_init = self.model.rollout(x0, u_init, self.dt)
         z, zf, u = self.get_target(0.0)
         self.gusto = GuSTO(model, config, x0, u_init, x_init, z=z, u=u,
                            zf=zf, U=U, X=X, Xf=Xf, dU=dU, **kwargs)
@@ -92,6 +92,7 @@ class MPCSolverNode(Node):
 
         # Define the service, which uses the gusto callback function
         self.srv = self.create_service(ControlSolver, 'mpc_solver', self.gusto_callback)
+        self.get_logger().info('MPC solver service has been created.')
 
     def gusto_callback(self, request, response):
         """
@@ -143,8 +144,8 @@ class MPCSolverNode(Node):
         else:
             z = None
 
-        # Get target zf term for cost function
-        if self.Qzf is not None and z is not None:
+        # Get target zf term for cost function 
+        if z is not None:
             zf = z[-1, :]
         else:
             zf = None
