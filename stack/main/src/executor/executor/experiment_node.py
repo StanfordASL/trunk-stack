@@ -30,7 +30,8 @@ class RunExperimentNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
+        # Old values: [0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
+        self.rest_position = jnp.array([0.10056, -0.10541, 0.10350, -0.09808, -0.20127, 0.10645, 0.09242, -0.31915, 0.09713])
 
         if self.controller_type == 'mpc':
             # Subscribe to current positions
@@ -106,8 +107,9 @@ class RunExperimentNode(Node):
     def service_callback(self, async_response):
         try:
             response = async_response.result()
-            # TODO: enable control execution
+            # TODO: enable control execution (for now just print what would be commanded)
             # self.publish_control_inputs(response.uopt)
+            self.get_logger().info(f'We would command the control inputs: {response}.')
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
