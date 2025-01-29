@@ -127,10 +127,10 @@ def adiabatic_step_sampling(control_variables, seed):
     return control_inputs_df
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, tip_radius = 0.325, mid_radius = 0.275, base_radius = 0.225, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, tip_radius = 0.40, mid_radius = 0.35, base_radius = 0.30, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
-    n_octaves = 30 # more octaves = more peaks in the graph (less smooth)
+    n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
     seeds = seed * np.arange(1,7) # one for each control input
 
     maxs = [tip_radius, mid_radius, base_radius, base_radius, mid_radius, tip_radius] # tip: 1, 6; mid: 2, 5; base: 3, 4
@@ -417,7 +417,7 @@ def main(data_type, sampling_type, seed=None):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
     # data_dir for mark's mac starts with '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data'
     # data_dir for workstation is '/home/trunk/Documents/trunk-stack/stack/main/data'
-    data_dir = os.getenv('TRUNK_DATA', '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data')
+    data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     if seed is not None:
         control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}_{seed}.csv')
     else:
