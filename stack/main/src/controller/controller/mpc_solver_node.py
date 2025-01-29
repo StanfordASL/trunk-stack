@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
-from rclpy.qos import QoSProfile    # type: ignore
 from scipy.interpolate import interp1d
 from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
@@ -32,7 +31,7 @@ def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=N
     (https://osqp.org/docs/interfaces/solver_settings.html)
     """
     assert t is not None or dt is not None, "Either t array or dt must be provided."
-    rclpy.init()
+    # rclpy.init()
     node = MPCSolverNode(model, config, x0, t=t, dt=dt, z=z, u=u, zf=zf,
                            U=U, X=X, Xf=Xf, dU=dU, **kwargs)
     rclpy.spin(node)
@@ -66,6 +65,7 @@ class MPCSolverNode(Node):
         self.model = model
         if dt is None and t is not None:
             self.dt = t[1] - t[0]
+        self.N = config.N
 
         # Define target values
         self.z = z
@@ -80,7 +80,7 @@ class MPCSolverNode(Node):
 
         # Set up GuSTO and run first solve with a simple initial guess
         u_init = jnp.zeros((config.N, self.model.n_u))
-        x_init, _ = self.model.rollout(x0, u_init, self.dt)
+        x_init = self.model.rollout(x0, u_init, self.dt)
         z, zf, u = self.get_target(0.0)
         self.gusto = GuSTO(model, config, x0, u_init, x_init, z=z, u=u,
                            zf=zf, U=U, X=X, Xf=Xf, dU=dU, **kwargs)
@@ -92,6 +92,7 @@ class MPCSolverNode(Node):
 
         # Define the service, which uses the gusto callback function
         self.srv = self.create_service(ControlSolver, 'mpc_solver', self.gusto_callback)
+        self.get_logger().info('MPC solver service has been created.')
 
     def gusto_callback(self, request, response):
         """
@@ -143,8 +144,8 @@ class MPCSolverNode(Node):
         else:
             z = None
 
-        # Get target zf term for cost function
-        if self.Qzf is not None and z is not None:
+        # Get target zf term for cost function 
+        if z is not None:
             zf = z[-1, :]
         else:
             zf = None
@@ -159,64 +160,3 @@ class MPCSolverNode(Node):
             u = None
 
         return z, zf, u
-
-
-class MPCClientNode(Node):
-    """
-    The client side of the MPC service. This object is used to query
-    the ROS node to solve a GuSTO problem.
-
-    Once a MPCSolverNode is running, instantiate this object and then use
-    send_request to send a query the GuSTO solver.
-    """
-
-    def __init__(self):
-        rclpy.init()
-        super().__init__('mpc_client')
-        self.cli = self.create_client(ControlSolver, 'mpc_solver')
-
-        # Wait until the solver node is up and running
-        while not self.cli.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('MPC solver not available, waiting...')
-
-        # Request message definition
-        self.req = ControlSolver.Request()
-
-    def send_request(self, t0, x0, wait=False):
-        """
-        :param t0:
-        :param x0:
-        :param wait: Boolean
-        :return:
-        """
-        self.req.t0 = t0
-        self.req.x0 = jnp2arr(x0)
-
-        self.future = self.cli.call_async(self.req)
-
-        if wait:
-            # Synchronous call, not compatible for real-time applications
-            rclpy.spin_until_future_complete(self, self.future)
-
-    def force_spin(self):
-        if not self.check_if_done():
-            rclpy.spin_once(self, timeout_sec=0)
-
-    def check_if_done(self):
-        return self.future.done()
-
-    def force_wait(self):
-        self.get_logger().warning('Overrides realtime compatibility, solve is too slow. Consider modifying problem')
-        rclpy.spin_until_future_complete(self, self.future)
-
-    def get_solution(self, n_x, n_u):
-        """
-        Obtain result from MPC solver.
-        """
-        res = self.future.result()
-        t = arr2jnp(res.t, 1, squeeze=True)
-        xopt = arr2jnp(res.xopt, n_x)
-        uopt = arr2jnp(res.uopt, n_u)
-        t_solve = res.solve_time
-
-        return t, uopt, xopt, t_solve

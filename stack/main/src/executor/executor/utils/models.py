@@ -4,6 +4,7 @@ Reduced order models of controlled systems.
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import copy
 from functools import partial
 from .ssm import DelaySSM, generate_ssm_predictions
@@ -57,7 +58,12 @@ class SSMR(ReducedOrderModel):
     """
     SSMR model combining a delay SSM with a residual dynamics model.
     """
-    def __init__(self, delay_ssm, residual_dynamics, obs_perf_matrix):
+    def __init__(self, delay_ssm=None, residual_dynamics=None, obs_perf_matrix=None, model_path=None):
+        if model_path is not None:
+            model_data = np.load(model_path)
+            delay_ssm = DelaySSM(model_data=model_data)
+            residual_dynamics = ResidualBr(model_data=model_data)
+            obs_perf_matrix = model_data['obs_perf_matrix']
         n_x = delay_ssm.SSMDim
         n_u = residual_dynamics.n_u
         n_z, n_y = obs_perf_matrix.shape
@@ -128,6 +134,21 @@ class SSMR(ReducedOrderModel):
         Decode the reduced state, x, into the observations, y.
         """
         return self.delay_ssm.decode(x)
+    
+    def save_model(self, path):
+        """
+        Save the SSMR model to a file.
+        """
+        np.savez(path,
+                 dynamics_coeff = self.delay_ssm.dynamics_coeff,
+                 dynamics_exp = self.delay_ssm.dynamics_exp,
+                 encoder_coeff = self.delay_ssm.encoder_coeff,
+                 encoder_exp = self.delay_ssm.encoder_exp,
+                 decoder_coeff = self.delay_ssm.decoder_coeff,
+                 decoder_exp = self.delay_ssm.decoder_exp,
+                 B_r_coeff = self.residual_dynamics.learned_B_r.B_r_coeff,
+                 obs_perf_matrix = self.obs_perf_matrix)
+
 
 class ParametricSSMR(ReducedOrderModel):
     """
@@ -428,12 +449,12 @@ def get_residual_labels(delay_ssm, trajs, ts, u_func=None, rnd_key=jax.random.PR
         raise ValueError("Either control inputs or control function must be provided.")
 
     N_trajs = len(trajs)
-    ys = trajectories_delay_embedding(trajs, delay_ssm.N_obs_delay)
+    ys = trajectories_delay_embedding(trajs, 1)
     x_trajs = []
     for traj in ys:
         x_traj = delay_ssm.encode(traj)
         # Apply padding of zeros to the end of the trajectory
-        x_traj = x_traj.at[:, -delay_ssm.N_obs_delay:].set(jnp.zeros((delay_ssm.SSMDim, delay_ssm.N_obs_delay)))
+        x_traj = x_traj.at[:, -1:].set(jnp.zeros((delay_ssm.SSMDim, 1)))
         x_trajs.append(x_traj)
     x_trajs = jnp.array(x_trajs)
 
@@ -460,19 +481,18 @@ def generate_ssmr_predictions(ssmr, trajs, ts, u_func=None, rnd_key=None, us=Non
     if us is None and u_func is None:
         raise ValueError("Either control inputs or control function must be provided.")
 
-    N_obs_delay = ssmr.delay_ssm.N_obs_delay
     N_trajs = len(trajs)
     us = u_func(ts, N_trajs, rnd_key) if us is None else us
-    n_z = ssmr.n_z
+    N_input_states = trajs.shape[1]
     ssmr_predictions = jnp.zeros_like(trajs)
     for i, traj in enumerate(trajs):
-        # Assume first N_obs_delay+1 observations are known
-        ssmr_predictions = ssmr_predictions.at[i, :, :N_obs_delay+1].set(traj[:, :N_obs_delay+1])
-        y0 = jnp.flip(traj[:, :(N_obs_delay+1)], 1).T.flatten()
+        # Assume first 2 observations are known
+        ssmr_predictions = ssmr_predictions.at[i, :, :2].set(traj[:, :2])
+        y0 = jnp.flip(traj[:, :2], 1).T.flatten()
         x0 = ssmr.delay_ssm.encode(y0)
-        xs = ssmr.rollout(x0, us[i, :, N_obs_delay+1:].T)[:-1].T  # exclude the last, (N+1)th, state 
+        xs = ssmr.rollout(x0, us[i, :, 2:].T)[:-1].T  # exclude the last, (N+1)th, state 
         ys = ssmr.delay_ssm.decode(xs)
-        ssmr_predictions = ssmr_predictions.at[i, :, N_obs_delay+1:].set(ys[:n_z, :])  # select the non-delayed predictions
+        ssmr_predictions = ssmr_predictions.at[i, :, 2:].set(ys[:N_input_states, :])  # select the non-delayed predictions
     return ssmr_predictions
 
 
