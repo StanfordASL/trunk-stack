@@ -1,6 +1,9 @@
 import os
 import jax
 import jax.numpy as jnp
+import logging
+logging.getLogger('jax').setLevel(logging.ERROR)
+jax.config.update('jax_platform_name', 'cpu')
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from rclpy.qos import QoSProfile    # type: ignore
