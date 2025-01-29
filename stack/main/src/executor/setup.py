@@ -22,11 +22,12 @@ setup(
     entry_points={
         'console_scripts': [
             'data_collection_node = executor.data_collection_node:main',
-            'run_experiment_node = executor.run_experiment_node:main',
-            'run_teleop_ik_node = executor.run_teleop_ik_node:main',
+            'experiment_node = executor.experiment_node:main',
+            'teleop_ik_node = executor.teleop_ik_node:main',
             'visuomotor_node = executor.visuomotor_node:main',
             'slider_node = executor.slider_node:main',
             'manual_decay_node = executor.manual_decay_node:main',
+            'mpc_initializer_node = executor.mpc_initializer_node:main',
         ],
     },
 )

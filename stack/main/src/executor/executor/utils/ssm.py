@@ -19,54 +19,64 @@ class DelaySSM:
     Delay SSM model constructed with SSMLearnPy and inferred using JAX.
     """
     def __init__(self,
-                 aut_trajs_obs,             # observed trajectories
-                 SSMDim: int,               # dimension of SSM
-                 SSMOrder: int,             # expansion order encoding/decoding
-                 ROMOrder: int,             # expansion order of reduced dynamics
-                 N_delay: int,              # number of delays
-                 N_obs_delay: int=None,     # number of observed delays, where None means no reparameterization
-                 orthogonalize: bool=True,  # whether to orthogonalize reduced coordinates
-                 encoder: dict=None,        # encoder coefficients and exponents
-                 ts=None,                   # time array
-                 dt=None,                   # time step
-                 ):
-        self.n_y = aut_trajs_obs.shape[1]
-
-        if N_obs_delay is not None:
-            assert N_obs_delay <= N_delay, "Number of observed delays must be less than or equal to total number of delays."
-            assert N_obs_delay >= SSMDim//self.n_y -1, "Number of observed delays must be at least SSMDim//n_y - 1."
-            self.p = self.n_y * (N_obs_delay + 1)  # total number of observed states
+                 aut_trajs_obs=None,             # observed trajectories
+                 SSMDim: int=None,               # dimension of SSM
+                 SSMOrder: int=None,             # expansion order encoding/decoding
+                 ROMOrder: int=None,             # expansion order of reduced dynamics
+                 N_delay: int=None,              # number of delays
+                 N_obs_delay: int=None,          # number of observed delays, where None means no reparameterization
+                 orthogonalize: bool=True,       # whether to orthogonalize reduced coordinates
+                 encoder: dict=None,             # encoder coefficients and exponents
+                 ts=None,                        # time array
+                 dt=None,                        # time step
+                 model_data=None):               # model data (load if exists)
+        if model_data is not None:
+            self.dynamics_coeff = jnp.array(model_data['dynamics_coeff'])
+            self.dynamics_exp = jnp.array(model_data['dynamics_exp'])
+            self.encoder_coeff = jnp.array(model_data['encoder_coeff'])
+            self.encoder_exp = jnp.array(model_data['encoder_exp'])
+            self.decoder_coeff = jnp.array(model_data['decoder_coeff'])
+            self.decoder_exp = jnp.array(model_data['decoder_exp'])
+            self.SSMDim = self.dynamics_coeff.shape[0]
+            self.n_y = self.decoder_coeff.shape[0]
         else:
-            self.p = self.n_y * (N_delay + 1)
-        assert ts is not None or dt is not None, "Either ts or dt must be provided."
-        
-        if ts is None:
-            steps = aut_trajs_obs.shape[-1]
-            ts = np.arange(0, steps * dt, dt)
-            print("Total time steps:", len(ts))
+            self.n_y = aut_trajs_obs.shape[1]
 
-        self.SSMDim = SSMDim
-        self.SSMOrder = SSMOrder
-        self.ROMOrder = ROMOrder
-        self.N_delay = N_delay
-        self.N_obs_delay = N_obs_delay
-        self.orthogonalize = orthogonalize
-        
-        delayed_trajs_np = self._compute_delayed_trajs(aut_trajs_obs, N_delay)
-        if encoder is not None:
-            # If encoder is provided, use the encoder to find reduced coordinates
-            self.encoder_coeff = jnp.array(encoder['coefficients'])
-            self.encoder_exp = jnp.array(encoder['exponents'])
-            reduced_delayed_trajs_np = []
-            for traj in delayed_trajs_np:
-                reduced_delayed_trajs_np.append(self.encode(traj[:self.p, :]))
-            reduced_delayed_trajs_np = np.array(reduced_delayed_trajs_np)
-        else:
-            # If no encoder is provided, find reduced coordinates using SVD
-            self.encoder_coeff = None
-            self.encoder_exp = None
-            reduced_delayed_trajs_np = self._find_reduced_coordinates(delayed_trajs_np, ts)
-        self._fit_ssm(delayed_trajs_np, reduced_delayed_trajs_np, ts, SSMOrder, ROMOrder)
+            if N_obs_delay is not None:
+                assert N_obs_delay <= N_delay, "Number of observed delays must be less than or equal to total number of delays."
+                assert N_obs_delay >= SSMDim//self.n_y -1, "Number of observed delays must be at least SSMDim//n_y - 1."
+                self.p = self.n_y * (N_obs_delay + 1)  # total number of observed states
+            else:
+                self.p = self.n_y * (N_delay + 1)
+            assert ts is not None or dt is not None, "Either ts or dt must be provided."
+            
+            if ts is None:
+                steps = aut_trajs_obs.shape[-1]
+                ts = np.arange(0, steps * dt, dt)
+                print("Total time steps:", len(ts))
+
+            self.SSMDim = SSMDim
+            self.SSMOrder = SSMOrder
+            self.ROMOrder = ROMOrder
+            self.N_delay = N_delay
+            self.N_obs_delay = N_obs_delay
+            self.orthogonalize = orthogonalize
+            
+            delayed_trajs_np = self._compute_delayed_trajs(aut_trajs_obs, N_delay)
+            if encoder is not None:
+                # If encoder is provided, use the encoder to find reduced coordinates
+                self.encoder_coeff = jnp.array(encoder['coefficients'])
+                self.encoder_exp = jnp.array(encoder['exponents'])
+                reduced_delayed_trajs_np = []
+                for traj in delayed_trajs_np:
+                    reduced_delayed_trajs_np.append(self.encode(traj[:self.p, :]))
+                reduced_delayed_trajs_np = np.array(reduced_delayed_trajs_np)
+            else:
+                # If no encoder is provided, find reduced coordinates using SVD
+                self.encoder_coeff = None
+                self.encoder_exp = None
+                reduced_delayed_trajs_np, self.V = self._find_reduced_coordinates(delayed_trajs_np, ts)
+            self._fit_ssm(delayed_trajs_np, reduced_delayed_trajs_np, ts, SSMOrder, ROMOrder)
 
     def _compute_delayed_trajs(self, aut_trajs_obs, N_delay):
         """
@@ -82,7 +92,7 @@ class DelaySSM:
         V, _, _ = randomized_svd(delayed_trajs_np_flat, n_components=self.SSMDim)
         reduced_delayed_trajs_np_flat = np.dot(delayed_trajs_np_flat.T, V)
         reduced_delayed_trajs_np = reduced_delayed_trajs_np_flat.reshape(len(delayed_trajs_np), len(ts), self.SSMDim).transpose(0, 2, 1)
-        return reduced_delayed_trajs_np
+        return reduced_delayed_trajs_np, V
 
     def _fit_ssm(self, delayed_trajs_np, reduced_delayed_trajs_np, ts, SSMOrder, ROMOrder):
         """
@@ -135,11 +145,11 @@ class DelaySSM:
             self.decoder_exp = jnp.array(ssm_paramonly.decoder.map_info['exponents'])
 
             # Get reduced dynamics
-            ssm_paramonly.get_reduced_dynamics(poly_degree=ROMOrder, alpha=50.0)
+            ssm_paramonly.get_reduced_dynamics(poly_degree=ROMOrder, alpha=1.0)
             self.dynamics_coeff = jnp.array(ssm_paramonly.reduced_dynamics.map_info['coefficients'])
             self.dynamics_exp = jnp.array(ssm_paramonly.reduced_dynamics.map_info['exponents'])
 
-        if self.encoder_coeff is None:
+        if self.encoder_coeff is None and self.N_obs_delay is not None:
             # Construct chart (encoder) with, potentially orthogonalized, reduced coordinates
             # Note that due to reparameterization, this map is not simply linear, but also polynomial
             ssm_chartonly = SSMLearn(
@@ -152,6 +162,9 @@ class DelaySSM:
             ssm_chartonly.get_parametrization(poly_degree=SSMOrder, alpha=1.0)
             self.encoder_coeff = jnp.array(ssm_chartonly.decoder.map_info['coefficients'])
             self.encoder_exp = jnp.array(ssm_chartonly.decoder.map_info['exponents'])
+        elif self.N_obs_delay is None:
+            self.encoder_coeff = self.V.T
+            self.encoder_exp = jnp.eye(self.p)
 
     @partial(jax.jit, static_argnums=(0,))
     def reduced_dynamics(self, x):
@@ -274,15 +287,14 @@ def generate_ssm_predictions(delay_ssm: DelaySSM, trajs, ts=None, dt=None):
         steps = trajs.shape[-1]
         ts = np.arange(0, steps * dt, dt)
 
-    N_obs_delay = delay_ssm.N_obs_delay
     N_input_states = trajs.shape[1]
     ssm_predictions = jnp.zeros_like(trajs)
     for i, traj in enumerate(trajs):
-        # Assume first N_obs_delay+1 observations are known
-        ssm_predictions = ssm_predictions.at[i, :, :N_obs_delay+1].set(traj[:, :N_obs_delay+1])
-        y0 = jnp.flip(traj[:, :(N_obs_delay+1)], 1).T.flatten()
+        # Assume first 2 observations are known
+        ssm_predictions = ssm_predictions.at[i, :, :2].set(traj[:, :2])
+        y0 = jnp.flip(traj[:, :2], 1).T.flatten()
         x0 = delay_ssm.encode(y0)
-        xs = delay_ssm.simulate_reduced(x0, ts[N_obs_delay+1:])
+        xs = delay_ssm.simulate_reduced(x0, ts[2:])
         ys = delay_ssm.decode(xs)
-        ssm_predictions = ssm_predictions.at[i, :, N_obs_delay+1:].set(ys[:N_input_states, :])
+        ssm_predictions = ssm_predictions.at[i, :, 2:].set(ys[:N_input_states, :])
     return ssm_predictions
