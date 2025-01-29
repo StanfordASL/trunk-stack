@@ -74,7 +74,7 @@ class RunExperimentNode(Node):
         )
         
         # Maintain current observations because of the delay embedding
-        # self.y = jnp.zeros(self.model.n_y)
+        self.y = None
 
         self.get_logger().info('Run experiment node has been started.')
 
@@ -89,13 +89,17 @@ class RunExperimentNode(Node):
         y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
 
         # Center the data around settled positions
-        y_centered = y_new - self.settled_position
+        y_centered = y_new - self.rest_position
 
         # Subselect bottom two segments
         y_centered_midtip = y_centered[3:]
 
         # Update the current observations, including *single* delay embedding
-        self.y = jnp.concatenate([y_centered_midtip, self.y[:6]])
+        if self.y is not None:
+            self.y = jnp.concatenate([y_centered_midtip, self.y[:6]])
+        else:
+            # At initialization use current obs. as delay embedding
+            self.y = jnp.tile(y_centered_midtip, 2)
 
         t0 = self.clock.now().nanoseconds / 1e9
         x0 = self.model.encode(self.y)
