@@ -27,7 +27,7 @@ Finally, begin an executor node:
 ```bash
 cd main/
 source install/setup.bash
-ros2 run executor run_teleop_ik_node 
+ros2 run executor teleop_ik_node 
 ```
 
 You can then follow the prompts in the TrunkTeleop App on the AVP to calibrate the virtual trunk to the hardware trunk, then start streaming and recording data from trunk teleoperation. 
