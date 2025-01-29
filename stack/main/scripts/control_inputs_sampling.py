@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 import matplotlib.pyplot as plt
 from itertools import product
+from perlin_noise import PerlinNoise
 
 
 def save_to_csv(df, control_inputs_file):
@@ -122,6 +123,45 @@ def adiabatic_step_sampling(control_variables, seed):
         inputs_df = pd.DataFrame(inputs, columns = control_inputs_df.columns)
         control_inputs_df = pd.concat([control_inputs_df, inputs_df], ignore_index=True)
 
+
+    return control_inputs_df
+
+# for creating smooth random control trajectories
+def perlin_noise_sampling(control_variables, seed, tip_radius = 0.325, mid_radius = 0.275, base_radius = 0.225, n_samples=15000):
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    
+    n_octaves = 30 # more octaves = more peaks in the graph (less smooth)
+    seeds = seed * np.arange(1,7) # one for each control input
+
+    maxs = [tip_radius, mid_radius, base_radius, base_radius, mid_radius, tip_radius] # tip: 1, 6; mid: 2, 5; base: 3, 4
+    mins = [-x for x in maxs]
+
+    control_inputs = np.zeros((n_samples, 6))
+    for i in range(len(seeds)):
+        noise = PerlinNoise(octaves=n_octaves, seed=int(seeds[i])) # noise for each control input
+        ctrl = np.array([noise(x / n_samples) for x in range(n_samples)])
+
+        # normalize perlin noise to safe range
+        ctrl = (ctrl - ctrl.min()) / (ctrl.max() - ctrl.min()) # normalize from 0 to 1
+        ctrl = ctrl * (maxs[i] - mins[i]) + mins[i] # scale from min to max
+        control_inputs[:,i] = ctrl
+    
+    # convert to df
+    ids = np.arange(n_samples)
+    ids = ids[:, np.newaxis]
+    inputs = np.hstack((ids, control_inputs))
+    inputs_df = pd.DataFrame(inputs, columns = control_inputs_df.columns)
+    control_inputs_df = pd.concat([control_inputs_df, inputs_df], ignore_index=True)
+
+    # plot the control inputs
+    fig, axes = plt.subplots(2, 3, figsize=(12, 6))  # 2 rows, 3 columns
+
+    for i, ax in enumerate(axes.flat):
+        ax.plot(control_inputs[:,i]) 
+        ax.set_title(f"U_{i+1}") 
+
+    plt.tight_layout()
+    plt.show()
 
     return control_inputs_df
 
@@ -375,8 +415,9 @@ def visualize_samples(control_inputs_df):
 
 def main(data_type, sampling_type, seed=None):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
-    # data_dir for mark's mac starts with '/Users/asltrunk/trunk-stack/stack/main/data'
-    data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+    # data_dir for mark's mac starts with '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data'
+    # data_dir for workstation is '/home/trunk/Documents/trunk-stack/stack/main/data'
+    data_dir = os.getenv('TRUNK_DATA', '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data')
     if seed is not None:
         control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}_{seed}.csv')
     else:
@@ -398,6 +439,8 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = adiabatic_step_sampling(control_variables, seed)
     elif sampling_type == 'adiabatic_global':
         control_inputs_df = adiabatic_global_sampling(control_variables, seed)
+    elif sampling_type == 'random_smooth':
+        control_inputs_df = perlin_noise_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -407,6 +450,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'circle'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', or 'adiabatic_global'
-    seed = 3                             # choose integer seed number
+    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
+    seed = 1                            # choose integer seed number
     main(data_type, sampling_type, seed)
