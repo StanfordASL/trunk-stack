@@ -104,17 +104,18 @@ class MPCSolverNode(Node):
         t, xopt, uopt, zopt
         """
         t0 = request.t0
-        x0 = arr2jnp(request.x0, self.model.n_x, squeeze=True)
+        y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
+        x0 = self.model.encode(y0)
 
         # Get target values at proper times by interpolating
         z, zf, u = self.get_target(t0)
 
         # Get initial guess
         idx0 = jnp.argwhere(self.topt >= t0)[0, 0]
-        u_init = self.uopt[-1, :].reshape(1, -1).repeat(self.N, axis=0)
-        u_init[0:self.N - idx0] = self.uopt[idx0:, :]
-        x_init = self.xopt[-1, :].reshape(1, -1).repeat(self.N + 1, axis=0)
-        x_init[0:self.N + 1 - idx0] = self.xopt[idx0:, :]
+        u_init = jnp.tile(self.uopt[-1, :].reshape(1, -1), (self.N, 1))
+        u_init = u_init.at[:self.N - idx0].set(self.uopt[idx0:, :])
+        x_init = jnp.tile(self.xopt[-1, :].reshape(1, -1), (self.N + 1, 1))
+        x_init = x_init.at[:self.N + 1 - idx0].set(self.xopt[idx0:, :])
 
         # Solve GuSTO and get solution
         self.gusto.solve(x0, u_init, x_init, z=z, zf=zf, u=u)

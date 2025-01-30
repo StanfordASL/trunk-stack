@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import logging
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
+jax.config.update("jax_enable_x64", True)
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from rclpy.qos import QoSProfile    # type: ignore
@@ -76,10 +77,10 @@ class RunExperimentNode(Node):
         # Maintain current observations because of the delay embedding
         self.y = None
 
-        self.get_logger().info('Run experiment node has been started.')
-
+        # Keep a clock for timing
         self.clock = self.get_clock()
-        # self.start_time = self.clock.now().nanoseconds / 1e9
+
+        self.get_logger().info('Run experiment node has been started.')
 
     def mocap_listener_callback(self, msg):
         if self.debug:
@@ -100,20 +101,22 @@ class RunExperimentNode(Node):
         else:
             # At initialization use current obs. as delay embedding
             self.y = jnp.tile(y_centered_midtip, 2)
+            # And record starting time
+            self.start_time = self.clock.now().nanoseconds / 1e9
 
-        t0 = self.clock.now().nanoseconds / 1e9
-        x0 = self.model.encode(self.y)
+        t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
         # Call the service
-        self.mpc_client.send_request(t0, x0, wait=False)
-        self.mpc_client.future.add_done_callback(self.service_callback)
+        self.send_request(t0, self.y, wait=False)
+        self.future.add_done_callback(self.service_callback)
 
     def service_callback(self, async_response):
         try:
             response = async_response.result()
             # TODO: enable control execution (for now just print what would be commanded)
             # self.publish_control_inputs(response.uopt)
-            self.get_logger().info(f'We would command the control inputs: {response}.')
+            # TODO: check if this uopt needs formatting or not (eg use get_solution func.)
+            self.get_logger().info(f'We would command the control inputs: {response.uopt}.')
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
@@ -126,29 +129,29 @@ class RunExperimentNode(Node):
         if self.debug:
             self.get_logger().info(f'Published new motor control setting: {control_inputs}.')
 
-    def send_request(self, t0, x0, wait=False):
+    def send_request(self, t0, y0, wait=False):
         """
         Send request to MPC solver.
         """
         self.req.t0 = t0
-        self.req.x0 = jnp2arr(x0)
+        self.req.y0 = jnp2arr(y0)
         self.future = self.mpc_client.call_async(self.req)
 
         if wait:
             # Synchronous call, not compatible for real-time applications
             rclpy.spin_until_future_complete(self, self.future)
 
-    def get_solution(self, n_x, n_u):
-        """
-        Obtain result from MPC solver.
-        """
-        res = self.future.result()
-        t = arr2jnp(res.t, 1, squeeze=True)
-        xopt = arr2jnp(res.xopt, n_x)
-        uopt = arr2jnp(res.uopt, n_u)
-        t_solve = res.solve_time
+    # def get_solution(self, n_x, n_u):
+    #     """
+    #     Obtain result from MPC solver.
+    #     """
+    #     res = self.future.result()
+    #     t = arr2jnp(res.t, 1, squeeze=True)
+    #     xopt = arr2jnp(res.xopt, n_x)
+    #     uopt = arr2jnp(res.uopt, n_u)
+    #     t_solve = res.solve_time
 
-        return t, uopt, xopt, t_solve
+    #     return t, uopt, xopt, t_solve
 
     def force_spin(self):
         if not self.check_if_done():

@@ -1,14 +1,11 @@
-# Dimensions
-int8 horizon
-int8 n_u
-int8 n_x
-int8 n_z
-
 # Time (seconds) associated with x0
 float64 t0
 
-# Initial condition array
+# Initial state array
 float64[] x0
+
+# Initial observation array
+float64[] y0
 
 # Initial guess for optimal u for GuSTO
 float64[] u_init
