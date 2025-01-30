@@ -16,22 +16,27 @@ def mat_to_npz(mat_filepath, npz_filepath):
         None: If there is an error during the process.
     """
 
-    try:
-        mat_data = scipy.io.loadmat(mat_filepath)  # Load the.mat file
-    except FileNotFoundError:
-        print(f"Error:.mat file not found at {mat_filepath}")
-        return None
-    except Exception as e:  # Catch other potential loading errors
-        print(f"Error loading.mat file: {e}")
-        return None
 
-    try:
-        np.savez(npz_filepath, **mat_data)  # Save as.npz, unpacking the dictionary
-        print(f"Successfully saved as.npz at {npz_filepath}")
-        return npz_filepath
-    except Exception as e:
-        print(f"Error saving.npz file: {e}")
-        return None
+    mat_data = scipy.io.loadmat(mat_filepath)
+    encoder_coeff, encoder_exp = mat_data['Vfinal'], mat_data['exps_V']
+    decoder_coeff, decoder_exp = mat_data['M'], mat_data['exps']
+    dynamics_coeff, dynamics_exp = mat_data['R'], mat_data['exps_r']
+    B_r_coeff = mat_data['B_red']
+    obs_perf_matrix = np.zeros((3, 12))  # TODO: generalize this
+    obs_perf_matrix[:, :3] = np.eye(3)
+    np.savez(
+        npz_filepath,
+        encoder_coeff=encoder_coeff,
+        encoder_exp=encoder_exp,
+        decoder_coeff=decoder_coeff,
+        decoder_exp=decoder_exp,
+        dynamics_coeff=dynamics_coeff,
+        dynamics_exp=dynamics_exp,
+        B_r_coeff=B_r_coeff,
+        obs_perf_matrix=obs_perf_matrix,
+    )
+    print(f"Successfully saved as.npz at {npz_filepath}")
+    return npz_filepath
 
 
 def main():

@@ -80,7 +80,13 @@ class RunExperimentNode(Node):
         # Keep a clock for timing
         self.clock = self.get_clock()
 
+        self.mpc_exec_timer = self.create_timer(0.08, self.mpc_executor_callback)
+
         self.get_logger().info('Run experiment node has been started.')
+
+    def mpc_executor_callback(self):
+        self.send_request(self.t0, self.y, wait=False)
+        self.future.add_done_callback(self.service_callback)
 
     def mocap_listener_callback(self, msg):
         if self.debug:
@@ -92,23 +98,24 @@ class RunExperimentNode(Node):
         # Center the data around settled positions
         y_centered = y_new - self.rest_position
 
-        # Subselect bottom two segments
-        y_centered_midtip = y_centered[3:]
+        # Subselect tip
+        y_centered_tip = y_centered[-3:]
 
-        # Update the current observations, including *single* delay embedding
+        # Update the current observations, including 3 delay embeddings
         if self.y is not None:
-            self.y = jnp.concatenate([y_centered_midtip, self.y[:6]])
+            self.y = jnp.concatenate([y_centered_tip, self.y[:-3]])
         else:
             # At initialization use current obs. as delay embedding
-            self.y = jnp.tile(y_centered_midtip, 2)
+            self.y = jnp.tile(y_centered_tip, 4)
             # And record starting time
             self.start_time = self.clock.now().nanoseconds / 1e9
 
-        t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
+        self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
+        self.get_logger().info(f'{self.t0}')
 
         # Call the service
-        self.send_request(t0, self.y, wait=False)
-        self.future.add_done_callback(self.service_callback)
+        # self.send_request(t0, self.y, wait=False)
+        # self.future.add_done_callback(self.service_callback)
 
     def service_callback(self, async_response):
         try:
