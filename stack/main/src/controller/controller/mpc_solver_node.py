@@ -87,6 +87,9 @@ class MPCSolverNode(Node):
         self.xopt, self.uopt, _, _ = self.gusto.get_solution()
         self.topt = self.dt * jnp.arange(self.N + 1)
 
+        # Also force JIT-compilation of encoder mapping
+        _ = model.encode(jnp.zeros(12)) 
+
         # Initialize the ROS node
         super().__init__('mpc_solver_node')
 
@@ -106,6 +109,9 @@ class MPCSolverNode(Node):
         t0 = request.t0
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
         x0 = self.model.encode(y0)
+        self.get_logger().info(f'{x0}')
+        self.get_logger().info(f'{t0}')
+        self.get_logger().info(f'{self.topt}')
 
         # Get target values at proper times by interpolating
         z, zf, u = self.get_target(t0)

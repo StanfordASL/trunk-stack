@@ -10,6 +10,7 @@ from rclpy.node import Node         # type: ignore
 from controller.mpc.gusto import GuSTOConfig  # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
 from .utils.models import SSMR
+from .utils.misc import HyperRectangle
 
 
 class MPCInitializerNode(Node):
@@ -27,8 +28,9 @@ class MPCInitializerNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Generate reference trajectory
-        # TODO: use figure eight instead for better init.
-        z_ref, t = self._generate_ref_trajectory(4, 0.01, 'circle', 0.15)
+        # z_ref, t = self._generate_ref_trajectory(6, 0.01, 'figure_eight', 0.1)
+        t = jnp.arange(0, 120, 0.01)
+        z_ref = jnp.zeros((len(t), 3))
 
         # Load the model
         self._load_model()
@@ -42,8 +44,11 @@ class MPCInitializerNode(Node):
             f_char=0.5*jnp.ones(self.model.n_x),
             N=7
         )
+        U = HyperRectangle([0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
+                           [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3])
+        dU = HyperRectangle([0.1]*6, [-0.1]*6)
         x0 = jnp.zeros(self.model.n_x)
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref)
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref, U=U, dU=dU)
 
     def _load_model(self):
         """
