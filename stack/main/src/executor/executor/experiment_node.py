@@ -73,14 +73,14 @@ class RunExperimentNode(Node):
             '/all_motors_control',
             QoSProfile(depth=10)
         )
-        
+
         # Maintain current observations because of the delay embedding
         self.y = None
 
         # Keep a clock for timing
         self.clock = self.get_clock()
 
-        self.mpc_exec_timer = self.create_timer(0.08, self.mpc_executor_callback)
+        self.mpc_exec_timer = self.create_timer(0.05, self.mpc_executor_callback, clock=self.clock)
 
         self.get_logger().info('Run experiment node has been started.')
 
@@ -111,11 +111,6 @@ class RunExperimentNode(Node):
             self.start_time = self.clock.now().nanoseconds / 1e9
 
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
-        self.get_logger().info(f'{self.t0}')
-
-        # Call the service
-        # self.send_request(t0, self.y, wait=False)
-        # self.future.add_done_callback(self.service_callback)
 
     def service_callback(self, async_response):
         try:
@@ -123,7 +118,13 @@ class RunExperimentNode(Node):
             # TODO: enable control execution (for now just print what would be commanded)
             # self.publish_control_inputs(response.uopt)
             # TODO: check if this uopt needs formatting or not (eg use get_solution func.)
-            self.get_logger().info(f'We would command the control inputs: {response.uopt}.')
+            if response.done:
+                self.get_logger().info('Trajectory is finished!')
+                self.destroy_node()
+                rclpy.shutdown()
+            else:
+                self.publish_control_inputs(response.uopt[:6])
+                self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
