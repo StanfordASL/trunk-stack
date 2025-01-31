@@ -5,6 +5,7 @@ from rclpy.node import Node         # type: ignore
 from scipy.interpolate import interp1d
 from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
+import time
 
 
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
@@ -66,6 +67,7 @@ class MPCSolverNode(Node):
         if dt is None and t is not None:
             self.dt = t[1] - t[0]
         self.N = config.N
+        self.t = t
 
         # Define target values
         self.z = z
@@ -79,16 +81,16 @@ class MPCSolverNode(Node):
                                      bounds_error=False, fill_value=(u[0, :], u[-1, :]))
 
         # Set up GuSTO and run first solve with a simple initial guess
-        u_init = jnp.zeros((config.N, self.model.n_u))
-        x_init = self.model.rollout(x0, u_init, self.dt)
+        self.u_init = jnp.zeros((config.N, self.model.n_u))
+        self.x_init = self.model.rollout(x0, self.u_init, self.dt)
         z, zf, u = self.get_target(0.0)
-        self.gusto = GuSTO(model, config, x0, u_init, x_init, z=z, u=u,
+        self.gusto = GuSTO(model, config, x0, self.u_init, self.x_init, z=z, u=u,
                            zf=zf, U=U, X=X, Xf=Xf, dU=dU, **kwargs)
         self.xopt, self.uopt, _, _ = self.gusto.get_solution()
         self.topt = self.dt * jnp.arange(self.N + 1)
 
-        # Also force JIT-compilation of encoder mapping
-        _ = model.encode(jnp.zeros(12)) 
+        # Also force JIT-compilation of encoder mapping and conversions
+        model.encode(jnp.zeros(12))
 
         # Initialize the ROS node
         super().__init__('mpc_solver_node')
@@ -107,24 +109,59 @@ class MPCSolverNode(Node):
         t, xopt, uopt, zopt
         """
         t0 = request.t0
+        if t0 > self.t[-1]:
+            response.done = True
+        else:
+            response.done = False
+        
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
         x0 = self.model.encode(y0)
-        self.get_logger().info(f'{x0}')
-        self.get_logger().info(f'{t0}')
-        self.get_logger().info(f'{self.topt}')
 
         # Get target values at proper times by interpolating
         z, zf, u = self.get_target(t0)
 
         # Get initial guess
-        idx0 = jnp.argwhere(self.topt >= t0)[0, 0]
-        u_init = jnp.tile(self.uopt[-1, :].reshape(1, -1), (self.N, 1))
-        u_init = u_init.at[:self.N - idx0].set(self.uopt[idx0:, :])
-        x_init = jnp.tile(self.xopt[-1, :].reshape(1, -1), (self.N + 1, 1))
-        x_init = x_init.at[:self.N + 1 - idx0].set(self.xopt[idx0:, :])
+        idx0 = jnp.searchsorted(self.topt, t0, side='right')
+        # new_start_time = time.time()
+        # for i in range(self.N - idx0):
+        #     self.u_init = self.u_init.at[i].set(self.uopt[idx0+i, :])
+        # for i in range(self.N - idx0, self.N):
+        #     self.u_init = self.u_init.at[i].set(self.uopt[-1, :])
+        # for i in range(self.N + 1 - idx0):
+        #     self.x_init = self.x_init.at[i].set(self.xopt[idx0+i, :])
+        # for i in range(self.N + 1 - idx0, self.N + 1):
+        #     self.x_init = self.x_init.at[i].set(self.xopt[-1, :])
+        # self.u_init = self.u_init.at[:self.N-idx0].set(self.uopt[idx0:self.N, :])
+        # self.u_init = self.u_init.at[self.N-idx0:].set(self.uopt[-1, :])
+        # self.x_init = self.x_init.at[:self.N+1-idx0].set(self.xopt[idx0:self.N+1, :])
+        # self.x_init = self.x_init.at[self.N+1-idx0:].set(self.xopt[-1, :])
+        
+        # NOTE: time spent on getting initial condition is out of proportion
+        n_remaining_u = self.N - idx0
+        n_remaining_x = self.N + 1 - idx0
+
+        u_init_temp = self.u_init.copy()  # Create a copy to modify
+        x_init_temp = self.x_init.copy()
+
+        for i in range(n_remaining_u):
+            u_init_temp = u_init_temp.at[i].set(self.uopt[idx0 + i, :])
+        for i in range(n_remaining_u, self.N):
+            u_init_temp = u_init_temp.at[i].set(self.uopt[-1, :])
+
+        for i in range(n_remaining_x):
+            x_init_temp = x_init_temp.at[i].set(self.xopt[idx0 + i, :])
+        for i in range(n_remaining_x, self.N + 1):
+            x_init_temp = x_init_temp.at[i].set(self.xopt[-1, :])
+
+        self.u_init = u_init_temp  # Assign the modified copy back
+        self.x_init = x_init_temp
+
+        # init_time = time.time() - new_start_time
+        # self.get_logger().info(f"Init time: {init_time:.4f} seconds")
 
         # Solve GuSTO and get solution
-        self.gusto.solve(x0, u_init, x_init, z=z, zf=zf, u=u)
+        self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
+
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
 
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)

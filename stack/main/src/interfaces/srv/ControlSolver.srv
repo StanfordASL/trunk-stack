@@ -34,5 +34,8 @@ float64[] uopt
 # Optimal z trajectory
 float64[] zopt
 
-# solve time
+# Solve time
 float64 solve_time
+
+# If task finished
+bool done
