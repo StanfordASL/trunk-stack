@@ -4,7 +4,7 @@ import time
 import rclpy  # type: ignore
 from rclpy.node import Node  # type: ignore
 from rclpy.qos import QoSProfile  # type: ignore
-from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkMarkers, TrunkRigidBodies
+from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkMarkers, TrunkRigidBodies, AllMotorsStatus
 
 
 def load_control_inputs(control_input_csv_file):
@@ -48,7 +48,8 @@ class DataCollectionNode(Node):
             ('mocap_type', 'rigid_bodies'),     # 'rigid_bodies' or 'markers'
             ('control_type', 'output'),         # 'output' or 'position'
             ('results_name', 'observations'),
-            ('input_num', 1)                     # number of the input file type i.e. control_inputs_controlled_1
+            ('input_num', 1)                    # number of the input file type i.e. control_inputs_controlled_1
+            ('collect_angles', True)            # to collect motor angle measurements
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -61,6 +62,7 @@ class DataCollectionNode(Node):
         self.control_type = self.get_parameter('control_type').value
         self.results_name = self.get_parameter('results_name').value
         self.input_num = str(self.get_parameter('input_num').value)
+        self.collect_angles = self.get_parameter('collect_angles').value
 
         self.is_collecting = False
         self.ic_settled = False
@@ -78,6 +80,14 @@ class DataCollectionNode(Node):
             raise ValueError('Invalid data type: ' + self.data_type + '. Valid options are: "steady_state" or "dynamic".')
         self.control_inputs_dict = load_control_inputs(control_input_csv_file)
         self.num_control_inputs = len(self.control_inputs_dict)
+
+        if self.collect_angles:
+            self.subscription_angles = self.create_subscription(
+                AllMotorsStatus,
+                '/all_motors_status',
+                self.listener_callback,
+                QoSProfile(depth=10)
+            )
 
         if self.mocap_type == 'markers':
             self.subscription_markers = self.create_subscription(
@@ -258,6 +268,14 @@ class DataCollectionNode(Node):
         self.controls_publisher.publish(control_message)
         if self.debug:
             self.get_logger().info('Published new motor control setting: ' + str(control_inputs))
+
+    def extract_angles(self, msg): #TODO
+        statuses = msg.motors_status
+        angles = []
+        for status in statuses:
+            angle = status.position
+            angles.append(angle)
+        return angles
 
     def extract_positions(self, msg):
         if self.mocap_type == 'markers':

@@ -8,9 +8,50 @@ jax.config.update("jax_enable_x64", True)
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from rclpy.qos import QoSProfile    # type: ignore
-from controller.mpc_solver_node import arr2jnp, jnp2arr  # type: ignore
+from controller.mpc_solver_node import jnp2arr  # type: ignore
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
+
+
+def check_control_inputs(u_opt, u_opt_previous):
+    # reject vector norms of u that are too large
+    tip_range, mid_range, base_range = 0.45, 0.35, 0.3
+
+    u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
+
+    # First we clip to max and min values
+    u1 = jnp.clip(u1, -tip_range, tip_range)
+    u6 = jnp.clip(u6, -tip_range, tip_range)
+    u2 = jnp.clip(u2, -mid_range, mid_range)
+    u5 = jnp.clip(u5, -mid_range, mid_range)
+    u3 = jnp.clip(u3, -base_range, base_range)
+    u4 = jnp.clip(u4, -base_range, base_range)
+
+    # Compute control input vectors
+    u1_vec = u1 * jnp.array([-jnp.cos(15 * jnp.pi/180), jnp.sin(15 * jnp.pi/180)])
+    u2_vec = u2 * jnp.array([jnp.cos(45 * jnp.pi/180), jnp.sin(45 * jnp.pi/180)])
+    u3_vec = u3 * jnp.array([-jnp.cos(15 * jnp.pi/180), -jnp.sin(15 * jnp.pi/180)])
+    u4_vec = u4 * jnp.array([-jnp.cos(75 * jnp.pi/180), jnp.sin(75 * jnp.pi/180)])
+    u5_vec = u5 * jnp.array([jnp.cos(45 * jnp.pi/180), -jnp.sin(45 * jnp.pi/180)])
+    u6_vec = u6 * jnp.array([-jnp.cos(75 * jnp.pi/180), -jnp.sin(75 * jnp.pi/180)])
+
+    # Calculate the norm based on the constraint
+    vector_sum = (
+        0.75 * (u3_vec + u4_vec) +
+        1.0 * (u2_vec + u5_vec) +
+        1.4 * (u1_vec + u6_vec)
+    )
+    norm_value = jnp.linalg.norm(vector_sum)
+
+    # Check the constraint: if the constraint is met, then keep previous control command
+    if norm_value > 0.8:
+        print(f'Sample {u_opt} got rejected')
+        u_opt = u_opt_previous
+    else:
+        # Else the clipped command is published
+        u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
+
+    return u_opt
 
 
 class RunExperimentNode(Node):
@@ -32,7 +73,7 @@ class RunExperimentNode(Node):
 
         # Settled positions of the rigid bodies
         # Old values: [0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
-        self.rest_position = jnp.array([0.10056, -0.10541, 0.10350, -0.09808, -0.20127, 0.10645, 0.09242, -0.31915, 0.09713])
+        self.rest_position = jnp.array([0.10056, -0.10541, 0.10350, 0.09808, -0.20127, 0.10645, 0.09242, -0.31915, 0.09713])
 
         if self.controller_type == 'mpc':
             # Subscribe to current positions
@@ -77,6 +118,9 @@ class RunExperimentNode(Node):
         # Maintain current observations because of the delay embedding
         self.y = None
 
+        # Maintain previous control inputs
+        self.uopt_previous = jnp.zeros(6)
+
         # Keep a clock for timing
         self.clock = self.get_clock()
 
@@ -100,6 +144,7 @@ class RunExperimentNode(Node):
 
         # Subselect tip
         y_centered_tip = y_centered[-3:]
+        # self.get_logger().info(f'y_centered: {y_centered_tip}.')
 
         # Update the current observations, including 3 delay embeddings
         if self.y is not None:
@@ -115,16 +160,15 @@ class RunExperimentNode(Node):
     def service_callback(self, async_response):
         try:
             response = async_response.result()
-            # TODO: enable control execution (for now just print what would be commanded)
-            # self.publish_control_inputs(response.uopt)
-            # TODO: check if this uopt needs formatting or not (eg use get_solution func.)
             if response.done:
                 self.get_logger().info('Trajectory is finished!')
                 self.destroy_node()
                 rclpy.shutdown()
             else:
-                self.publish_control_inputs(response.uopt[:6])
-                self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
+                safe_control_inputs = check_control_inputs(response.uopt[:6], self.uopt_previous)
+                self.publish_control_inputs(safe_control_inputs.tolist())
+                self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
+                self.uopt_previous = safe_control_inputs
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
@@ -148,18 +192,6 @@ class RunExperimentNode(Node):
         if wait:
             # Synchronous call, not compatible for real-time applications
             rclpy.spin_until_future_complete(self, self.future)
-
-    # def get_solution(self, n_x, n_u):
-    #     """
-    #     Obtain result from MPC solver.
-    #     """
-    #     res = self.future.result()
-    #     t = arr2jnp(res.t, 1, squeeze=True)
-    #     xopt = arr2jnp(res.xopt, n_x)
-    #     uopt = arr2jnp(res.uopt, n_u)
-    #     t_solve = res.solve_time
-
-    #     return t, uopt, xopt, t_solve
 
     def force_spin(self):
         if not self.check_if_done():
