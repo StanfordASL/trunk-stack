@@ -28,7 +28,7 @@ class MPCInitializerNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(8, 0.01, 'circle', 0.125)
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.1)
         # t = jnp.arange(0, 5, 0.01)
         # z_ref = jnp.zeros((len(t), 3))
 
@@ -37,16 +37,16 @@ class MPCInitializerNode(Node):
 
         # MPC configuration
         Qz = jnp.eye(self.model.n_z)
-        Qz = Qz.at[1, 1].set(0)
+        # Qz = Qz.at[1, 1].set(0)
         Qzf = jnp.eye(self.model.n_z)
-        Qzf = Qzf.at[1, 1].set(0)
+        # Qzf = Qzf.at[1, 1].set(0)
         gusto_config = GuSTOConfig(
             Qz=Qz,
             Qzf=10*Qzf,
-            R=0.05*jnp.eye(self.model.n_u),
+            R=0.04*jnp.eye(self.model.n_u),
             x_char=0.05*jnp.ones(self.model.n_x),
             f_char=0.5*jnp.ones(self.model.n_x),
-            N=6
+            N=9
         )
         U = HyperRectangle([0.4, 0.4, 0.4, 0.4, 0.4, 0.4],
                            [-0.4, -0.4, -0.4, -0.4, -0.4, -0.4])
