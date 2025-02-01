@@ -48,8 +48,8 @@ class DataCollectionNode(Node):
             ('mocap_type', 'rigid_bodies'),     # 'rigid_bodies' or 'markers'
             ('control_type', 'output'),         # 'output' or 'position'
             ('results_name', 'observations'),
-            ('input_num', 1)                    # number of the input file type i.e. control_inputs_controlled_1
-            ('collect_angles', True)            # to collect motor angle measurements
+            ('input_num', 1),                    # number of the input file type i.e. control_inputs_controlled_1
+            ('collect_angles', False)            # to collect motor angle measurements
         ])
 
         self.debug = self.get_parameter('debug').value
