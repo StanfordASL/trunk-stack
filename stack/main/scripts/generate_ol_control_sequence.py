@@ -79,7 +79,7 @@ def sine_trajectory():
     df = df[['ID'] + [f'u{i+1}' for i in range(n_u)]]
     return df
 
-def spline_interpolated_beta(seed=0): #TODO: try moving average smoothing instead
+def smooth_lin_interpolated_beta(seed=0):
     # Parameters
     sample_size = 90
     sec_per_sample = 1
@@ -131,38 +131,38 @@ def spline_interpolated_beta(seed=0): #TODO: try moving average smoothing instea
         else:   
             rejection_count += 1
             print(f'Rejected {u1, u2, u3, u4, u5, u6} count: {rejection_count}')
-
-
-    print(max(max(valid_samples)))
     
     valid_samples = np.array(valid_samples)
-    t = np.arange(sample_size) # evenly space arbitrary timesteps 
-    t_interp = np.linspace(0,sample_size-1, N)
-    print(len(t))
-    print(len(valid_samples[:,0]))
-    print(len(t_interp))
 
     # Interpolate these sampled control inputs to get smoother signal at high sampling rate
+    interp_points = np.linspace(0, 1, sec_per_sample * sampling_rate)
     interpolated_data = []
-    for i in range(6):
-        cs = PchipInterpolator(t, valid_samples[:,i])
-        u_interp = cs(t_interp)
-        interpolated_data.append(u_interp)
-    
+    for i in range(sample_size - 1):
+        start = valid_samples[i]
+        end = valid_samples[i + 1]
+        interpolated = np.outer(1 - interp_points, start) + np.outer(interp_points, end)
+        interpolated_data.append(interpolated)
 
     interpolated_data = np.array(interpolated_data).reshape(-1, 6)
+    print(interpolated_data.shape)
+    window_size = 50 # in 1/100s
+    interpolated_data = np.apply_along_axis(
+        lambda x: np.convolve(x, np.ones(window_size)/window_size, mode='valid'),
+        axis=0,
+        arr=interpolated_data
+    ) # smooth with moving average filter
+
 
     IDs = np.arange(len(interpolated_data))
     control_inputs_df = pd.DataFrame(interpolated_data, columns=control_variables)
     control_inputs_df.insert(0, 'ID', IDs)
-
 
     # plot the control inputs
     fig, axes = plt.subplots(2, 3, figsize=(12, 6))  # 2 rows, 3 columns
 
     for i, ax in enumerate(axes.flat):
         ax.plot(interpolated_data[:,i]) 
-        ax.scatter(t*N/sample_size, valid_samples[:,i], c='orange')
+        ax.scatter(np.arange(len(valid_samples))*sec_per_sample*sampling_rate, valid_samples[:,i], c='orange')
         ax.set_title(f"U_{i+1}") 
 
     plt.tight_layout()
@@ -260,8 +260,8 @@ def main(control_inputs_file, control_type, seed):
         df = random_trajectory()
     elif control_type == 'linear_interp_beta':
         df = linear_interpolated_beta(seed=seed)
-    elif control_type == 'spline_interp_beta':
-        df = spline_interpolated_beta(seed=seed)
+    elif control_type == 'smooth_interp_beta':
+        df = smooth_lin_interpolated_beta(seed=seed)
     elif control_type == 'sinusoidal':
         df = sine_trajectory()
     df.to_csv(control_inputs_file, index=False)
@@ -269,7 +269,7 @@ def main(control_inputs_file, control_type, seed):
 
 if __name__ == '__main__':
     seed = 1
-    control_type = 'spline_interp_beta'  # 'random', 'linear_interp_beta' 'spline_interp_beta' or 'sinusoidal'
+    control_type = 'smooth_interp_beta'  # 'random', 'linear_interp_beta' 'spline_interp_beta' or 'sinusoidal'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     # control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_{control_type}.csv')
     control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_5.csv')
