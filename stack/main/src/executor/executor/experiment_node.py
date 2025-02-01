@@ -168,6 +168,7 @@ class RunExperimentNode(Node):
                 safe_control_inputs = check_control_inputs(response.uopt[:6], self.uopt_previous)
                 self.publish_control_inputs(safe_control_inputs.tolist())
                 self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
+                self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
                 self.uopt_previous = safe_control_inputs
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
