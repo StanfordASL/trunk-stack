@@ -21,7 +21,7 @@ class MPCInitializerNode(Node):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssmr_200g'),                    # 'ssmr_200g' (what model to use)
+            ('model_name', 'origin_ssmr_200g'),                    # 'ssmr_200g' (what model to use)
         ])
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
@@ -38,19 +38,20 @@ class MPCInitializerNode(Node):
         # MPC configuration
         Qz = jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
-        Qzf = 10 * jnp.eye(self.model.n_z)
+        Qzf = jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
         gusto_config = GuSTOConfig(
             Qz=Qz,
-            Qzf=Qzf,
-            R=0.01*jnp.eye(self.model.n_u),
+            Qzf=10*Qzf,
+            R=0.05*jnp.eye(self.model.n_u),
             x_char=0.05*jnp.ones(self.model.n_x),
             f_char=0.5*jnp.ones(self.model.n_x),
-            N=5
+            N=6
         )
         U = HyperRectangle([0.4, 0.4, 0.4, 0.4, 0.4, 0.4],
                            [-0.4, -0.4, -0.4, -0.4, -0.4, -0.4])
-        dU = HyperRectangle([0.1]*6, [-0.1]*6)
+        # dU = HyperRectangle([0.1]*6, [-0.1]*6)
+        dU = None
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref, U=U, dU=dU)
 
@@ -62,7 +63,8 @@ class MPCInitializerNode(Node):
 
         # Load the model
         self.model = SSMR(model_path=model_path)
-        print('---- Model loaded. Dimensions:')
+        print(f'---- Model loaded: {self.model_name}')
+        print('Dimensions:')
         print('     n_x:', self.model.n_x)
         print('     n_u:', self.model.n_u)
         print('     n_z:', self.model.n_z)

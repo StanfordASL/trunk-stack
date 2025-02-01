@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import pandas as pd  # type: ignore
+from scipy.interpolate import PchipInterpolator
+import matplotlib.pyplot as plt
 
 
 def random_trajectory():
@@ -77,8 +79,99 @@ def sine_trajectory():
     df = df[['ID'] + [f'u{i+1}' for i in range(n_u)]]
     return df
 
+def spline_interpolated_beta(seed=0): #TODO: try moving average smoothing instead
+    # Parameters
+    sample_size = 90
+    sec_per_sample = 1
+    sampling_rate = 100  # [Hz]
+    np.random.seed(seed)
+    tip_range, mid_range, base_range = 0.45, 0.35, 0.3
 
-def interpolated_beta(seed=0):
+    N = sample_size * sec_per_sample * sampling_rate
+    control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    
+    # Beta parameters
+    a, b = 0.5, 0.5
+
+    # Initialize an empty list to collect valid samples
+    valid_samples = []
+    num_valid_samples = 0
+
+    rejection_count = 0
+    while num_valid_samples < sample_size:
+        # Sample from Beta distribution, then shift and scale to match desired ranges
+        u1 = (np.random.beta(a, b) - 0.5) * 2 * tip_range
+        u6 = (np.random.beta(a, b) - 0.5) * 2 * tip_range
+        u2 = (np.random.beta(a, b) - 0.5) * 2 * mid_range
+        u5 = (np.random.beta(a, b) - 0.5) * 2 * mid_range
+        u3 = (np.random.beta(a, b) - 0.5) * 2 * base_range
+        u4 = (np.random.beta(a, b) - 0.5) * 2 * base_range
+
+        # Compute control input vectors
+        u1_vec = u1 * np.array([-np.cos(15 * np.pi/180), np.sin(15 * np.pi/180)])
+        u2_vec = u2 * np.array([np.cos(45 * np.pi/180), np.sin(45 * np.pi/180)])
+        u3_vec = u3 * np.array([-np.cos(15 * np.pi/180), -np.sin(15 * np.pi/180)])
+        u4_vec = u4 * np.array([-np.cos(75 * np.pi/180), np.sin(75 * np.pi/180)])
+        u5_vec = u5 * np.array([np.cos(45 * np.pi/180), -np.sin(45 * np.pi/180)])
+        u6_vec = u6 * np.array([-np.cos(75 * np.pi/180), -np.sin(75 * np.pi/180)])
+
+        # Calculate the norm based on the constraint
+        vector_sum = (
+            0.75 * (u3_vec + u4_vec) +
+            1.0 * (u2_vec + u5_vec) +
+            1.4 * (u1_vec + u6_vec)
+        )
+        norm_value = np.linalg.norm(vector_sum)
+
+        # Check the constraint: if the sample is valid, keep it
+        if norm_value <= 0.75:
+            valid_samples.append([u1, u2, u3, u4, u5, u6])
+            num_valid_samples += 1
+        else:   
+            rejection_count += 1
+            print(f'Rejected {u1, u2, u3, u4, u5, u6} count: {rejection_count}')
+
+
+    print(max(max(valid_samples)))
+    
+    valid_samples = np.array(valid_samples)
+    t = np.arange(sample_size) # evenly space arbitrary timesteps 
+    t_interp = np.linspace(0,sample_size-1, N)
+    print(len(t))
+    print(len(valid_samples[:,0]))
+    print(len(t_interp))
+
+    # Interpolate these sampled control inputs to get smoother signal at high sampling rate
+    interpolated_data = []
+    for i in range(6):
+        cs = PchipInterpolator(t, valid_samples[:,i])
+        u_interp = cs(t_interp)
+        interpolated_data.append(u_interp)
+    
+
+    interpolated_data = np.array(interpolated_data).reshape(-1, 6)
+
+    IDs = np.arange(len(interpolated_data))
+    control_inputs_df = pd.DataFrame(interpolated_data, columns=control_variables)
+    control_inputs_df.insert(0, 'ID', IDs)
+
+
+    # plot the control inputs
+    fig, axes = plt.subplots(2, 3, figsize=(12, 6))  # 2 rows, 3 columns
+
+    for i, ax in enumerate(axes.flat):
+        ax.plot(interpolated_data[:,i]) 
+        ax.scatter(t*N/sample_size, valid_samples[:,i], c='orange')
+        ax.set_title(f"U_{i+1}") 
+
+    plt.tight_layout()
+    plt.show()
+
+    return control_inputs_df
+
+
+def linear_interpolated_beta(seed=0):
     # Parameters
     sample_size = 90
     sec_per_sample = 1
@@ -147,22 +240,37 @@ def interpolated_beta(seed=0):
     IDs = np.arange(len(interpolated_data))
     control_inputs_df = pd.DataFrame(interpolated_data, columns=control_variables)
     control_inputs_df.insert(0, 'ID', IDs)
+
+    # plot the control inputs
+    fig, axes = plt.subplots(2, 3, figsize=(12, 6))  # 2 rows, 3 columns
+
+    for i, ax in enumerate(axes.flat):
+        ax.plot(interpolated_data[:,i]) 
+        ax.scatter(np.arange(len(valid_samples))*sec_per_sample*sampling_rate, valid_samples[:,i], c='orange')
+        ax.set_title(f"U_{i+1}") 
+
+    plt.tight_layout()
+    plt.show()
+
     return control_inputs_df
 
 
-def main(control_inputs_file, control_type):
+def main(control_inputs_file, control_type, seed):
     if control_type == 'random':
         df = random_trajectory()
-    elif control_type == 'interp_beta':
-        df = interpolated_beta()
+    elif control_type == 'linear_interp_beta':
+        df = linear_interpolated_beta(seed=seed)
+    elif control_type == 'spline_interp_beta':
+        df = spline_interpolated_beta(seed=seed)
     elif control_type == 'sinusoidal':
         df = sine_trajectory()
     df.to_csv(control_inputs_file, index=False)
 
 
 if __name__ == '__main__':
-    control_type = 'interp_beta'  # 'random', 'interp_beta' or 'sinusoidal'
+    seed = 1
+    control_type = 'spline_interp_beta'  # 'random', 'linear_interp_beta' 'spline_interp_beta' or 'sinusoidal'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     # control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_{control_type}.csv')
-    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_2.csv')
-    main(control_inputs_file, control_type=control_type)
+    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_5.csv')
+    main(control_inputs_file, control_type=control_type, seed=seed)
