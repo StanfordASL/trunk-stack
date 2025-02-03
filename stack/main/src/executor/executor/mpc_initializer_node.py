@@ -21,7 +21,7 @@ class MPCInitializerNode(Node):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'origin_ssmr_200g'),                    # 'ssmr_200g' (what model to use)
+            ('model_name', 'ssm_origin_200g'),              # 'ssmr_200g' (what model to use)
         ])
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
@@ -59,7 +59,7 @@ class MPCInitializerNode(Node):
         """
         Load the learned (non-autonomous) dynamics model of the system.
         """
-        model_path = os.path.join(self.data_dir, f'models/ssmr/{self.model_name}.npz')
+        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
 
         # Load the model
         self.model = SSMR(model_path=model_path)
