@@ -40,13 +40,14 @@ def mat_to_npz(mat_filepath, npz_filepath):
 
 
 def main():
-    model_name = 'origin_ssmr_200g'
+    model_name = 'ssm_origin_200g_Bslow'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
-    mat_filepath = os.path.join(data_dir, f'models/ssmr/{model_name}.mat')
-    npz_filepath = os.path.join(data_dir, f'models/ssmr/{model_name}.npz')
+    mat_filepath = os.path.join(data_dir, f'models/ssm/{model_name}.mat')
+    npz_filepath = os.path.join(data_dir, f'models/ssm/{model_name}.npz')
     saved_path = mat_to_npz(mat_filepath, npz_filepath)
     data = np.load(saved_path)
     print('Keys: ', list(data.keys()))
+    print('B_r matrix: ', data['B_r_coeff'])
 
 if __name__ == '__main__':
     main()

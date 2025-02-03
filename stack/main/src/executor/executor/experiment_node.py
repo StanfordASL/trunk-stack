@@ -129,6 +129,8 @@ class RunExperimentNode(Node):
         self.get_logger().info('Run experiment node has been started.')
 
     def mpc_executor_callback(self):
+        self.get_logger().info(f'Sent the request at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
+        self.get_logger().info(f'   during which t0 was {self.t0}')
         self.send_request(self.t0, self.y, wait=False)
         self.future.add_done_callback(self.service_callback)
 
@@ -160,6 +162,7 @@ class RunExperimentNode(Node):
     def service_callback(self, async_response):
         try:
             response = async_response.result()
+            self.get_logger().info(f'Received the uopt at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
             if response.done:
                 self.get_logger().info('Trajectory is finished!')
                 self.destroy_node()
@@ -167,8 +170,8 @@ class RunExperimentNode(Node):
             else:
                 safe_control_inputs = check_control_inputs(response.uopt[:6], self.uopt_previous)
                 self.publish_control_inputs(safe_control_inputs.tolist())
-                self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
-                self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
+                # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
+                # self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
                 self.uopt_previous = safe_control_inputs
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')

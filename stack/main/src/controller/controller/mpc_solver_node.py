@@ -1,5 +1,7 @@
 import jax
 import jax.numpy as jnp
+jax.config.update('jax_platform_name', 'cpu')
+jax.config.update("jax_enable_x64", True)
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from scipy.interpolate import interp1d
@@ -9,7 +11,7 @@ import time
 
 
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
-                       U=None, X=None, Xf=None, dU=None, **kwargs):
+                       U=None, X=None, Xf=None, dU=None, init_node=False, **kwargs):
     """
     Function that builds a ROS node to run MPC and runs it continuously. This node
     provides a service that at each query will run MPC once.
@@ -28,11 +30,13 @@ def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=N
     :X: (optional) state constraint (Polyhedron object)
     :Xf: (optional) terminalstate constraint (Polyhedron object)
     :dU: (optional) u_k - u_{k-1} constraint Polyhedron object
+    :init_node: (optional) whether to initialize, False if run from a different ROS node
     :kwargs: (optional): Keyword args for GuSTO (see gusto.py GuSTO __init__.py and and optionally for the solver
     (https://osqp.org/docs/interfaces/solver_settings.html)
     """
     assert t is not None or dt is not None, "Either t array or dt must be provided."
-    # rclpy.init()  # do not initiate if called from a different node
+    if init_node:
+        rclpy.init()
     node = MPCSolverNode(model, config, x0, t=t, dt=dt, z=z, u=u, zf=zf,
                            U=U, X=X, Xf=Xf, dU=dU, **kwargs)
     rclpy.spin(node)
@@ -122,21 +126,8 @@ class MPCSolverNode(Node):
 
         # Get initial guess
         idx0 = jnp.searchsorted(self.topt, t0, side='right')
-        # new_start_time = time.time()
-        # for i in range(self.N - idx0):
-        #     self.u_init = self.u_init.at[i].set(self.uopt[idx0+i, :])
-        # for i in range(self.N - idx0, self.N):
-        #     self.u_init = self.u_init.at[i].set(self.uopt[-1, :])
-        # for i in range(self.N + 1 - idx0):
-        #     self.x_init = self.x_init.at[i].set(self.xopt[idx0+i, :])
-        # for i in range(self.N + 1 - idx0, self.N + 1):
-        #     self.x_init = self.x_init.at[i].set(self.xopt[-1, :])
-        # self.u_init = self.u_init.at[:self.N-idx0].set(self.uopt[idx0:self.N, :])
-        # self.u_init = self.u_init.at[self.N-idx0:].set(self.uopt[-1, :])
-        # self.x_init = self.x_init.at[:self.N+1-idx0].set(self.xopt[idx0:self.N+1, :])
-        # self.x_init = self.x_init.at[self.N+1-idx0:].set(self.xopt[-1, :])
         
-        # NOTE: time spent on getting initial condition is out of proportion
+        # NOTE: time spent on getting initial condition is still out of proportion
         n_remaining_u = self.N - idx0
         n_remaining_x = self.N + 1 - idx0
 
@@ -155,9 +146,6 @@ class MPCSolverNode(Node):
 
         self.u_init = u_init_temp  # Assign the modified copy back
         self.x_init = x_init_temp
-
-        # init_time = time.time() - new_start_time
-        # self.get_logger().info(f"Init time: {init_time:.4f} seconds")
 
         # Solve GuSTO and get solution
         self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
