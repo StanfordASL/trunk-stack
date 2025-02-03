@@ -49,7 +49,7 @@ class DataCollectionNode(Node):
             ('control_type', 'output'),         # 'output' or 'position'
             ('results_name', 'observations'),
             ('input_num', 1),                    # number of the input file type i.e. control_inputs_controlled_1
-            ('collect_angles', False)            # to collect motor angle measurements
+            ('collect_angles', True)            # to collect motor angle measurements
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -64,12 +64,15 @@ class DataCollectionNode(Node):
         self.input_num = str(self.get_parameter('input_num').value)
         self.collect_angles = self.get_parameter('collect_angles').value
 
+        self.angle_callback_received = False
+        self.angle_update_count = 0
         self.is_collecting = False
         self.ic_settled = False
         self.previous_time = time.time()
         self.current_control_id = -1
         self.stored_positions = []
-        self.last_motor_angle = None
+        self.stored_angles = []
+        self.last_motor_angles = None
         self.control_inputs = None
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
@@ -86,7 +89,7 @@ class DataCollectionNode(Node):
             self.subscription_angles = self.create_subscription(
                 AllMotorsStatus,
                 '/all_motors_status',
-                self.listener_callback,
+                self.motor_angles_callback,
                 QoSProfile(depth=10)
             )
 
@@ -114,7 +117,19 @@ class DataCollectionNode(Node):
         )
         self.get_logger().info('Data collection node has been started.')
 
+    def motor_angles_callback(self, msg):
+        if self.data_type == 'dynamic' and self.data_subtype == 'controlled':   
+            self.last_motor_angles = self.extract_angles(msg)
+
+            if not self.angle_callback_received:
+                self.get_logger().info('Motor angles callback received first message')
+                self.angle_callback_received = True
+
     def listener_callback(self, msg):
+        if not self.angle_callback_received:
+            self.get_logger().info('Waiting for first motor angle message...')
+            return
+        
         if self.data_type == 'dynamic' and self.data_subtype == 'controlled':
             # Store current positions
             self.store_positions(msg)
@@ -273,6 +288,8 @@ class DataCollectionNode(Node):
 
     def extract_angles(self, msg): #TODO: verify this works
         statuses = msg.motors_status
+        self.angle_update_count += 1
+        self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
         angles = []
         for status in statuses:
             angle = status.position
@@ -291,11 +308,12 @@ class DataCollectionNode(Node):
         elif self.mocap_type == 'rigid_bodies': 
             return msg.rigid_body_names
 
-    def store_angles(self, msg):
-        self.stored_angles.append(self.extract_angles(msg))
-
     def store_positions(self, msg):
         self.stored_positions.append(self.extract_positions(msg))
+        self.stored_angles.append(self.last_motor_angles) #store last motor angles when position is available
+        if self.debug:
+            self.get_logger().info("Stored angles: "+ str(self.last_motor_angles))
+
 
     def check_settled(self, tolerance=0.00025, window=5):
         if len(self.check_settled_positions) < window:
@@ -332,7 +350,7 @@ class DataCollectionNode(Node):
         # Populate the header row of the CSV file with states if it does not exist
         trajectory_csv_file = os.path.join(self.data_dir, f'trajectories/{self.data_type}/{self.results_name}.csv')
         if not os.path.exists(trajectory_csv_file):
-            header = ['ID'] + [f'{axis}{name}' for name in names for axis in ['x', 'y', 'z']]
+            header = ['ID'] + [f'{axis}{name}' for name in names for axis in ['x', 'y', 'z']] + [f'phi{num+1}' for num in range(6)]
             with open(trajectory_csv_file, 'w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(header)
@@ -361,11 +379,13 @@ class DataCollectionNode(Node):
 
         elif self.data_type == 'dynamic' and self.data_subtype == 'controlled':
             # Store all positions in a CSV file
-            with open(trajectory_csv_file, 'a', newline='') as file:
+            with open(trajectory_csv_file, 'w', newline='') as file:
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
-                    row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]]
+                    angle_list = self.stored_angles[id]
+                    row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [angle for angle in angle_list]
                     writer.writerow(row)
+                    
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
 
