@@ -125,7 +125,7 @@ def smooth_lin_interpolated_beta(seed=0):
         norm_value = np.linalg.norm(vector_sum)
 
         # Check the constraint: if the sample is valid, keep it
-        if norm_value <= 0.75:
+        if norm_value <= 0.8:
             valid_samples.append([u1, u2, u3, u4, u5, u6])
             num_valid_samples += 1
         else:   
@@ -170,7 +170,7 @@ def smooth_lin_interpolated_beta(seed=0):
 
     return control_inputs_df
 
-
+# OLD, not smooth at transitions, should be deprecated
 def linear_interpolated_beta(seed=0):
     # Parameters
     sample_size = 90
@@ -272,5 +272,5 @@ if __name__ == '__main__':
     control_type = 'smooth_interp_beta'  # 'random', 'linear_interp_beta' 'spline_interp_beta' or 'sinusoidal'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     # control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_{control_type}.csv')
-    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_5.csv')
+    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_7.csv')
     main(control_inputs_file, control_type=control_type, seed=seed)

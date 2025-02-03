@@ -127,7 +127,7 @@ def adiabatic_step_sampling(control_variables, seed):
     return control_inputs_df
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, tip_radius = 0.40, mid_radius = 0.35, base_radius = 0.30, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, tip_radius = 0.45, mid_radius = 0.375, base_radius = 0.325, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
@@ -267,7 +267,7 @@ def beta_sampling(control_variables, seed, sample_size=100):
     return control_inputs_df
 
 
-def circle_sampling(control_variables, random_seed, tip_radius = 0.325, mid_radius = 0.275, base_radius = 0.225, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
+def circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.3, base_radius = 0.25, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
     np.random.seed(random_seed)
 
     sampled_angles = np.linspace(0, 2*2*np.pi, num_samples_on_circle + 1) + phase_shift  # CHange back to 2*np.pi to get only one circle no flipping for now
@@ -450,6 +450,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
+    sampling_type = 'circle'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
     seed = 1                            # choose integer seed number
     main(data_type, sampling_type, seed)

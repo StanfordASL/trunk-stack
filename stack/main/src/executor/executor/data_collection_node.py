@@ -69,6 +69,7 @@ class DataCollectionNode(Node):
         self.previous_time = time.time()
         self.current_control_id = -1
         self.stored_positions = []
+        self.last_motor_angle = None
         self.control_inputs = None
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
@@ -138,6 +139,7 @@ class DataCollectionNode(Node):
                 # Reset and start collecting new mocap data
                 self.stored_positions = []
                 self.check_settled_positions = []
+                self.check_settled_angles = []
                 self.is_collecting = True
 
                 # Print and publish new motor control inputs
@@ -269,7 +271,7 @@ class DataCollectionNode(Node):
         if self.debug:
             self.get_logger().info('Published new motor control setting: ' + str(control_inputs))
 
-    def extract_angles(self, msg): #TODO
+    def extract_angles(self, msg): #TODO: verify this works
         statuses = msg.motors_status
         angles = []
         for status in statuses:
@@ -288,6 +290,9 @@ class DataCollectionNode(Node):
             raise NotImplementedError('Extracting names from markers is not implemented.')
         elif self.mocap_type == 'rigid_bodies': 
             return msg.rigid_body_names
+
+    def store_angles(self, msg):
+        self.stored_angles.append(self.extract_angles(msg))
 
     def store_positions(self, msg):
         self.stored_positions.append(self.extract_positions(msg))
