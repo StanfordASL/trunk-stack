@@ -1,4 +1,5 @@
 import os
+import time
 import jax
 import jax.numpy as jnp
 import logging
@@ -95,6 +96,13 @@ class RunExperimentNode(Node):
             # Request message definition
             self.req = ControlSolver.Request()
 
+            # Send over an example request
+            self.send_request(0.0, jnp.zeros(12), wait=False)
+            
+            # Sleep a bit right after as that was found to help
+            self.get_logger().info('Waiting for a sec...')
+            time.sleep(1.0)
+
         elif self.controller_type == 'ik':
             # Create control solver service client
             self.ik_client = self.create_client(
@@ -124,7 +132,8 @@ class RunExperimentNode(Node):
         # Keep a clock for timing
         self.clock = self.get_clock()
 
-        self.mpc_exec_timer = self.create_timer(0.05, self.mpc_executor_callback, clock=self.clock)
+        controller_freq = 30  # [Hz]
+        self.mpc_exec_timer = self.create_timer(1 / controller_freq, self.mpc_executor_callback, clock=self.clock)
 
         self.get_logger().info('Run experiment node has been started.')
 
@@ -146,7 +155,6 @@ class RunExperimentNode(Node):
 
         # Subselect tip
         y_centered_tip = y_centered[-3:]
-        # self.get_logger().info(f'y_centered: {y_centered_tip}.')
 
         # Update the current observations, including 3 delay embeddings
         if self.y is not None:
@@ -163,13 +171,14 @@ class RunExperimentNode(Node):
         try:
             response = async_response.result()
             self.get_logger().info(f'Received the uopt at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
+            self.get_logger().info(f'   which was for t0: {response.t[0]}')
             if response.done:
                 self.get_logger().info('Trajectory is finished!')
                 self.destroy_node()
                 rclpy.shutdown()
             else:
                 safe_control_inputs = check_control_inputs(response.uopt[:6], self.uopt_previous)
-                self.publish_control_inputs(safe_control_inputs.tolist())
+                # self.publish_control_inputs(safe_control_inputs.tolist())
                 # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
                 # self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
                 self.uopt_previous = safe_control_inputs

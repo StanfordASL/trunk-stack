@@ -40,7 +40,7 @@ def mat_to_npz(mat_filepath, npz_filepath):
 
 
 def main():
-    model_name = 'ssm_origin_200g_Bslow'
+    model_name = 'ssm_origin_200g_BnO_slow'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     mat_filepath = os.path.join(data_dir, f'models/ssm/{model_name}.mat')
     npz_filepath = os.path.join(data_dir, f'models/ssm/{model_name}.npz')
