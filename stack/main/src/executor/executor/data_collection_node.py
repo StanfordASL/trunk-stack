@@ -64,7 +64,7 @@ class DataCollectionNode(Node):
         self.input_num = str(self.get_parameter('input_num').value)
         self.collect_angles = self.get_parameter('collect_angles').value
 
-        self.angle_callback_received = False
+        self.angle_callback_received = False #flag
         self.angle_update_count = 0
         self.is_collecting = False
         self.ic_settled = False
@@ -154,7 +154,6 @@ class DataCollectionNode(Node):
                 # Reset and start collecting new mocap data
                 self.stored_positions = []
                 self.check_settled_positions = []
-                self.check_settled_angles = []
                 self.is_collecting = True
 
                 # Print and publish new motor control inputs
@@ -286,7 +285,7 @@ class DataCollectionNode(Node):
         if self.debug:
             self.get_logger().info('Published new motor control setting: ' + str(control_inputs))
 
-    def extract_angles(self, msg): #TODO: verify this works
+    def extract_angles(self, msg):
         statuses = msg.motors_status
         self.angle_update_count += 1
         self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
@@ -379,7 +378,7 @@ class DataCollectionNode(Node):
 
         elif self.data_type == 'dynamic' and self.data_subtype == 'controlled':
             # Store all positions in a CSV file
-            with open(trajectory_csv_file, 'w', newline='') as file:
+            with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
                     angle_list = self.stored_angles[id]
