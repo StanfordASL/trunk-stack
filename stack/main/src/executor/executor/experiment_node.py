@@ -24,22 +24,22 @@ def check_control_inputs(u_opt, u_opt_previous):
     u1 = jnp.clip(u1, -tip_range, tip_range)
     u6 = jnp.clip(u6, -tip_range, tip_range)
     u2 = jnp.clip(u2, -mid_range, mid_range)
-    u5 = jnp.clip(u5, -mid_range, mid_range)
+    u4 = jnp.clip(u5, -mid_range, mid_range)
     u3 = jnp.clip(u3, -base_range, base_range)
-    u4 = jnp.clip(u4, -base_range, base_range)
+    u5 = jnp.clip(u4, -base_range, base_range)
 
     # Compute control input vectors
     u1_vec = u1 * jnp.array([-jnp.cos(15 * jnp.pi/180), jnp.sin(15 * jnp.pi/180)])
     u2_vec = u2 * jnp.array([jnp.cos(45 * jnp.pi/180), jnp.sin(45 * jnp.pi/180)])
     u3_vec = u3 * jnp.array([-jnp.cos(15 * jnp.pi/180), -jnp.sin(15 * jnp.pi/180)])
-    u4_vec = u4 * jnp.array([-jnp.cos(75 * jnp.pi/180), jnp.sin(75 * jnp.pi/180)])
-    u5_vec = u5 * jnp.array([jnp.cos(45 * jnp.pi/180), -jnp.sin(45 * jnp.pi/180)])
+    u4_vec = u4 * jnp.array([-jnp.cos(45 * jnp.pi/180), jnp.sin(45 * jnp.pi/180)])
+    u5_vec = u5 * jnp.array([jnp.cos(75 * jnp.pi/180), -jnp.sin(75 * jnp.pi/180)])
     u6_vec = u6 * jnp.array([-jnp.cos(75 * jnp.pi/180), -jnp.sin(75 * jnp.pi/180)])
 
     # Calculate the norm based on the constraint
     vector_sum = (
-        0.75 * (u3_vec + u4_vec) +
-        1.0 * (u2_vec + u5_vec) +
+        0.75 * (u3_vec + u5_vec) +
+        1.0 * (u2_vec + u4_vec) +
         1.4 * (u1_vec + u6_vec)
     )
     norm_value = jnp.linalg.norm(vector_sum)

@@ -360,7 +360,7 @@ def targeted_sampling(control_variables, random_seed):
 
 def check_control_inputs(u_opt, u_opt_previous):
     # reject vector norms of u that are too large
-    tip_range, mid_range, base_range = 0.45, 0.35, 0.3 #changed tip range to 0.55 to account for circle samples
+    tip_range, mid_range, base_range = 0.45, 0.35, 0.3
 
     u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
@@ -368,22 +368,22 @@ def check_control_inputs(u_opt, u_opt_previous):
     u1 = np.clip(u1, -tip_range, tip_range)
     u6 = np.clip(u6, -tip_range, tip_range)
     u2 = np.clip(u2, -mid_range, mid_range)
-    u5 = np.clip(u5, -mid_range, mid_range)
+    u4 = np.clip(u5, -mid_range, mid_range)
     u3 = np.clip(u3, -base_range, base_range)
-    u4 = np.clip(u4, -base_range, base_range)
+    u5 = np.clip(u4, -base_range, base_range)
 
     # Compute control input vectors
     u1_vec = u1 * np.array([-np.cos(15 * np.pi/180), np.sin(15 * np.pi/180)])
     u2_vec = u2 * np.array([np.cos(45 * np.pi/180), np.sin(45 * np.pi/180)])
     u3_vec = u3 * np.array([-np.cos(15 * np.pi/180), -np.sin(15 * np.pi/180)])
-    u4_vec = u4 * np.array([-np.cos(75 * np.pi/180), np.sin(75 * np.pi/180)])
-    u5_vec = u5 * np.array([np.cos(45 * np.pi/180), -np.sin(45 * np.pi/180)])
+    u4_vec = u4 * np.array([-np.cos(45 * np.pi/180), np.sin(45 * np.pi/180)])
+    u5_vec = u5 * np.array([np.cos(75 * np.pi/180), -np.sin(75 * np.pi/180)])
     u6_vec = u6 * np.array([-np.cos(75 * np.pi/180), -np.sin(75 * np.pi/180)])
 
     # Calculate the norm based on the constraint
     vector_sum = (
-        0.75 * (u3_vec + u4_vec) +
-        1.0 * (u2_vec + u5_vec) +
+        0.75 * (u3_vec + u5_vec) +
+        1.0 * (u2_vec + u4_vec) +
         1.4 * (u1_vec + u6_vec)
     )
     norm_value = np.linalg.norm(vector_sum)
