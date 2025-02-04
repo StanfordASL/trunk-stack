@@ -27,6 +27,7 @@ setup(
             'visuomotor_node = executor.visuomotor_node:main',
             'slider_node = executor.slider_node:main',
             'manual_decay_node = executor.manual_decay_node:main',
+            'adiabatic_manual_decay_node = executor.adiabatic_manual_decay_node:main',
             'mpc_initializer_node = executor.mpc_initializer_node:main',
             'store_observations_node = executor.store_observations_node:main',
             'test_mpc_node = executor.test_mpc_node:main',
