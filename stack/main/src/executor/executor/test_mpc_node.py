@@ -10,7 +10,7 @@ import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from rclpy.qos import QoSProfile    # type: ignore
 from controller.mpc_solver_node import jnp2arr  # type: ignore
-from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
+from interfaces.msg import TrunkRigidBodies
 from interfaces.srv import ControlSolver
 
 
@@ -55,9 +55,9 @@ def check_control_inputs(u_opt, u_opt_previous):
     return u_opt
 
 
-class RunExperimentNode(Node):
+class TestMPCNode(Node):
     """
-    This node is responsible for running the main experiment.
+    This node is responsible for testing MPC.
     """
     def __init__(self):
         super().__init__('run_experiment_node')
@@ -73,7 +73,6 @@ class RunExperimentNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Settled positions of the rigid bodies
-        # Old values: [0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
         self.rest_position = jnp.array([0.10056, -0.10541, 0.10350, 0.09808, -0.20127, 0.10645, 0.09242, -0.31915, 0.09713])
 
         if self.controller_type == 'mpc':
@@ -101,27 +100,7 @@ class RunExperimentNode(Node):
             
             # Sleep a bit right after as that was found to help
             self.get_logger().info('Waiting for a sec...')
-            time.sleep(1.0)
-
-        elif self.controller_type == 'ik':
-            # Create control solver service client
-            self.ik_client = self.create_client(
-                ControlSolver,
-                'ik_solver'
-            )
-            self.get_logger().info('IK client created.')
-            while not self.ik_client.wait_for_service(timeout_sec=1.0):
-                self.get_logger().info('IK solver not available, waiting...')
-        else:
-            raise ValueError('Invalid controller type: ' + self.controller_type + '. Valid options are: "ik" or "mpc".')
-
-        # Create publisher to execute found control inputs
-        # NOTE: still disabled later in code for now
-        self.controls_publisher = self.create_publisher(
-            AllMotorsControl,
-            '/all_motors_control',
-            QoSProfile(depth=10)
-        )
+            time.sleep(0.5)
 
         # Maintain current observations because of the delay embedding
         self.y = None
@@ -138,61 +117,27 @@ class RunExperimentNode(Node):
         self.get_logger().info('Run experiment node has been started.')
 
     def mpc_executor_callback(self):
-        # self.get_logger().info(f'Sent the request at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
-        # self.get_logger().info(f'   during which t0 was {self.t0}')
+        self.get_logger().info(f'Sent the request at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
+        self.get_logger().info(f'   during which t0 was {self.t0}')
         self.send_request(self.t0, self.y, wait=False)
         self.future.add_done_callback(self.service_callback)
-
-    def mocap_listener_callback(self, msg):
-        if self.debug:
-            self.get_logger().info(f'Received mocap data: {msg.positions}.')
-
-        # Unpack the message into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
-        y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
-
-        # Center the data around settled positions
-        y_centered = y_new - self.rest_position
-
-        # Subselect tip
-        y_centered_tip = y_centered[-3:]
-
-        # Update the current observations, including 3 delay embeddings
-        if self.y is not None:
-            self.y = jnp.concatenate([y_centered_tip, self.y[:-3]])
-        else:
-            # At initialization use current obs. as delay embedding
-            self.y = jnp.tile(y_centered_tip, 4)
-            # And record starting time
-            self.start_time = self.clock.now().nanoseconds / 1e9
-
-        self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
     def service_callback(self, async_response):
         try:
             response = async_response.result()
-            # self.get_logger().info(f'Received the uopt at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
-            # self.get_logger().info(f'   which was for t0: {response.t[0]}')
+            self.get_logger().info(f'Received the uopt at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
+            self.get_logger().info(f'   which was for t0: {response.t[0]}')
             if response.done:
-                self.get_logger().info(f'Trajectory is finished! At {self.clock.now().nanoseconds / 1e9 - self.start_time}')
+                self.get_logger().info('Trajectory is finished!')
                 self.destroy_node()
                 rclpy.shutdown()
             else:
                 safe_control_inputs = check_control_inputs(response.uopt[:6], self.uopt_previous)
-                self.publish_control_inputs(safe_control_inputs.tolist())
-                self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
+                # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
                 self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
                 self.uopt_previous = safe_control_inputs
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
-
-    def publish_control_inputs(self, control_inputs):
-        control_message = AllMotorsControl()
-        control_message.motors_control = [
-            SingleMotorControl(mode=0, value=value) for value in control_inputs
-        ]
-        self.controls_publisher.publish(control_message)
-        if self.debug:
-            self.get_logger().info(f'Published new motor control setting: {control_inputs}.')
 
     def send_request(self, t0, y0, wait=False):
         """
@@ -206,23 +151,12 @@ class RunExperimentNode(Node):
             # Synchronous call, not compatible for real-time applications
             rclpy.spin_until_future_complete(self, self.future)
 
-    def force_spin(self):
-        if not self.check_if_done():
-            rclpy.spin_once(self, timeout_sec=0)
-
-    def check_if_done(self):
-        return self.future.done()
-
-    def force_wait(self):
-        self.get_logger().warning('Overrides realtime compatibility, solve is too slow. Consider modifying problem')
-        rclpy.spin_until_future_complete(self, self.future)
-
 
 def main(args=None):
     rclpy.init(args=args)
-    run_experiment_node = RunExperimentNode()
-    rclpy.spin(run_experiment_node)
-    run_experiment_node.destroy_node()
+    test_mpc_node = TestMPCNode()
+    rclpy.spin(test_mpc_node)
+    test_mpc_node.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':
