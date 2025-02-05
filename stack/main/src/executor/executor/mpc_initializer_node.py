@@ -1,12 +1,15 @@
 import os
+
 import jax
 import jax.numpy as jnp
 import logging
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
+
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
+
 from controller.mpc.gusto import GuSTOConfig  # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
 from .utils.models import SSMR
@@ -28,9 +31,7 @@ class MPCInitializerNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(15, 0.01, 'periodic_line', 0.05)
-        # t = jnp.arange(0, 5, 0.01)
-        # z_ref = jnp.zeros((len(t), 3))
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.03)
 
         # Load the model
         self._load_model()
@@ -40,22 +41,19 @@ class MPCInitializerNode(Node):
         Qz = Qz.at[1, 1].set(0)
         Qzf = 10 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
-        R_base = 0.008
-        R = R_base * jnp.eye(self.model.n_u)
-        R = R.at[1, 1].set(R_base * 10)
-        # R = R.at[-1, -1].set(R_base * 3 / 4)
+        R_tip, R_mid, R_top = 0.005, 0.005, 0.005
+        R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
         gusto_config = GuSTOConfig(
             Qz=Qz,
             Qzf=Qzf,
             R=R,
             x_char=0.05*jnp.ones(self.model.n_x),
             f_char=0.5*jnp.ones(self.model.n_x),
-            N=6
+            N=5
         )
-        U = HyperRectangle([0.4, 0.4, 0.4, 0.4, 0.4, 0.4],
-                           [-0.4, -0.4, -0.4, -0.4, -0.4, -0.4])
-        # dU = HyperRectangle([0.1]*6, [-0.1]*6)
-        dU = None
+        U = HyperRectangle([0.4]*6, [-0.4]*6)
+        dU = HyperRectangle([0.1]*6, [-0.1]*6)
+        # dU = None
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref, U=U, dU=dU)
 
@@ -81,9 +79,9 @@ class MPCInitializerNode(Node):
         t = jnp.linspace(0, T, int(T/dt))
         z_ref = jnp.zeros((len(t), 3))
 
-        # Note that y is up
+        # Note that y is vertically up
         if traj_type == 'circle':
-            z_ref = z_ref.at[:, 0].set(size * jnp.cos(2 * jnp.pi / T * t))
+            z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
             z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
             z_ref = z_ref.at[:, 2].set(size * jnp.sin(2 * jnp.pi / T * t))
         elif traj_type == 'figure_eight':
