@@ -267,7 +267,7 @@ def beta_sampling(control_variables, seed, sample_size=100):
     return control_inputs_df
 
 
-def circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.3, base_radius = 0.25, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
+def circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.0, base_radius = 0.0, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
     np.random.seed(random_seed)
 
     sampled_angles = np.linspace(0, 2*2*np.pi, num_samples_on_circle + 1) + phase_shift  # CHange back to 2*np.pi to get only one circle no flipping for now

@@ -85,7 +85,7 @@ def smooth_lin_interpolated_beta(seed=0):
     sec_per_sample = 1
     sampling_rate = 100  # [Hz]
     np.random.seed(seed)
-    tip_range, mid_range, base_range = 0.45, 0.35, 0.3
+    tip_range, mid_range, base_range = 0.45, 0.0, 0.0
 
     N = sample_size * sec_per_sample * sampling_rate
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
@@ -272,5 +272,5 @@ if __name__ == '__main__':
     control_type = 'smooth_interp_beta'  # 'random', 'linear_interp_beta' 'spline_interp_beta' or 'sinusoidal'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     # control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_{control_type}.csv')
-    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_7.csv')
+    control_inputs_file = os.path.join(data_dir, f'trajectories/dynamic/control_inputs_controlled_9.csv')
     main(control_inputs_file, control_type=control_type, seed=seed)
