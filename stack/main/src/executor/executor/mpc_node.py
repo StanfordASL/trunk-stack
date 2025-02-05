@@ -1,6 +1,4 @@
 import os
-import time
-import threading
 
 import jax
 import jax.numpy as jnp
@@ -9,16 +7,19 @@ logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
 
-import rclpy                                        # type: ignore
-from rclpy.node import Node                         # type: ignore
-from rclpy.executors import MultiThreadedExecutor   # type: ignore
-from rclpy.qos import QoSProfile                    # type: ignore
+import rclpy                                                # type: ignore
+from rclpy.node import Node                                 # type: ignore
+from rclpy.clock import ROSClock
+from rclpy.callback_groups import ReentrantCallbackGroup    # type: ignore
+from rclpy.executors import MultiThreadedExecutor           # type: ignore
+from rclpy.qos import QoSProfile                            # type: ignore
 
-from controller.mpc_solver_node import jnp2arr      # type: ignore
+from controller.mpc_solver_node import jnp2arr              # type: ignore
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
 
 
+@jax.jit
 def check_control_inputs(u_opt, u_opt_previous):
     """
     Check control inputs for safety constraints, rejecting vector norms that are too large.
@@ -52,12 +53,13 @@ def check_control_inputs(u_opt, u_opt_previous):
     norm_value = jnp.linalg.norm(vector_sum)
 
     # Check the constraint: if the constraint is met, then keep previous control command
-    if norm_value > 0.8:
-        print(f'Sample {u_opt} got rejected')
-        u_opt = u_opt_previous
-    else:
-        # Else the clipped command is published
-        u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
+    # if norm_value > 0.8:
+    #     print(f'Sample {u_opt} got rejected')
+    #     u_opt = u_opt_previous
+    # else:
+    #     # Else the clipped command is published
+    #     u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
+    u_opt = jnp.where(norm_value > 0.8, u_opt_previous, jnp.array([u1, u2, u3, u4, u5, u6]))
 
     return u_opt
 
@@ -83,19 +85,23 @@ class MPCNode(Node):
         self.rest_position = jnp.array([0.10056, -0.10541, 0.10350,
                                         0.09808, -0.20127, 0.10645,
                                         0.09242, -0.31915, 0.09713])
+        
+        self.callback_group = ReentrantCallbackGroup()
 
         # Subscribe to current positions
         self.mocap_subscription = self.create_subscription(
             TrunkRigidBodies,
             '/trunk_rigid_bodies',
             self.mocap_listener_callback,
-            QoSProfile(depth=10)
+            QoSProfile(depth=10),
+            callback_group=self.callback_group
         )
 
         # Create MPC solver service client
         self.mpc_client = self.create_client(
             ControlSolver,
-            'mpc_solver'
+            'mpc_solver',
+            callback_group=self.callback_group
         )
         self.get_logger().info('MPC client created.')
         while not self.mpc_client.wait_for_service(timeout_sec=1.0):
@@ -112,12 +118,35 @@ class MPCNode(Node):
         )
 
         # Maintain current observations because of the delay embedding
-        self.lastest_y = None
+        self.latest_y = None
 
         # Maintain previous control inputs
         self.uopt_previous = jnp.zeros(6)
 
-        self.get_logger().info('MPC node has been started.')
+        self.clock = self.get_clock()
+
+        # self.start_time = self.clock.now().nanoseconds / 1e9
+
+        # Need some initialization
+        self.initialized = False
+
+        # Initialize by calling mpc callback function
+        self.mpc_executor_callback()
+
+        # JIT compile this function
+        check_control_inputs(jnp.zeros(6), self.uopt_previous)
+
+        self.controller_period = 0.04
+        
+        self.mpc_exec_timer = self.create_timer(
+                    self.controller_period,
+                    self.mpc_executor_callback,
+                    # clock=self.clock,
+                    callback_group=self.callback_group)
+
+        self.get_logger().info(f'MPC node has been started with controller frequency: {1/self.controller_period:.2f} [Hz].')
+
+        self.start_time = self.clock.now().nanoseconds / 1e9
 
     def mocap_listener_callback(self, msg):
         """
@@ -139,53 +168,50 @@ class MPCNode(Node):
             self.latest_y = jnp.tile(y_centered_tip, 4)
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
-            self.latest_y = jnp.concatenate([y_centered_tip, self.y[:-3]])
+            self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-3]])
+        
+        self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
-    def control_loop(self):
+    def mpc_executor_callback(self):
+        if not self.initialized:
+            self.send_request(0.0, jnp.zeros(12), wait=True)
+            self.future.add_done_callback(self.service_callback)
+            self.initialized = True
+        elif self.latest_y is not None:
+            # self.get_logger().info(f'Sent the request at {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f}')
+            # self.get_logger().info(f'Sent the request at {(time.time() - self.start_time):.3f}')
+            self.send_request(self.t0, self.latest_y, wait=False)
+            self.future.add_done_callback(self.service_callback)
+
+    def send_request(self, t0, y0, wait=False):
         """
-        Control loop running in its own thread. It periodically sends a request
-        to the MPC solver and publishes control commands when the response arrives.
+        Send request to MPC solver.
         """
-        while rclpy.ok():
-            if self.latest_y is None:
-                time.sleep(0.1)
-                continue
+        self.req.t0 = t0
+        self.req.y0 = jnp2arr(y0)
+        self.future = self.mpc_client.call_async(self.req)
 
-            # Compute the current time t0 relative to start
-            t0 = self.get_clock().now().nanoseconds / 1e9 - self.start_time
+        if wait:
+            # Synchronous call, not compatible for real-time applications
+            rclpy.spin_until_future_complete(self, self.future)
 
-            # Prepare the service request
-            self.req.t0 = t0
-            self.req.y0 = jnp2arr(self.latest_y)
+    def service_callback(self, async_response):
+        try:
+            response = async_response.result()
+            # self.get_logger().info(f'Received uopt at: {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f} for t0: {response.t[0]:.3f}')
 
-            # Call the MPC service synchronously (since the solver is fast)
-            future = self.mpc_client.call_async(self.req)
-
-            # Wait for the future to complete without blocking other callbacks due to multithreading
-            rclpy.spin_until_future_complete(self, future)
-            if future.done():
-                try:
-                    response = future.result()
-                    
-                    # Check if the trajectory is done
-                    if response.done:
-                        self.get_logger().info(f'Trajectory finished at {t0:.3f} seconds. Shutting down.')
-                        rclpy.shutdown()
-
-                    # Apply safety checks on the control inputs
-                    safe_control = check_control_inputs(response.uopt[:6], self.uopt_previous)
-                    self.uopt_previous = safe_control
-
-                    # Publish the safe control inputs
-                    self.publish_control_inputs(safe_control.tolist())
-
-                    if self.debug:
-                        self.get_logger().info(f'Commanded control inputs: {safe_control.tolist()}')
-
-                except Exception as e:
-                    self.get_logger().error(f'Failed to process MPC response: {e}')
+            if response.done:
+                self.get_logger().info(f'Trajectory is finished! At {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f}')
+                self.destroy_node()
+                rclpy.shutdown()
             else:
-                self.get_logger().warn("MPC service call did not complete in time.")
+                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:6]), self.uopt_previous)
+                self.publish_control_inputs(safe_control_inputs.tolist())
+                # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
+                # self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
+                self.uopt_previous = safe_control_inputs
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}.')
 
     def publish_control_inputs(self, control_inputs):
         """
