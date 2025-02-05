@@ -31,7 +31,7 @@ class MPCInitializerNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.03)
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'periodic_line', 0.04)
 
         # Load the model
         self._load_model()
@@ -41,7 +41,7 @@ class MPCInitializerNode(Node):
         Qz = Qz.at[1, 1].set(0)
         Qzf = 10 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
-        R_tip, R_mid, R_top = 0.005, 0.005, 0.005
+        R_tip, R_mid, R_top = 0.006, 0.008, 0.007
         R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
         gusto_config = GuSTOConfig(
             Qz=Qz,
