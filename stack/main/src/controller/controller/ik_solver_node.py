@@ -59,7 +59,7 @@ class IKSolverNode(Node):
     def __init__(self):
         super().__init__('ik_solver_node')
         self.declare_parameters(namespace='', parameters=[
-            ('ik_type', 'interp'),  # 'nn' or 'lq' or 'interp'
+            ('ik_type', 'slow_manifold'),  # 'nn' or 'lq' or 'interp' or 'slow_manifold'
             ('u2y_file', 'u2y.npy'),  # for least=squares (lq)
             ('y2u_file', 'y2u_8seeds.npy'),  # for least=squares (lq)
             ('u_min', -0.25),
@@ -86,10 +86,23 @@ class IKSolverNode(Node):
         self.smooth_stat = self.u_opt_previous  # expontential smoothing
 
         # Get inverse kinematics mappings
+
         data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.data_dir = data_dir
         if self.ik_type == 'lq':
             self.u2y = np.load(os.path.join(data_dir, f'models/ik/{self.u2y_file}'))
             self.y2u = np.load(os.path.join(data_dir, f'models/ik/{self.y2u_file}'))
+        elif self.ik_type == 'slow_manifold':
+            self.model_name = 'slow_manifold_dataset'
+
+            # Load the model
+            self._load_slow_model()
+            self.get_logger().info(f'decoder_exp shape = {self.decoder_exp.shape}')
+            self.get_logger().info(f'const_coeff shape = {self.const_coeff.shape}')
+            self.get_logger().info(f'decoder_coeff shape = {self.decoder_coeff.shape}')
+
+
+
         elif self.ik_type == 'nn':
             self.neural_ik_model = MLP()
             self.neural_ik_model.load_state_dict(torch.load(os.path.join(data_dir, 'models/ik/neural_ik_model_state.pth'), weights_only=False))
@@ -130,6 +143,29 @@ class IKSolverNode(Node):
         elif self.ik_type == 'interp':
             self.srv = self.create_service(ControlSolver, 'ik_solver', self.interp_ik_callback)
             self.get_logger().info('Control solver (interp) service has been created.')
+        elif self.ik_type == 'slow_manifold':
+            self.srv = self.create_service(ControlSolver, 'ik_solver', self.slow_manifold_callback)
+            self.get_logger().info('Control solver (slow manifold) service has been created')
+
+
+    def _load_slow_model(self):
+        "Loads model for slow manifold predictions"
+        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
+
+        # Load the model
+        self.model = np.load(model_path)
+
+        self.decoder_exp = np.array(self.model['decoder_exp'])
+        self.const_coeff = np.array(self.model['Const_coeff'])
+        self.decoder_coeff = np.array(self.model['decoder_coeff'])
+        self.get_logger().info('Loaded slow manifold model')
+
+
+    def slow_manifold_callback(self, request, response):
+        
+
+
+        return response
 
     def interp_ik_callback(self, request, response):
         """
