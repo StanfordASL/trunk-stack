@@ -37,11 +37,19 @@ class MPCInitializerNode(Node):
         self._load_model()
 
         # MPC configuration
-        Qz = jnp.eye(self.model.n_z)
+        Qz = 10 * jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
-        Qzf = 10 * jnp.eye(self.model.n_z)
+        # Qzf = 10 * jnp.eye(self.model.n_z)
+        # Qzf = Qzf.at[1, 1].set(0)
+
+        # TODO: John edits
+        Qzf = 0 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
-        R_tip, R_mid, R_top = 0.006, 0.008, 0.007
+        # R_tip, R_mid, R_top = 0.006, 0.008, 0.007
+        
+        # TODO: John edits
+        R_tip, R_mid, R_top = 0.005, 0.004, 0.01
+
         R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
         gusto_config = GuSTOConfig(
             Qz=Qz,
@@ -49,13 +57,21 @@ class MPCInitializerNode(Node):
             R=R,
             x_char=0.05*jnp.ones(self.model.n_x),
             f_char=0.5*jnp.ones(self.model.n_x),
-            N=5
+            N=7
         )
         U = HyperRectangle([0.4]*6, [-0.4]*6)
-        dU = HyperRectangle([0.1]*6, [-0.1]*6)
-        # dU = None
+        # dU = HyperRectangle([0.1]*6, [-0.1]*6)
+        dU = None
+
+        # TODO: John edits
+        # dU = HyperRectangle([0.03]*6, [-0.03]*6)
+
         x0 = jnp.zeros(self.model.n_x)
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref, U=U, dU=dU)
+        # self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref, U=U, dU=dU)
+        
+        # TODO: John edits
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref, U=U, dU=dU, solver="GUROBI")
+
 
     def _load_model(self):
         """
