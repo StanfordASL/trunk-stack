@@ -1,3 +1,14 @@
 decoder_exp shape = (83, 6)
 const_coeff shape = (6, 1)
 decoder_coeff shape = (6, 83)
+
+
+def phi(xi, exps):""" Returns monomials. Args: xi: Input array of shape (n_points, n_dimensions). exps: Exponent matrix of shape (n_monomials, n_dimensions). Returns: Monomial matrix of shape (n_monomials, n_points). """ x = np.reshape(xi, (1, xi.shape[0], -1)) # Reshape for broadcasting u = np.reshape(np.prod(x**exps, axis=1), (exps.shape[0], -1)) return u
+
+
+
+
+NEW
+
+1:06
+xi i= {mid tip} for rows and coloumn is time
