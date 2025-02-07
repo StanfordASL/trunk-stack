@@ -147,7 +147,7 @@ class RealTimePlot3D:
         plt.show()
 
 if __name__ == "__main__":
-    streamer = DiskPositionStreamer(ip='10.93.181.158', gripper_open=False, isRecording=False)
+    streamer = DiskPositionStreamer(ip='10.93.181.127', gripper_open=False, isRecording=False)
     plotter = RealTimePlot3D(streamer)
     plotter.start()
 
