@@ -94,15 +94,13 @@ class IKSolverNode(Node):
             self.y2u = np.load(os.path.join(data_dir, f'models/ik/{self.y2u_file}'))
         elif self.ik_type == 'slow_manifold':
             self.model_name = 'slow_manifold_dataset'
+            
+            self._load_slow_model() # Load the model
 
-            # Load the model
-            self._load_slow_model()
-            self.get_logger().info(f'decoder_exp shape = {self.decoder_exp.shape}')
-            self.get_logger().info(f'const_coeff shape = {self.const_coeff.shape}')
-            self.get_logger().info(f'decoder_coeff shape = {self.decoder_coeff.shape}')
-
-
-
+            # # Print sizes of matrices
+            # self.get_logger().info(f'decoder_exp shape = {self.decoder_exp.shape}')
+            # self.get_logger().info(f'const_coeff shape = {self.const_coeff.shape}')
+            # self.get_logger().info(f'decoder_coeff shape = {self.decoder_coeff.shape}')
         elif self.ik_type == 'nn':
             self.neural_ik_model = MLP()
             self.neural_ik_model.load_state_dict(torch.load(os.path.join(data_dir, 'models/ik/neural_ik_model_state.pth'), weights_only=False))
@@ -146,7 +144,18 @@ class IKSolverNode(Node):
         elif self.ik_type == 'slow_manifold':
             self.srv = self.create_service(ControlSolver, 'ik_solver', self.slow_manifold_callback)
             self.get_logger().info('Control solver (slow manifold) service has been created')
+    
 
+    def phi(self, xi, exps):
+        """ Returns monomials for slow manifold.
+        Args: 
+            xi: Input array of shape (n_points, n_dimensions) of positions
+            exps: Exponent matrix of shape (n_monomials, n_dimensions). 
+        Returns:
+            u: Monomial matrix of shape (n_monomials, n_points). """ 
+        x = np.reshape(xi, (1, xi.shape[0], -1))
+        u = np.reshape(np.prod(x**exps, axis=1), (exps.shape[0], -1)) 
+        return u
 
     def _load_slow_model(self):
         "Loads model for slow manifold predictions"
@@ -162,8 +171,25 @@ class IKSolverNode(Node):
 
 
     def slow_manifold_callback(self, request, response):
-        
+        """
+        Callback function that runs when the service is queried.
+        Request contains: z (desired performance variable trajectory)
+        Response contains: uopt (the found control inputs)
+        """
+        # decoder_exp shape = (83, 6)
+        # const_coeff shape = (6, 1)
+        # decoder_coeff shape = (6, 83)
+        zf_des = np.array(request.zf) # desired positions
+        zf_des_spec = zf_des[3:] # only command desired positions for mid and tip
 
+        u = self.phi(zf_des_spec, self.decoder_exp)
+        u = self.decoder_coeff @ u 
+        u += self.const_coeff # add constant coefficients
+
+        # check control inputs are within the workspace
+        u_opt = self.check_control_inputs(u_opt)
+
+        response.uopt = u_opt.tolist()
 
         return response
 
@@ -251,7 +277,7 @@ class IKSolverNode(Node):
     
     def check_control_inputs(self, u_opt):
         # reject vector norms of u that are too large
-        tip_range, mid_range, base_range = 0.65, 0.35, 0.3 #changed tip range from 0.45 to 0.55 to account for circle samples
+        tip_range, mid_range, base_range = 0.45, 0.35, 0.3 
 
         u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
