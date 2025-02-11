@@ -9,7 +9,6 @@ jax.config.update("jax_enable_x64", True)
 
 import rclpy                                                # type: ignore
 from rclpy.node import Node                                 # type: ignore
-from rclpy.clock import ROSClock
 from rclpy.callback_groups import ReentrantCallbackGroup    # type: ignore
 from rclpy.executors import MultiThreadedExecutor           # type: ignore
 from rclpy.qos import QoSProfile                            # type: ignore
@@ -80,6 +79,8 @@ class MPCNode(Node):
         self.controller_type = self.get_parameter('controller_type').value
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.alpha_patrick = 0.2
+        self.safe_control_input = jnp.zeros(6)
 
         # Settled positions of the rigid bodies
         self.rest_position = jnp.array([0.10056, -0.10541, 0.10350,
@@ -125,8 +126,6 @@ class MPCNode(Node):
 
         self.clock = self.get_clock()
 
-        # self.start_time = self.clock.now().nanoseconds / 1e9
-
         # Need some initialization
         self.initialized = False
 
@@ -141,7 +140,6 @@ class MPCNode(Node):
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
                     self.mpc_executor_callback,
-                    # clock=self.clock,
                     callback_group=self.callback_group)
 
         self.get_logger().info(f'MPC node has been started with controller frequency: {1/self.controller_period:.2f} [Hz].')
@@ -206,9 +204,15 @@ class MPCNode(Node):
                 rclpy.shutdown()
             else:
                 safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:6]), self.uopt_previous)
-                self.publish_control_inputs(safe_control_inputs.tolist())
+                # self.publish_control_inputs(safe_control_inputs.tolist())
+
+                # TODO: John Edits
+                self.safe_control_input = (1 - self.alpha_patrick) * self.safe_control_input + self.alpha_patrick * safe_control_inputs
+                self.publish_control_inputs(self.safe_control_input.tolist())
+
                 # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
                 # self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
+
                 self.uopt_previous = safe_control_inputs
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
