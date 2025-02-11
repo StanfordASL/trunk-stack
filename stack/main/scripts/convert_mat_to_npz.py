@@ -15,8 +15,6 @@ def mat_to_npz_slow(mat_filepath, npz_filepath):
         str: The path to the saved.npz file.
         None: If there is an error during the process.
     """
-
-
     mat_data = scipy.io.loadmat(mat_filepath)
     decoder_coeff, decoder_exp = mat_data['Slow_manifold_coeff'], mat_data['exps_sm']
     Const_coeff = mat_data['Const_coeff']
@@ -28,6 +26,7 @@ def mat_to_npz_slow(mat_filepath, npz_filepath):
     )
     print(f"Successfully saved as.npz at {npz_filepath}")
     return npz_filepath
+
 
 def mat_to_npz(mat_filepath, npz_filepath):
     """
@@ -41,8 +40,6 @@ def mat_to_npz(mat_filepath, npz_filepath):
         str: The path to the saved.npz file.
         None: If there is an error during the process.
     """
-
-
     mat_data = scipy.io.loadmat(mat_filepath)
     encoder_coeff, encoder_exp = mat_data['Vfinal'], mat_data['exps_V']
     decoder_coeff, decoder_exp = mat_data['M'], mat_data['exps']
@@ -72,8 +69,7 @@ def main():
     npz_filepath = os.path.join(data_dir, f'models/ssm/{model_name}.npz')
     saved_path = mat_to_npz_slow(mat_filepath, npz_filepath)
     data = np.load(saved_path)
-    # print('Keys: ', list(data.keys()))
-    # print('B_r matrix: ', data['B_r_coeff'])
+    print('Keys: ', list(data.keys()))
 
 if __name__ == '__main__':
     main()

@@ -1,7 +1,0 @@
-decoder_exp shape = (83, 6)
-const_coeff shape = (6, 1)
-decoder_coeff shape = (6, 83)
-
-
-u = np.reshape(np.prod(x**exps, axis=1), (exps.shape[0], -1)) 
-ValueError: operands could not be broadcast together with shapes (1,6,1) (83,6) 
