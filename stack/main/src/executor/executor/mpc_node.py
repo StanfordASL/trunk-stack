@@ -59,7 +59,7 @@ def check_control_inputs(u_opt, u_opt_previous):
 
 class MPCNode(Node):
     """
-    This node is responsible for running the main experiment.
+    This node is responsible for running MPC.
     """
     def __init__(self):
         super().__init__('mpc_node')
@@ -127,8 +127,8 @@ class MPCNode(Node):
         # JIT compile this function
         check_control_inputs(jnp.zeros(6), self.uopt_previous)
 
+        # Create timer to execute MPC at fixed frequency
         self.controller_period = 0.04
-        
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
                     self.mpc_executor_callback,
@@ -136,11 +136,12 @@ class MPCNode(Node):
 
         self.get_logger().info(f'MPC node has been started with controller frequency: {1/self.controller_period:.2f} [Hz].')
 
+        # Define reference time
         self.start_time = self.clock.now().nanoseconds / 1e9
 
     def mocap_listener_callback(self, msg):
         """
-        Callback to process mocap data. It updates the latest observation.
+        Callback to process mocap data, updating the latest observation.
         """
         if self.debug:
             self.get_logger().info(f'Received mocap data: {msg.positions}.')
@@ -163,13 +164,14 @@ class MPCNode(Node):
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
     def mpc_executor_callback(self):
+        """
+        Execute MPC at a fixed rate.
+        """
         if not self.initialized:
             self.send_request(0.0, jnp.zeros(12), wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         elif self.latest_y is not None:
-            # self.get_logger().info(f'Sent the request at {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f}')
-            # self.get_logger().info(f'Sent the request at {(time.time() - self.start_time):.3f}')
             self.send_request(self.t0, self.latest_y, wait=False)
             self.future.add_done_callback(self.service_callback)
 
@@ -186,9 +188,11 @@ class MPCNode(Node):
             rclpy.spin_until_future_complete(self, self.future)
 
     def service_callback(self, async_response):
+        """
+        Callback that defines what happens when the MPC solver node returns a result.
+        """
         try:
             response = async_response.result()
-            # self.get_logger().info(f'Received uopt at: {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f} for t0: {response.t[0]:.3f}')
 
             if response.done:
                 self.get_logger().info(f'Trajectory is finished! At {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f}')
@@ -223,6 +227,9 @@ class MPCNode(Node):
 
 
 def main(args=None):
+    """
+    Run the ROS2 node with multi-threaded executor. 
+    """
     rclpy.init(args=args)
     mpc_node = MPCNode()
 
