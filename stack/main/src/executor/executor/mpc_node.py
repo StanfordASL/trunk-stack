@@ -52,12 +52,6 @@ def check_control_inputs(u_opt, u_opt_previous):
     norm_value = jnp.linalg.norm(vector_sum)
 
     # Check the constraint: if the constraint is met, then keep previous control command
-    # if norm_value > 0.8:
-    #     print(f'Sample {u_opt} got rejected')
-    #     u_opt = u_opt_previous
-    # else:
-    #     # Else the clipped command is published
-    #     u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
     u_opt = jnp.where(norm_value > 0.8, u_opt_previous, jnp.array([u1, u2, u3, u4, u5, u6]))
 
     return u_opt
@@ -71,12 +65,10 @@ class MPCNode(Node):
         super().__init__('mpc_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('controller_type', 'mpc'),                     # 'ik' or 'mpc' (what controller to use)
-            ('results_name', 'test_experiment')             # name of the results file
+            ('results_name', 'mpc_experiment')             # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
-        self.controller_type = self.get_parameter('controller_type').value
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
         self.alpha_patrick = 0.2
