@@ -154,15 +154,18 @@ class TestMPCNode(Node):
                 self.uopt_previous = safe_control_inputs
 
                 # Use MPC optimized performance variable to update observations
-                self.update_observations(response.zopt)
+                self.update_observations(response.t, response.zopt)
                 
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
     
-    def update_observations(self, z_opt, eps=1e-4):
+    def update_observations(self, t_opt, z_opt, eps=1e-4):
         """
         Update the latest observations using predicted observations from MPC plus added noise.
         """
+        # Figure out what predictions to use for observations update
+        idx0 = jnp.searchsorted(t_opt, t0, side='right')
+
         # Convert from list to JAX array
         y_centered_tip = jnp.array(z_opt)
         print(y_centered_tip)
