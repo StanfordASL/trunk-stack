@@ -1,21 +1,21 @@
 import os
-import time
 import jax
 import jax.numpy as jnp
 import logging
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
-import rclpy                        # type: ignore
-from rclpy.node import Node         # type: ignore
-from rclpy.qos import QoSProfile    # type: ignore
+import rclpy                                    # type: ignore
+from rclpy.node import Node                     # type: ignore
 from controller.mpc_solver_node import jnp2arr  # type: ignore
-from interfaces.msg import TrunkRigidBodies
 from interfaces.srv import ControlSolver
 
 
+@jax.jit
 def check_control_inputs(u_opt, u_opt_previous):
-    # reject vector norms of u that are too large
+    """
+    Check control inputs for safety constraints, rejecting vector norms that are too large.
+    """
     tip_range, mid_range, base_range = 0.45, 0.35, 0.3
 
     u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
@@ -45,99 +45,86 @@ def check_control_inputs(u_opt, u_opt_previous):
     norm_value = jnp.linalg.norm(vector_sum)
 
     # Check the constraint: if the constraint is met, then keep previous control command
-    if norm_value > 0.8:
-        print(f'Sample {u_opt} got rejected')
-        u_opt = u_opt_previous
-    else:
-        # Else the clipped command is published
-        u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
+    u_opt = jnp.where(norm_value > 0.8, u_opt_previous, jnp.array([u1, u2, u3, u4, u5, u6]))
 
     return u_opt
 
 
 class TestMPCNode(Node):
     """
-    This node is responsible for testing MPC.
+    This node is responsible for testing the MPC loop.
     """
     def __init__(self):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('controller_type', 'mpc'),                     # 'ik' or 'mpc' (what controller to use)
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
-        self.controller_type = self.get_parameter('controller_type').value
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.10056, -0.10541, 0.10350, 0.09808, -0.20127, 0.10645, 0.09242, -0.31915, 0.09713])
+        self.rest_position = jnp.array([0.10056, -0.10541, 0.10350,
+                                        0.09808, -0.20127, 0.10645,
+                                        0.09242, -0.31915, 0.09713])
 
-        if self.controller_type == 'mpc':
-            # Subscribe to current positions
-            self.mocap_subscription = self.create_subscription(
-                TrunkRigidBodies,
-                '/trunk_rigid_bodies',
-                self.mocap_listener_callback,
-                QoSProfile(depth=10)
-            )
+        # Key to control randomness in added noise
+        self.rnd_key = jax.random.key(seed=0)
 
-            # Create MPC solver service client
-            self.mpc_client = self.create_client(
-                ControlSolver,
-                'mpc_solver'
-            )
-            self.get_logger().info('MPC client created.')
-            while not self.mpc_client.wait_for_service(timeout_sec=1.0):
-                self.get_logger().info('MPC solver not available, waiting...')
-            # Request message definition
-            self.req = ControlSolver.Request()
-
-            # Send over an example request
-            self.send_request(0.0, jnp.zeros(12), wait=False)
-            
-            # Sleep a bit right after as that was found to help
-            self.get_logger().info('Waiting for a sec...')
-            time.sleep(0.5)
+        # Create MPC solver service client
+        self.mpc_client = self.create_client(
+            ControlSolver,
+            'mpc_solver'
+        )
+        self.get_logger().info('MPC client created.')
+        while not self.mpc_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('MPC solver not available, waiting...')
+        
+        # Request message definition
+        self.req = ControlSolver.Request()
 
         # Maintain current observations because of the delay embedding
-        self.y = None
+        self.latest_y = None
 
         # Maintain previous control inputs
         self.uopt_previous = jnp.zeros(6)
-
-        # Keep a clock for timing
+        
         self.clock = self.get_clock()
 
-        controller_freq = 30  # [Hz]
-        self.mpc_exec_timer = self.create_timer(1 / controller_freq, self.mpc_executor_callback, clock=self.clock)
+        # Need some initialization
+        self.initialized = False
 
-        self.get_logger().info('Run experiment node has been started.')
+        # Initialize by calling mpc callback function
+        self.mpc_executor_callback()
+
+        # JIT compile this function
+        check_control_inputs(jnp.zeros(6), self.uopt_previous)
+
+        # Create timer to execute MPC at fixed frequency
+        self.controller_period = 0.03  # 25 [Hz]
+        self.mpc_exec_timer = self.create_timer(
+                    self.controller_period,
+                    self.mpc_executor_callback
+                    )
+
+        self.get_logger().info(f'MPC test node has been started with controller frequency: {1/self.controller_period:.2f} [Hz].')
+
+        # Define reference time
+        self.start_time = self.clock.now().nanoseconds / 1e9
 
     def mpc_executor_callback(self):
-        self.get_logger().info(f'Sent the request at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
-        self.get_logger().info(f'   during which t0 was {self.t0}')
-        self.send_request(self.t0, self.y, wait=False)
-        self.future.add_done_callback(self.service_callback)
-
-    def service_callback(self, async_response):
-        try:
-            response = async_response.result()
-            self.get_logger().info(f'Received the uopt at {self.clock.now().nanoseconds / 1e9 - self.start_time}')
-            self.get_logger().info(f'   which was for t0: {response.t[0]}')
-            if response.done:
-                self.get_logger().info('Trajectory is finished!')
-                self.destroy_node()
-                rclpy.shutdown()
-            else:
-                safe_control_inputs = check_control_inputs(response.uopt[:6], self.uopt_previous)
-                # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
-                self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
-                self.uopt_previous = safe_control_inputs
-        except Exception as e:
-            self.get_logger().error(f'Service call failed: {e}.')
+        """
+        Execute MPC at a fixed rate.
+        """
+        if not self.initialized:
+            self.send_request(0.0, jnp.zeros(12), wait=True)
+            self.future.add_done_callback(self.service_callback)
+            self.initialized = True
+        elif self.latest_y is not None:
+            self.send_request(self.t0, self.latest_y, wait=False)
+            self.future.add_done_callback(self.service_callback)
 
     def send_request(self, t0, y0, wait=False):
         """
@@ -151,8 +138,53 @@ class TestMPCNode(Node):
             # Synchronous call, not compatible for real-time applications
             rclpy.spin_until_future_complete(self, self.future)
 
+    def service_callback(self, async_response):
+        """
+        Callback that defines what happens when the MPC solver node returns a result.
+        """
+        try:
+            response = async_response.result()
+            if response.done:
+                self.get_logger().info('Trajectory is finished!')
+                self.destroy_node()
+                rclpy.shutdown()
+            else:
+                # We do not execute the control inputs here but it's still being checked
+                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:6]), self.uopt_previous)
+                self.uopt_previous = safe_control_inputs
+
+                # Use MPC optimized performance variable to update observations
+                self.update_observations(response.zopt)
+                
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}.')
+    
+    def update_observations(self, z_opt, eps=1e-4):
+        """
+        Update the latest observations using predicted observations from MPC plus added noise.
+        """
+        # Convert from list to JAX array
+        y_centered_tip = jnp.array(z_opt)
+        print(y_centered_tip)
+
+        # Add noise to simulate real experiment
+        y_centered_tip += eps * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
+
+        # Update tracked observation
+        if self.latest_y is None:
+            # At initialization use current obs. as delay embedding
+            self.latest_y = jnp.tile(y_centered_tip, 4)
+            self.start_time = self.clock.now().nanoseconds / 1e9
+        else:
+            self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-3]])
+        
+        self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
+
 
 def main(args=None):
+    """
+    Run single-threaded ROS2 node. 
+    """
     rclpy.init(args=args)
     test_mpc_node = TestMPCNode()
     rclpy.spin(test_mpc_node)
