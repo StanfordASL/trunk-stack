@@ -5,9 +5,9 @@ import logging
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
-import rclpy                                    # type: ignore
-from rclpy.node import Node                     # type: ignore
-from controller.mpc_solver_node import jnp2arr  # type: ignore
+import rclpy                                             # type: ignore
+from rclpy.node import Node                              # type: ignore
+from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
 
 
@@ -123,7 +123,9 @@ class TestMPCNode(Node):
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         elif self.latest_y is not None:
-            self.send_request(self.t0, self.latest_y, wait=False)
+            t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
+            self.update_observations(t0)
+            self.send_request(t0, self.latest_y, wait=False)
             self.future.add_done_callback(self.service_callback)
 
     def send_request(self, t0, y0, wait=False):
@@ -153,35 +155,37 @@ class TestMPCNode(Node):
                 safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:6]), self.uopt_previous)
                 self.uopt_previous = safe_control_inputs
 
-                # Use MPC optimized performance variable to update observations
-                self.update_observations(response.t, response.zopt)
-                
+                # Save the predicted observations
+                self.topt, self.zopt = arr2jnp(response.t), arr2jnp(response.zopt)
+
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
-    
-    def update_observations(self, t_opt, z_opt, eps=1e-4):
+
+    def update_observations(self, t0, eps=1e-4):
         """
         Update the latest observations using predicted observations from MPC plus added noise.
         """
         # Figure out what predictions to use for observations update
-        idx0 = jnp.searchsorted(t_opt, t0, side='right')
-
-        # Convert from list to JAX array
-        y_centered_tip = jnp.array(z_opt)
-        print(y_centered_tip)
+        idx0 = jnp.searchsorted(self.topt, t0, side='right')
+        y_predicted = self.zopt[:idx0+1]
 
         # Add noise to simulate real experiment
-        y_centered_tip += eps * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
+        y_centered_tip = y_predicted + eps * jax.random.normal(key=self.rnd_key, shape=y_predicted.shape)
+        y_centered_tip = jnp2arr(y_centered_tip)
+        N_new_obs = y_centered_tip.shape[0]
 
         # Update tracked observation
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(y_centered_tip, 4)
+            self.latest_y = jnp.tile(y_centered_tip[-3:], 4)
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
-            self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-3]])
-        
-        self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
+            if N_new_obs > 4:
+                # If we have more than 4 new observations, we only keep the last 4
+                self.latest_y = y_centered_tip[-4*3:]
+            else:
+                # Otherwise we concatenate the new observations with the old ones
+                self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:(4-N_new_obs)*3]])
 
 
 def main(args=None):
