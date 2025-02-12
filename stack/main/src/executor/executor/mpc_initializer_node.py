@@ -31,7 +31,6 @@ class MPCInitializerNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Generate reference trajectory
-        # z_ref, t = self._generate_ref_trajectory(10, 0.01, 'periodic_line', 0.04)
         z_ref, t = self._generate_ref_trajectory(10, 0.01, 'figure_eight', 0.1)
 
         # Load the model
