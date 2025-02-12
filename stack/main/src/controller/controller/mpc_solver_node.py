@@ -7,7 +7,6 @@ from rclpy.node import Node         # type: ignore
 from scipy.interpolate import interp1d
 from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
-import time
 
 
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
