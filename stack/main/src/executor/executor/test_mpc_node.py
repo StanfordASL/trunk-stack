@@ -65,11 +65,6 @@ class TestMPCNode(Node):
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
-        # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.10056, -0.10541, 0.10350,
-                                        0.09808, -0.20127, 0.10645,
-                                        0.09242, -0.31915, 0.09713])
-
         # Key to control randomness in added noise
         self.rnd_key = jax.random.key(seed=0)
 
@@ -103,11 +98,11 @@ class TestMPCNode(Node):
         check_control_inputs(jnp.zeros(6), self.uopt_previous)
 
         # Create timer to execute MPC at fixed frequency
-        self.controller_period = 0.03  # 25 [Hz]
+        self.controller_period = 0.03
         self.mpc_exec_timer = self.create_timer(
-                    self.controller_period,
-                    self.mpc_executor_callback
-                    )
+            self.controller_period,
+            self.mpc_executor_callback
+        )
 
         self.get_logger().info(f'MPC test node has been started with controller frequency: {1/self.controller_period:.2f} [Hz].')
 
@@ -122,7 +117,7 @@ class TestMPCNode(Node):
             self.send_request(0.0, jnp.zeros(12), wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
-        elif self.latest_y is not None:
+        else:
             t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations(t0)
             self.send_request(t0, self.latest_y, wait=False)
@@ -156,7 +151,7 @@ class TestMPCNode(Node):
                 self.uopt_previous = safe_control_inputs
 
                 # Save the predicted observations
-                self.topt, self.zopt = arr2jnp(response.t), arr2jnp(response.zopt)
+                self.topt, self.zopt = arr2jnp(response.t, 1, squeeze=True), arr2jnp(response.zopt, 3)
 
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
@@ -171,21 +166,21 @@ class TestMPCNode(Node):
 
         # Add noise to simulate real experiment
         y_centered_tip = y_predicted + eps * jax.random.normal(key=self.rnd_key, shape=y_predicted.shape)
-        y_centered_tip = jnp2arr(y_centered_tip)
         N_new_obs = y_centered_tip.shape[0]
 
         # Update tracked observation
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(y_centered_tip[-3:], 4)
+            self.latest_y = jnp.tile(y_centered_tip[-1:].squeeze(), 4)
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
+            # Note the different ordering of MPC horizon and delay embeddings which requires the flipping
             if N_new_obs > 4:
                 # If we have more than 4 new observations, we only keep the last 4
-                self.latest_y = y_centered_tip[-4*3:]
+                self.latest_y = jnp.flip(y_centered_tip[-4:].T, 1).T.flatten()
             else:
                 # Otherwise we concatenate the new observations with the old ones
-                self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:(4-N_new_obs)*3]])
+                self.latest_y = jnp.concatenate([jnp.flip(y_centered_tip.T, 1).T.flatten(), self.latest_y[:(4-N_new_obs)*3]])
 
 
 def main(args=None):
