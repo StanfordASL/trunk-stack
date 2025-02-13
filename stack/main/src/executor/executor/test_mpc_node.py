@@ -103,7 +103,7 @@ class TestMPCNode(Node):
         check_control_inputs(jnp.zeros(6), self.uopt_previous)
 
         # Create timer to execute MPC at fixed frequency
-        self.controller_period = 0.03
+        self.controller_period = 0.04
         self.mpc_exec_timer = self.create_timer(
             self.controller_period,
             self.mpc_executor_callback
@@ -124,7 +124,7 @@ class TestMPCNode(Node):
             self.initialized = True
         else:
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
-            self.update_observations(self.t0)
+            self.update_observations()
             self.send_request(self.t0, self.latest_y, wait=False)
             self.future.add_done_callback(self.service_callback)
 
@@ -157,19 +157,20 @@ class TestMPCNode(Node):
 
                 # Save the predicted observations and control inputs
                 topt, zopt, uopt = response.t, response.zopt, response.uopt
-                y0 = self.latest_y[:3].tolist()
-                self.save_to_csv(self.t0, y0, topt, zopt, uopt)
+                if self.latest_y is not None:
+                    # y0 = self.latest_y[:3].tolist()
+                    self.save_to_csv(topt, zopt, uopt)
                 self.topt, self.zopt = arr2jnp(topt, 1, squeeze=True), arr2jnp(zopt, 3)
 
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
-    def update_observations(self, t0, eps_noise=1e-4):
+    def update_observations(self, eps_noise=1e-4):
         """
         Update the latest observations using predicted observations from MPC plus added noise.
         """
         # Figure out what predictions to use for observations update
-        idx0 = jnp.searchsorted(self.topt, t0, side='right')
+        idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
         y_predicted = self.zopt[:idx0+1]
 
         # Add noise to simulate real experiment
@@ -196,15 +197,15 @@ class TestMPCNode(Node):
         """
         with open(self.results_file, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['t0', 'y_latest', 'topt', 'zopt', 'uopt'])
+            writer.writerow(['topt', 'zopt', 'uopt'])
 
-    def save_to_csv(self, t0, y0, topt, zopt, uopt):
+    def save_to_csv(self, topt, zopt, uopt):
         """
         Save data to the CSV file.
         """
         with open(self.results_file, mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([t0, y0, topt, zopt, uopt])
+            writer.writerow([list(topt), list(zopt), list(uopt)])
 
 
 def main(args=None):
