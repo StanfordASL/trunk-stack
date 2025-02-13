@@ -156,7 +156,7 @@ class TestMPCNode(Node):
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
-    def update_observations(self, t0, eps=1e-4):
+    def update_observations(self, t0, eps_noise=1e-4):
         """
         Update the latest observations using predicted observations from MPC plus added noise.
         """
@@ -165,7 +165,7 @@ class TestMPCNode(Node):
         y_predicted = self.zopt[:idx0+1]
 
         # Add noise to simulate real experiment
-        y_centered_tip = y_predicted + eps * jax.random.normal(key=self.rnd_key, shape=y_predicted.shape)
+        y_centered_tip = y_predicted + eps_noise * jax.random.normal(key=self.rnd_key, shape=y_predicted.shape)
         N_new_obs = y_centered_tip.shape[0]
 
         # Update tracked observation
