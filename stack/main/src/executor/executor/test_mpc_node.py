@@ -1,4 +1,5 @@
 import os
+import csv
 import jax
 import jax.numpy as jnp
 import logging
@@ -65,6 +66,10 @@ class TestMPCNode(Node):
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
+        # Initialize the CSV file
+        self.results_file = os.path.join(self.data_dir, f"trajectories/test_mpc/{self.results_name}.csv")
+        self.initialize_csv()
+
         # Key to control randomness in added noise
         self.rnd_key = jax.random.key(seed=0)
 
@@ -118,9 +123,9 @@ class TestMPCNode(Node):
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         else:
-            t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
-            self.update_observations(t0)
-            self.send_request(t0, self.latest_y, wait=False)
+            self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
+            self.update_observations(self.t0)
+            self.send_request(self.t0, self.latest_y, wait=False)
             self.future.add_done_callback(self.service_callback)
 
     def send_request(self, t0, y0, wait=False):
@@ -150,8 +155,11 @@ class TestMPCNode(Node):
                 safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:6]), self.uopt_previous)
                 self.uopt_previous = safe_control_inputs
 
-                # Save the predicted observations
-                self.topt, self.zopt = arr2jnp(response.t, 1, squeeze=True), arr2jnp(response.zopt, 3)
+                # Save the predicted observations and control inputs
+                topt, zopt, uopt = response.t, response.zopt, response.uopt
+                y0 = self.latest_y[:3].tolist()
+                self.save_to_csv(self.t0, y0, topt, zopt, uopt)
+                self.topt, self.zopt = arr2jnp(topt, 1, squeeze=True), arr2jnp(zopt, 3)
 
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
@@ -181,6 +189,22 @@ class TestMPCNode(Node):
             else:
                 # Otherwise we concatenate the new observations with the old ones
                 self.latest_y = jnp.concatenate([jnp.flip(y_centered_tip.T, 1).T.flatten(), self.latest_y[:(4-N_new_obs)*3]])
+
+    def initialize_csv(self):
+        """
+        Initialize the CSV file with headers.
+        """
+        with open(self.results_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['t0', 'y_latest', 'topt', 'zopt', 'uopt'])
+
+    def save_to_csv(self, t0, y0, topt, zopt, uopt):
+        """
+        Save data to the CSV file.
+        """
+        with open(self.results_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([t0, y0, topt, zopt, uopt])
 
 
 def main(args=None):
