@@ -23,3 +23,6 @@
 !**/ros_phoenix/launch/
 **/ros_phoenix/launch/*
 !**/ros_phoenix/launch/trunk.launch.py
+
+# Virtual environment
+.venv/

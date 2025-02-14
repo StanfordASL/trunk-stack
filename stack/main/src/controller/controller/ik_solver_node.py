@@ -81,6 +81,9 @@ class IKSolverNode(Node):
         self.tip_only = self.get_parameter('tip_only').value
         self.alpha = self.get_parameter('alpha').value
 
+        # Define rest positions
+        self.rest_positions = np.array([0.10056, -0.10541, 0.10350, 0.09808, -0.20127, 0.10645, 0.09242, -0.31915, 0.09713]) #from 2/2/25
+
         # Initializations
         self.u_opt_previous = np.array([0., 0., 0., 0., 0., 0.])  # initially no control input
         self.smooth_stat = self.u_opt_previous  # expontential smoothing
@@ -93,7 +96,7 @@ class IKSolverNode(Node):
             self.u2y = np.load(os.path.join(data_dir, f'models/ik/{self.u2y_file}'))
             self.y2u = np.load(os.path.join(data_dir, f'models/ik/{self.y2u_file}'))
         elif self.ik_type == 'slow_manifold':
-            self.model_name = 'slow_manifold_dataset'
+            self.model_name = 'slow_manifold'
             
             self._load_slow_model() # Load the model
 
@@ -112,8 +115,7 @@ class IKSolverNode(Node):
             for seed in range(1, max_seed+1):
                 self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_circle_seed{seed}.csv')])
             self.ys_ik = self.ys_ik.drop(columns='ID')
-            rest_positions = np.array([0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
-            self.ys_ik = self.ys_ik - rest_positions # center about zero
+            self.ys_ik = self.ys_ik - self.rest_positions # center about zero
             self.ys_ik = self.ys_ik.values  # Convert to numpy array
 
              # Load control inputs data
@@ -149,13 +151,17 @@ class IKSolverNode(Node):
     def phi(self, xi, exps):
         """ Returns monomials for slow manifold.
         Args: 
-            xi: Input array of shape (n_points, n_dimensions) of positions
+            xi: Input array of shape (n_dimensions,) of positions
             exps: Exponent matrix of shape (n_monomials, n_dimensions). 
         Returns:
-            u: Monomial matrix of shape (n_monomials, n_points). """ 
-        x = np.reshape(xi, (1, xi.shape[0], -1))
-        u = np.reshape(np.prod(x**exps, axis=1), (exps.shape[0], -1)) 
-        return u
+            monomials: Monomial matrix of shape (n_monomials). """ 
+        #self.get_logger().info(f"exps: {exps.shape}")
+        x = np.reshape(xi, (1,-1)) # reshaped to dim (n_dimensions,1)
+        #self.get_logger().info(f"x: {x.shape}")
+        x_expanded = np.tile(x, (exps.shape[0], 1)) #repeat for each monomial (n_monomials, n_dimensions)
+        #self.get_logger().info(f"x_expanded: {x_expanded.shape}")
+        monomials = np.prod(x_expanded**exps, axis=1) 
+        return monomials
 
     def _load_slow_model(self):
         "Loads model for slow manifold predictions"
@@ -180,15 +186,20 @@ class IKSolverNode(Node):
         # const_coeff shape = (6, 1)
         # decoder_coeff shape = (6, 83)
         zf_des = np.array(request.zf) # desired positions
-        zf_des_spec = zf_des[3:] # only command desired positions for mid and tip
+        # self.get_logger().info(f"zf_des (zero centered from AVP) {zf_des}")
+        zf_des += self.rest_positions # It is already zero centered straight from the AVP... so we need to offset away from zero into the frame we learned the model in
+        # self.get_logger().info(f"offset zf_des: {zf_des}")
 
-        u = self.phi(zf_des_spec, self.decoder_exp)
-        u = self.decoder_coeff @ u 
-        u += self.const_coeff # add constant coefficients
+        zf_des_spec = zf_des[3:] # only command desired positions for mid and tip
+        monomials = self.phi(zf_des_spec, self.decoder_exp)
+        u = (self.decoder_coeff @ monomials).reshape(self.const_coeff.shape[0], 1)
+
+        self.const_coeff = self.const_coeff.reshape(self.const_coeff.shape[0],1)
+        u_opt = u + self.const_coeff # add constant coefficients
+        #self.get_logger().info(f"u_opt {u_opt}")
 
         # check control inputs are within the workspace
-        u_opt = self.check_control_inputs(u_opt)
-
+        u_opt = self.check_control_inputs(u_opt.flatten())
         response.uopt = u_opt.tolist()
 
         return response
