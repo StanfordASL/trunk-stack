@@ -133,7 +133,7 @@ class TestMPCNode(Node):
             self.send_request(0.0, jnp.zeros(self.n_y), wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
-        elif self.latest_y is not None:
+        else:
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations()
             self.send_request(self.t0, self.latest_y, wait=False)
