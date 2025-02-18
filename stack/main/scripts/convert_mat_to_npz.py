@@ -63,11 +63,11 @@ def mat_to_npz(mat_filepath, npz_filepath):
 
 
 def main():
-    model_name = 'slow_manifold_dataset'
+    model_name = 'ssm_origin_300g_4D_fast'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     mat_filepath = os.path.join(data_dir, f'models/ssm/{model_name}.mat')
     npz_filepath = os.path.join(data_dir, f'models/ssm/{model_name}.npz')
-    saved_path = mat_to_npz_slow(mat_filepath, npz_filepath)
+    saved_path = mat_to_npz(mat_filepath, npz_filepath)
     data = np.load(saved_path)
     print('Keys: ', list(data.keys()))
 
