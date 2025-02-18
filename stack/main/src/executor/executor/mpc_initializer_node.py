@@ -1,4 +1,6 @@
 import os
+import rclpy                        # type: ignore
+from rclpy.node import Node         # type: ignore
 
 import jax
 import jax.numpy as jnp
@@ -7,10 +9,7 @@ logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
 
-import rclpy                        # type: ignore
-from rclpy.node import Node         # type: ignore
-
-from controller.mpc.gusto import GuSTOConfig  # type: ignore
+from controller.mpc.gusto import GuSTOConfig                # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
 from .utils.models import SSMR
 from .utils.misc import HyperRectangle
@@ -24,17 +23,17 @@ class MPCInitializerNode(Node):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g'),              # 'ssmr_200g' (what model to use)
+            ('model_name', 'ssm_origin_300g_4D_slow'),             # 'ssmr_200g' (what model to use)
         ])
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
-        # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.075)
-
         # Load the model
         self._load_model()
+
+        # Generate reference trajectory
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.075)
 
         # MPC configuration
         U = HyperRectangle([0.4]*6, [-0.4]*6)
@@ -44,7 +43,7 @@ class MPCInitializerNode(Node):
 
         Qz = 5 * jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
-        Qzf = 10 * jnp.eye(self.model.n_z)
+        Qzf = 0 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
         R_tip, R_mid, R_top = 0.001, 0.0075, 0.01
         R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
@@ -79,34 +78,55 @@ class MPCInitializerNode(Node):
 
     def _generate_ref_trajectory(self, T, dt, traj_type, size):
         """
-        Generate a 3D reference trajectory for the system to track.
+        Generate a reference trajectory of dimension n_z for the system to track.
         """
         t = jnp.linspace(0, T, int(T/dt))
-        z_ref = jnp.zeros((len(t), 3))
+        z_ref = jnp.zeros((len(t), self.model.n_z))
 
-        # Note that y is vertically up
-        if traj_type == 'circle':
-            z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
-            z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
-            z_ref = z_ref.at[:, 2].set(size * jnp.sin(2 * jnp.pi / T * t))
-        elif traj_type == 'figure_eight':
-            z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
-            z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
-            z_ref = z_ref.at[:, 2].set(size * jnp.sin(4 * jnp.pi / T * t))
-        elif traj_type == 'periodic_line':
-            m = -1
-            z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
-            z_ref = z_ref.at[:, 1].set(jnp.zeros_like(t))
-            z_ref = z_ref.at[:, 2].set(m * size * jnp.sin(2 * jnp.pi / T * t))
-        elif traj_type == 'arc':
-            m = -1
-            l_trunk = 0.35
-            R = l_trunk / 2
-            z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
-            z_ref = z_ref.at[:, 2].set(m * size * jnp.sin(2 * jnp.pi / T * t))
-            z_ref = z_ref.at[:, 1].set(R - jnp.sqrt(R**2 - z_ref[:, 0]**2 - z_ref[:, 0]**2))
-        else:
-            raise ValueError('Invalid trajectory type: ' + traj_type + '. Valid options are: "circle" or "figure_eight".')
+        # NOTE: y is vertically up here
+
+        if self.model.n_z == 2:
+            if traj_type == 'circle':
+                z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
+                z_ref = z_ref.at[:, 1].set(size * jnp.sin(2 * jnp.pi / T * t))
+            elif traj_type == 'figure_eight':
+                z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 1].set(size * jnp.sin(4 * jnp.pi / T * t))
+            elif traj_type == 'periodic_line':
+                m = -1
+                z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 1].set(m * size * jnp.sin(2 * jnp.pi / T * t))
+            elif traj_type == 'arc':
+                m = -1
+                l_trunk = 0.35
+                R = l_trunk / 2
+                z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 1].set(m * size * jnp.sin(2 * jnp.pi / T * t))
+            else:
+                raise ValueError('Invalid trajectory type: ' + traj_type + '. Valid options are: "circle" or "figure_eight".')
+        elif self.model.n_z == 3:
+            if traj_type == 'circle':
+                z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
+                z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
+                z_ref = z_ref.at[:, 2].set(size * jnp.sin(2 * jnp.pi / T * t))
+            elif traj_type == 'figure_eight':
+                z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
+                z_ref = z_ref.at[:, 2].set(size * jnp.sin(4 * jnp.pi / T * t))
+            elif traj_type == 'periodic_line':
+                m = -1
+                z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 1].set(jnp.zeros_like(t))
+                z_ref = z_ref.at[:, 2].set(m * size * jnp.sin(2 * jnp.pi / T * t))
+            elif traj_type == 'arc':
+                m = -1
+                l_trunk = 0.35
+                R = l_trunk / 2
+                z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 2].set(m * size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 1].set(R - jnp.sqrt(R**2 - z_ref[:, 0]**2 - z_ref[:, 0]**2))
+            else:
+                raise ValueError('Invalid trajectory type: ' + traj_type + '. Valid options are: "circle" or "figure_eight".')
         return z_ref, t
 
 

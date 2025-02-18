@@ -93,7 +93,7 @@ class MPCSolverNode(Node):
         self.topt = self.dt * jnp.arange(self.N + 1)
 
         # Also force JIT-compilation of encoder mapping and conversions
-        model.encode(jnp.zeros(12))
+        model.encode(jnp.zeros(self.model.n_y))
 
         # Initialize the ROS node
         super().__init__('mpc_solver_node')

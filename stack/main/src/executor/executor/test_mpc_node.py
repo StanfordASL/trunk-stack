@@ -59,12 +59,23 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
+            ('n_z', 2),                                     # 2 (number of performance vars)
+            ('n_u', 6),                                     # 6 (number of control inputs)
+            ('n_obs', 2),                                   # 2 (2D, 3D or 6D observations)
+            ('n_delay', 4),                                 # 4 (number of delays applied to observations)
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
+        self.n_z = self.get_parameter('n_z').value
+        self.n_u = self.get_parameter('n_u').value
+        self.n_obs = self.get_parameter('n_obs').value
+        self.n_delay = self.get_parameter('n_delay').value
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+
+        # Size of observations vector
+        self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Initialize the CSV file
         self.results_file = os.path.join(self.data_dir, f"trajectories/test_mpc/{self.results_name}.csv")
@@ -89,7 +100,7 @@ class TestMPCNode(Node):
         self.latest_y = None
 
         # Maintain previous control inputs
-        self.uopt_previous = jnp.zeros(6)
+        self.uopt_previous = jnp.zeros(self.n_u)
         
         self.clock = self.get_clock()
 
@@ -100,7 +111,7 @@ class TestMPCNode(Node):
         self.mpc_executor_callback()
 
         # JIT compile this function
-        check_control_inputs(jnp.zeros(6), self.uopt_previous)
+        check_control_inputs(jnp.zeros(self.n_u), self.uopt_previous)
 
         # Create timer to execute MPC at fixed frequency
         self.controller_period = 0.04
@@ -119,10 +130,10 @@ class TestMPCNode(Node):
         Execute MPC at a fixed rate.
         """
         if not self.initialized:
-            self.send_request(0.0, jnp.zeros(12), wait=True)
+            self.send_request(0.0, jnp.zeros(self.n_y), wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
-        else:
+        elif self.latest_y is not None:
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations()
             self.send_request(self.t0, self.latest_y, wait=False)
@@ -152,15 +163,14 @@ class TestMPCNode(Node):
                 rclpy.shutdown()
             else:
                 # We do not execute the control inputs here but it's still being checked
-                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:6]), self.uopt_previous)
+                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.uopt_previous)
                 self.uopt_previous = safe_control_inputs
 
                 # Save the predicted observations and control inputs
                 topt, zopt, uopt = response.t, response.zopt, response.uopt
                 if self.latest_y is not None:
-                    # y0 = self.latest_y[:3].tolist()
                     self.save_to_csv(topt, zopt, uopt)
-                self.topt, self.zopt = arr2jnp(topt, 1, squeeze=True), arr2jnp(zopt, 3)
+                self.topt, self.zopt = arr2jnp(topt, 1, squeeze=True), arr2jnp(zopt, self.n_z)
 
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
@@ -180,16 +190,16 @@ class TestMPCNode(Node):
         # Update tracked observation
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(y_centered_tip[-1:].squeeze(), 4)
+            self.latest_y = jnp.tile(y_centered_tip[-1:].squeeze(), (self.n_delay+1))
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
             # Note the different ordering of MPC horizon and delay embeddings which requires the flipping
-            if N_new_obs > 4:
-                # If we have more than 4 new observations, we only keep the last 4
-                self.latest_y = jnp.flip(y_centered_tip[-4:].T, 1).T.flatten()
+            if N_new_obs > self.n_delay + 1:
+                # If we have more than self.n_delay + 1 new observations, we only keep the last self.n_delay + 1
+                self.latest_y = jnp.flip(y_centered_tip[-(self.n_delay+1):].T, 1).T.flatten()
             else:
                 # Otherwise we concatenate the new observations with the old ones
-                self.latest_y = jnp.concatenate([jnp.flip(y_centered_tip.T, 1).T.flatten(), self.latest_y[:(4-N_new_obs)*3]])
+                self.latest_y = jnp.concatenate([jnp.flip(y_centered_tip.T, 1).T.flatten(), self.latest_y[:(self.n_delay+1-N_new_obs)*self.n_z]])
 
     def initialize_csv(self):
         """

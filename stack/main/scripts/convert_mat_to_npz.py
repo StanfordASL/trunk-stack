@@ -28,7 +28,7 @@ def mat_to_npz_slow(mat_filepath, npz_filepath):
     return npz_filepath
 
 
-def mat_to_npz(mat_filepath, npz_filepath):
+def mat_to_npz(mat_filepath, npz_filepath, perf_var="tip_2D"):
     """
     Loads a.mat file and saves its contents as a.npz file.
 
@@ -41,12 +41,18 @@ def mat_to_npz(mat_filepath, npz_filepath):
         None: If there is an error during the process.
     """
     mat_data = scipy.io.loadmat(mat_filepath)
+
     encoder_coeff, encoder_exp = mat_data['Vfinal'], mat_data['exps_V']
     decoder_coeff, decoder_exp = mat_data['M'], mat_data['exps']
     dynamics_coeff, dynamics_exp = mat_data['R'], mat_data['exps_r']
     B_r_coeff = mat_data['B_red']
-    obs_perf_matrix = np.zeros((3, 12))  # TODO: generalize this
-    obs_perf_matrix[:, :3] = np.eye(3)
+    
+    n_y = encoder_coeff.shape[1]
+    if perf_var == "tip_2D":
+        n_z = 2
+    obs_perf_matrix = np.zeros((n_z, n_y))
+    obs_perf_matrix[:, :n_z] = np.eye(n_z)
+
     np.savez(
         npz_filepath,
         encoder_coeff=encoder_coeff,
