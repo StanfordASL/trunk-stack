@@ -23,7 +23,7 @@ class MPCInitializerNode(Node):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g_4D_slow'),             # 'ssmr_200g' (what model to use)
+            ('model_name', 'ssm_origin_300g_4D_slow'),      # 'ssmr_200g' (what model to use)
         ])
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
@@ -33,20 +33,20 @@ class MPCInitializerNode(Node):
         self._load_model()
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'figure_eight', 0.05)
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.05)
 
         # MPC configuration
         U = HyperRectangle([0.4]*6, [-0.4]*6)
         dU = HyperRectangle([0.1]*6, [-0.1]*6)
-        U = None
+        # U = None
         dU = None
 
-        Qz = 50 * jnp.eye(self.model.n_z)
+        Qz = 5 * jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
-        Qzf = 100 * jnp.eye(self.model.n_z)
+        Qzf = 10 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
         R_tip, R_mid, R_top = 0.001, 0.005, 0.01
-        R = 0.01*jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
+        R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
