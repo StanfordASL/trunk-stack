@@ -46,7 +46,7 @@ class MPCInitializerNode(Node):
         Qzf = 10 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
         R_tip, R_mid, R_top = 0.001, 0.005, 0.01
-        R = 0.1*jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
+        R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
