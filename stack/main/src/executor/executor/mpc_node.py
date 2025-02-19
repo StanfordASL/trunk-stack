@@ -65,14 +65,23 @@ class MPCNode(Node):
         super().__init__('mpc_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('results_name', 'mpc_experiment')             # name of the results file
+            ('n_z', 2),                                     # 2 (number of performance vars)
+            ('n_u', 6),                                     # 6 (number of control inputs)
+            ('n_obs', 2),                                   # 2 (2D, 3D or 6D observations)
+            ('n_delay', 4),                                 # 4 (number of delays applied to observations)
         ])
 
         self.debug = self.get_parameter('debug').value
-        self.results_name = self.get_parameter('results_name').value
+        self.n_z = self.get_parameter('n_z').value
+        self.n_u = self.get_parameter('n_u').value
+        self.n_obs = self.get_parameter('n_obs').value
+        self.n_delay = self.get_parameter('n_delay').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
-        self.alpha_patrick = 0.2
+        self.alpha_smooth = 0.2
         self.safe_control_input = jnp.zeros(6)
+
+        # Size of observations vector
+        self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Settled positions of the rigid bodies
         self.rest_position = jnp.array([0.10056, -0.10541, 0.10350,
@@ -114,7 +123,7 @@ class MPCNode(Node):
         self.latest_y = None
 
         # Maintain previous control inputs
-        self.uopt_previous = jnp.zeros(6)
+        self.uopt_previous = jnp.zeros(self.n_u)
 
         self.clock = self.get_clock()
 
@@ -125,7 +134,7 @@ class MPCNode(Node):
         self.mpc_executor_callback()
 
         # JIT compile this function
-        check_control_inputs(jnp.zeros(6), self.uopt_previous)
+        check_control_inputs(jnp.zeros(self.n_u), self.uopt_previous)
 
         # Create timer to execute MPC at fixed frequency
         self.controller_period = 0.04
@@ -150,16 +159,20 @@ class MPCNode(Node):
         y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
         y_centered = y_new - self.rest_position
 
-        # Subselect tip
-        y_centered_tip = y_centered[-3:]
+        if self.n_z == 2:
+            # Subselect x, z of tip
+            y_centered_tip = y_centered[jnp.array([-3, -1])]
+        elif self.n_z == 3:
+            # Subselect tip
+            y_centered_tip = y_centered[-3:]
 
-        # Update the current observations, including 3 delay embeddings
+        # Update the current observations, including delay embeddings
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(y_centered_tip, 4)
+            self.latest_y = jnp.tile(y_centered_tip, self.n_delay + 1)
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
-            self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-3]])
+            self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-self.n_z]])
         
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
@@ -168,7 +181,7 @@ class MPCNode(Node):
         Execute MPC at a fixed rate.
         """
         if not self.initialized:
-            self.send_request(0.0, jnp.zeros(12), wait=True)
+            self.send_request(0.0, jnp.zeros(self.n_y), wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         elif self.latest_y is not None:
@@ -199,11 +212,11 @@ class MPCNode(Node):
                 self.destroy_node()
                 rclpy.shutdown()
             else:
-                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:6]), self.uopt_previous)
+                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.uopt_previous)
                 # self.publish_control_inputs(safe_control_inputs.tolist())
 
                 # TODO: John Edits
-                self.safe_control_input = (1 - self.alpha_patrick) * self.safe_control_input + self.alpha_patrick * safe_control_inputs
+                self.safe_control_input = (1 - self.alpha_smooth) * self.safe_control_input + self.alpha_smooth * safe_control_inputs
                 self.publish_control_inputs(self.safe_control_input.tolist())
 
                 # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
