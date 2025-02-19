@@ -52,9 +52,9 @@ class MPCInitializerNode(Node):
             Qz=Qz,
             Qzf=Qzf,
             R=R,
-            x_char=0.05*jnp.ones(self.model.n_x),
-            f_char=0.5*jnp.ones(self.model.n_x),
-            N=7
+            x_char=jnp.ones(self.model.n_x),
+            f_char=jnp.ones(self.model.n_x),
+            N=6
         )
 
         x0 = jnp.zeros(self.model.n_x)
