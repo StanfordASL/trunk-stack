@@ -10,6 +10,7 @@ import rclpy                                             # type: ignore
 from rclpy.node import Node                              # type: ignore
 from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
+from .utils.models import SSMR
 
 
 @jax.jit
@@ -59,23 +60,18 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('n_z', 2),                                     # 2 (number of performance vars)
-            ('n_u', 6),                                     # 6 (number of control inputs)
-            ('n_obs', 2),                                   # 2 (2D, 3D or 6D observations)
-            ('n_delay', 4),                                 # 4 (number of delays applied to observations)
+            ('model_name', 'ssm_origin_300g_4D_slow'),      # 'ssmr_200g' (what model to use)
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
-        self.n_z = self.get_parameter('n_z').value
-        self.n_u = self.get_parameter('n_u').value
-        self.n_obs = self.get_parameter('n_obs').value
-        self.n_delay = self.get_parameter('n_delay').value
+        self.model_name = self.get_parameter('model_name').value
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
-        # Size of observations vector
-        self.n_y = self.n_obs * (self.n_delay + 1)
+        # Load the model
+        self._load_model()
+        self.n_delay = self.model.n_y // self.model.n_z - 1 
 
         # Initialize the CSV file
         self.results_file = os.path.join(self.data_dir, f"trajectories/test_mpc/{self.results_name}.csv")
@@ -100,7 +96,7 @@ class TestMPCNode(Node):
         self.latest_y = None
 
         # Maintain previous control inputs
-        self.uopt_previous = jnp.zeros(self.n_u)
+        self.uopt_previous = jnp.zeros(self.model.n_u)
         
         self.clock = self.get_clock()
 
@@ -110,8 +106,10 @@ class TestMPCNode(Node):
         # Initialize by calling mpc callback function
         self.mpc_executor_callback()
 
-        # JIT compile this function
-        check_control_inputs(jnp.zeros(self.n_u), self.uopt_previous)
+        # JIT compile couple of functions
+        check_control_inputs(jnp.zeros(self.model.n_u), self.uopt_previous)
+        self.model.rollout(jnp.zeros(self.model.n_x), jnp.zeros((1, self.model.n_u)))
+        self.model.decode(jnp.zeros(self.model.n_x))
 
         # Create timer to execute MPC at fixed frequency
         self.controller_period = 0.04
@@ -125,12 +123,27 @@ class TestMPCNode(Node):
         # Define reference time
         self.start_time = self.clock.now().nanoseconds / 1e9
 
+    def _load_model(self):
+        """
+        Load the learned (non-autonomous) dynamics model of the system.
+        """
+        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
+
+        # Load the model
+        self.model = SSMR(model_path=model_path)
+        print(f'---- Model loaded: {self.model_name}')
+        print('Dimensions:')
+        print('     n_x:', self.model.n_x)
+        print('     n_u:', self.model.n_u)
+        print('     n_z:', self.model.n_z)
+        print('     n_y:', self.model.n_y)
+
     def mpc_executor_callback(self):
         """
         Execute MPC at a fixed rate.
         """
         if not self.initialized:
-            self.send_request(0.0, jnp.zeros(self.n_y), wait=True)
+            self.send_request(0.0, jnp.zeros(self.model.n_y), wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         else:
@@ -163,14 +176,16 @@ class TestMPCNode(Node):
                 rclpy.shutdown()
             else:
                 # We do not execute the control inputs here but it's still being checked
-                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.uopt_previous)
+                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.model.n_u]), self.uopt_previous)
                 self.uopt_previous = safe_control_inputs
 
                 # Save the predicted observations and control inputs
-                topt, zopt, uopt = response.t, response.zopt, response.uopt
+                topt, xopt, uopt, zopt = response.t, response.xopt, response.uopt, response.zopt
                 if self.latest_y is not None:
-                    self.save_to_csv(topt, zopt, uopt)
-                self.topt, self.zopt = arr2jnp(topt, 1, squeeze=True), arr2jnp(zopt, self.n_z)
+                    self.save_to_csv(topt, xopt, uopt, zopt)
+                self.topt = arr2jnp(topt, 1, squeeze=True)
+                self.x0 = jnp.array(xopt[:self.model.n_x])
+                self.uopt = arr2jnp(uopt, self.model.n_u)
 
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
@@ -181,25 +196,27 @@ class TestMPCNode(Node):
         """
         # Figure out what predictions to use for observations update
         idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
-        y_predicted = self.zopt[:idx0+1]
+        x_predicted = self.model.rollout(self.x0, self.uopt)
+        y_predicted = self.model.decode(x_predicted.T).T
+        y_centered_tip = y_predicted[:idx0+1, :self.model.n_z]
+        N_new_obs = y_centered_tip.shape[0]
 
         # Add noise to simulate real experiment
-        y_centered_tip = y_predicted + eps_noise * jax.random.normal(key=self.rnd_key, shape=y_predicted.shape)
-        N_new_obs = y_centered_tip.shape[0]
+        y_tip_noisy = y_centered_tip + eps_noise * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
 
         # Update tracked observation
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(y_centered_tip[-1:].squeeze(), (self.n_delay+1))
+            self.latest_y = jnp.tile(y_tip_noisy[-1:].squeeze(), (self.n_delay+1))
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
             # Note the different ordering of MPC horizon and delay embeddings which requires the flipping
             if N_new_obs > self.n_delay + 1:
                 # If we have more than self.n_delay + 1 new observations, we only keep the last self.n_delay + 1
-                self.latest_y = jnp.flip(y_centered_tip[-(self.n_delay+1):].T, 1).T.flatten()
+                self.latest_y = jnp.flip(y_tip_noisy[-(self.n_delay+1):].T, 1).T.flatten()
             else:
                 # Otherwise we concatenate the new observations with the old ones
-                self.latest_y = jnp.concatenate([jnp.flip(y_centered_tip.T, 1).T.flatten(), self.latest_y[:(self.n_delay+1-N_new_obs)*self.n_z]])
+                self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(), self.latest_y[:(self.n_delay+1-N_new_obs)*self.model.n_z]])
 
     def initialize_csv(self):
         """
@@ -207,15 +224,15 @@ class TestMPCNode(Node):
         """
         with open(self.results_file, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['topt', 'zopt', 'uopt'])
+            writer.writerow(['topt', 'xopt', 'uopt', 'zopt'])
 
-    def save_to_csv(self, topt, zopt, uopt):
+    def save_to_csv(self, topt, xopt, uopt, zopt):
         """
-        Save data to the CSV file.
+        Save optimized quantities by MPC to CSV file.
         """
         with open(self.results_file, mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([list(topt), list(zopt), list(uopt)])
+            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt)])
 
 
 def main(args=None):
