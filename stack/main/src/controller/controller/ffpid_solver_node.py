@@ -33,18 +33,22 @@ class FFPIDSolverNode(Node):
         self.data_dir = data_dir
 
         # load position the data
-        self.ys_ik = pd.read_csv(data_dir + '/trajectories/steady_state/observations_circle_seed0.csv')
-        max_seed = 10
-        for seed in range(1, max_seed+1):
-            self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_circle_seed{seed}.csv')])
-        self.ys_ik = self.ys_ik.drop(columns='ID')
+        # self.ys_ik = pd.read_csv(data_dir + '/trajectories/steady_state/observations_circle_seed0.csv')
+        # max_seed = 10
+        # for seed in range(1, max_seed+1):
+        #     self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_circle_seed{seed}.csv')])
+        self.ys_ik = pd.read_csv(data_dir + '/trajectories/dynamic/observations_controlled_9.csv')
+        self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir + f'/trajectories/dynamic/controlled_circle_6.csv')])
+        self.ys_ik = self.ys_ik.drop(columns=['ID', 'phi1', 'phi2', 'phi3', 'phi4', 'phi5', 'phi6'])
         self.ys_ik = self.ys_ik - self.rest_position # center about zero
         self.ys_ik = self.ys_ik.values  # Convert to numpy array
 
         # Load control inputs data
-        self.us_ik = pd.read_csv(data_dir + '/trajectories/steady_state/control_inputs_circle_seed0.csv')
-        for seed in range(1, max_seed + 1):
-            self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/control_inputs_circle_seed{seed}.csv')])
+        # self.us_ik = pd.read_csv(data_dir + '/trajectories/steady_state/control_inputs_circle_seed0.csv')
+        # for seed in range(1, max_seed + 1):
+        #     self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/control_inputs_circle_seed{seed}.csv')])
+        self.us_ik = pd.read_csv(data_dir + '/trajectories/dynamic/control_inputs_controlled_9.csv')
+        self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/dynamic/control_inputs_controlled_circle_6.csv')])
         self.us_ik = self.us_ik.drop(columns='ID')
         self.us_ik = self.us_ik.values  # Convert to numpy array
 
