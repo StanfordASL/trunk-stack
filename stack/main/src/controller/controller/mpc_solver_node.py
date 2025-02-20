@@ -7,7 +7,7 @@ from rclpy.node import Node         # type: ignore
 from scipy.interpolate import interp1d
 from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
-
+import numpy as np
 
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
                        U=None, X=None, Xf=None, dU=None, init_node=False, **kwargs):
@@ -148,7 +148,7 @@ class MPCSolverNode(Node):
         self.x_init = x_init_temp
 
         # Update LOCP parameter with the previously applied control
-        self.gusto.locp.u0_prev.value = jnp.asarray(request.u0)
+        self.gusto.locp.u0_prev.value = np.asarray(request.u0)
 
         # Solve GuSTO and get solution
         self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)

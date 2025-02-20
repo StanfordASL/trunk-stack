@@ -23,7 +23,7 @@ class MPCInitializerNode(Node):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g_4D_slow'),      # 'ssmr_200g' (what model to use)
+            ('model_name', 'ssm_origin_300g_slow'),         # 'ssmr_200g' (what model to use)
         ])
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
@@ -47,11 +47,14 @@ class MPCInitializerNode(Node):
         Qzf = Qzf.at[1, 1].set(0)
         R_tip, R_mid, R_top = 0.001, 0.005, 0.01
         R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
+        # R = jnp.zeros((self.model.n_u, self.model.n_u))
+        R_du = 0.05 * jnp.eye(self.model.n_u)
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
             Qzf=Qzf,
             R=R,
+            R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
             N=6

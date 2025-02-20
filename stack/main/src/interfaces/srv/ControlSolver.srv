@@ -7,6 +7,9 @@ float64[] x0
 # Initial observation array
 float64[] y0
 
+# Previous input array
+float64[] u0
+
 # Initial guess for optimal u for GuSTO
 float64[] u_init
 

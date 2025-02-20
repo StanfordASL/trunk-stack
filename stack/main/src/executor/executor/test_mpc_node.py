@@ -60,7 +60,7 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g_4D_slow'),      # 'ssmr_200g' (what model to use)
+            ('model_name', 'ssm_origin_300g_slow'),         # 'ssmr_200g' (what model to use)
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -143,21 +143,22 @@ class TestMPCNode(Node):
         Execute MPC at a fixed rate.
         """
         if not self.initialized:
-            self.send_request(0.0, jnp.zeros(self.model.n_y), wait=True)
+            self.send_request(0.0, jnp.zeros(self.model.n_y), self.uopt_previous, wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         else:
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations(eps_noise=0)
-            self.send_request(self.t0, self.latest_y, wait=False)
+            self.send_request(self.t0, self.latest_y, self.uopt_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
-    def send_request(self, t0, y0, wait=False):
+    def send_request(self, t0, y0, u0, wait=False):
         """
         Send request to MPC solver.
         """
         self.req.t0 = t0
         self.req.y0 = jnp2arr(y0)
+        self.req.u0 = jnp2arr(u0)
         self.future = self.mpc_client.call_async(self.req)
 
         if wait:
@@ -175,12 +176,13 @@ class TestMPCNode(Node):
                 self.destroy_node()
                 rclpy.shutdown()
             else:
+                topt, xopt, uopt, zopt = response.t, response.xopt, response.uopt, response.zopt
+                
                 # We do not execute the control inputs here but it's still being checked
-                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.model.n_u]), self.uopt_previous)
+                safe_control_inputs = check_control_inputs(jnp.array(uopt[:self.model.n_u]), self.uopt_previous)
                 self.uopt_previous = safe_control_inputs
 
                 # Save the predicted observations and control inputs
-                topt, xopt, uopt, zopt = response.t, response.xopt, response.uopt, response.zopt
                 if self.latest_y is not None:
                     self.save_to_csv(topt, xopt, uopt, zopt)
                 self.topt = arr2jnp(topt, 1, squeeze=True)
