@@ -32,6 +32,7 @@ setup(
             'mpc_node = executor.mpc_node:main',
             'store_observations_node = executor.store_observations_node:main',
             'test_mpc_node = executor.test_mpc_node:main',
+            'ffpid_node = executor.ffpid_node:main',
         ],
     },
 )
