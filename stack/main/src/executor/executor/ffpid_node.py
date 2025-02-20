@@ -109,7 +109,7 @@ class FFPIDNode(Node):
         check_control_inputs(jnp.zeros(self.n_u), self.uopt_previous)
 
         # Generate reference trajectory
-        z_ref, t_ref = self.generate_ref_trajectory(10, 0.01, 'circle', 0.1)
+        z_ref, t_ref = self.generate_ref_trajectory(10, 0.01, 'circle', 0.075)
         self.z_interp = interp1d(t_ref, z_ref, axis=0,
                                  bounds_error=False, fill_value=(z_ref[0, :], z_ref[-1, :]))
         self.T = t_ref[-1]
@@ -181,7 +181,7 @@ class FFPIDNode(Node):
         z_ref = jnp.zeros((len(t), 2))
 
         if traj_type == 'circle':
-            z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t)))
+            z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t)-1))
             z_ref = z_ref.at[:, 1].set(size * jnp.sin(2 * jnp.pi / T * t))
         elif traj_type == 'figure_eight':
             z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))

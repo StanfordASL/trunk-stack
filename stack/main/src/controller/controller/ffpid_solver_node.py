@@ -5,6 +5,7 @@ from sklearn.neighbors import NearestNeighbors
 import rclpy  # type: ignore
 from rclpy.node import Node  # type: ignore
 from interfaces.srv import ControlSolver
+import time
 
 
 class FFPIDSolverNode(Node):
@@ -40,8 +41,8 @@ class FFPIDSolverNode(Node):
         self.ys_ik = pd.read_csv(data_dir + '/trajectories/dynamic/observations_controlled_9.csv')
         self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir + f'/trajectories/dynamic/observations_controlled_circle_6.csv')])
         self.ys_ik = self.ys_ik.drop(columns=['ID', 'phi1', 'phi2', 'phi3', 'phi4', 'phi5', 'phi6'])
-        self.ys_ik = self.ys_ik - self.rest_position # center about zero
-        self.ys_ik = self.ys_ik.values  # Convert to numpy array
+        self.ys_ik = self.ys_ik - self.rest_position
+        self.ys_ik = self.ys_ik.values
 
         # Load control inputs data
         # self.us_ik = pd.read_csv(data_dir + '/trajectories/steady_state/control_inputs_circle_seed0.csv')
@@ -50,7 +51,7 @@ class FFPIDSolverNode(Node):
         self.us_ik = pd.read_csv(data_dir + '/trajectories/dynamic/control_inputs_controlled_9.csv')
         self.us_ik = pd.concat([self.us_ik, pd.read_csv(data_dir +f'/trajectories/dynamic/control_inputs_controlled_circle_6.csv')])
         self.us_ik = self.us_ik.drop(columns='ID')
-        self.us_ik = self.us_ik.values  # Convert to numpy array
+        self.us_ik = self.us_ik.values
 
         # Initialize NearestNeighbors
         self.n_neighbors = self.get_parameter('knn_k').value
@@ -77,6 +78,7 @@ class FFPIDSolverNode(Node):
         """
         z_des = np.array(request.z).reshape(1, -1)
         distances, indices = self.knn.kneighbors(z_des)
+        print(distances, indices)
 
         # Get the corresponding u values from us_ik
         u_neighbors = self.us_ik[indices.flatten()]
