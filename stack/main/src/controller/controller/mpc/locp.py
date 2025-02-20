@@ -21,11 +21,11 @@ class LOCP:
     :N: number of steps in OCP horizon
     :H: performance variable matrix (n_z, n_x)
     :R: control cost matrix np.array (n_u, n_u)
+    :R_du: control rate cost matrix np.array (n_u, n_u)
     :Qz: performance cost matrix (n_z, n_z)
     :Qzf: (optional) terminal performance cost matrix (n_z, n_z)
     :U: (optional) control constraints, Polyhedron object
     :X: (optional) state constraints, Polyhedron object
-    :Xf: (optional) terminal set, Polyhedron object
     :Xf: (optional) terminal set, Polyhedron object
     :dU: (optional) u_k - u_{k-1} / slew rate constraint, Polyhedron object
     :verbose: (optional) boolean
@@ -35,11 +35,12 @@ class LOCP:
     :kwargs: (optional) additional arguments for the solver
     """
     def __init__(self, N, H, Qz, R, Qzf=None, U=None, X=None, Xf=None, dU=None, verbose=False, warm_start=True,
-                 nonlinear_perf_mapping=False, x_char=None, **kwargs):
+                 nonlinear_perf_mapping=False, x_char=None, R_du=None, **kwargs):
         self.N = N
         self.H = H
         self.Qz = Qz
         self.R = R
+        self.R_du = R_du
         self.Qzf = Qzf
         self.U = U
         self.X = X
@@ -102,6 +103,9 @@ class LOCP:
             self.xk = cp.Parameter((self.N + 1, self.n_x)) # Linearization points for trust region
             if self.Qzf is not None:
                 self.zf = cp.Parameter(self.n_z)
+
+            # Extra parameter for the previously applied input, will be updated each time
+            self.u0_prev = cp.Parameter(self.n_u, value=np.zeros(self.n_u))  
 
             self._problem_setup()
             print('First solve may take a while due to factorization and caching.')
@@ -188,7 +192,15 @@ class LOCP:
         Solve the LOCP quadratic program.
         """
         t0 = time.time()
-        Jstar = self.prob.solve(warm_start=self.warm_start, verbose=self.verbose, **self.solver_args)
+        try:
+            Jstar = self.prob.solve(warm_start=self.warm_start, verbose=self.verbose, **self.solver_args)
+        except:
+            print('Solving with warm-start failed, so turning off')
+            try:
+                Jstar = self.prob.solve(warm_start=False, verbose=self.verbose, **self.solver_args)
+            except cp.SolverError:
+                print('Solver still failed, returning inf')
+                return np.inf, False, None
         t1 = time.time()
         if self.verbose >= 2:
             print('DEBUG: Solve routing in LOCP computed in {:.3f} seconds'.format(t1 - t0))
@@ -219,12 +231,12 @@ class LOCP:
 
     def _set_objective(self):
         """
-        Compute the quadratic part of the objective in OSQP format.
+        Compute the quadratic part of the objective.
         """
         J = 0
 
         # Control cost
-        Rfull = sp.csc_matrix(block_diag(*[self.R for j in range(self.N)]))
+        Rfull = sp.csc_matrix(block_diag(*[self.R for _ in range(self.N)]))
         J += cp.quad_form(self.u - self.u_des, Rfull)
 
         # Performance cost (we expect all trajectories to be non-shifted i.e., about origin)
@@ -251,7 +263,7 @@ class LOCP:
 
             J += cp.quad_form(Hfull @ self.x + cdfull - self.z, Qzfull)
         else:
-            Hfull = block_diag(*[self.H for j in range(self.N + 1)])
+            Hfull = block_diag(*[self.H for _ in range(self.N + 1)])
             J += cp.quad_form(Hfull @ self.x - self.z, Qzfull)
 
         # Slack variables
@@ -262,6 +274,16 @@ class LOCP:
         if self.input_nullspace is not None:
             nullSpace = np.tile(self.input_nullspace, self.N)
             J += cp.norm2(nullSpace @ self.u)
+
+        # Control rate cost
+        if self.R_du is not None:
+            # First difference, u[0] - u0_prev
+            J += cp.quad_form(self.u[:self.n_u] - self.u0_prev, self.R_du)
+            if self.N > 1:
+                # Differences within the horizon
+                R_du_full = sp.block_diag([self.R_du]*(self.N-1), format='csc')
+                u_diff = self.u[self.n_u:] - self.u[:-self.n_u]
+                J += cp.quad_form(u_diff, R_du_full)
 
         return J
 
