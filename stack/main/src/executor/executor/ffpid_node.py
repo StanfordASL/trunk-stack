@@ -12,7 +12,6 @@ import rclpy                                                # type: ignore
 from rclpy.node import Node                                 # type: ignore
 from rclpy.qos import QoSProfile                            # type: ignore
 
-from controller.mpc_solver_node import jnp2arr              # type: ignore
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
 
@@ -68,7 +67,8 @@ class FFPIDNode(Node):
 
         self.debug = self.get_parameter('debug').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
-        self.safe_control_input = jnp.zeros(6)
+        
+        self.n_u = 6
 
         # Settled positions of the rigid bodies
         self.rest_position = jnp.array([0.10056, -0.10541, 0.10350,
@@ -84,12 +84,12 @@ class FFPIDNode(Node):
         )
 
         # Create FFPID solver service client
-        self.mpc_client = self.create_client(
+        self.ffpid_client = self.create_client(
             ControlSolver,
             'ffpid_solver'
         )
         self.get_logger().info('FFPID client created.')
-        while not self.mpc_client.wait_for_service(timeout_sec=1.0):
+        while not self.ffpid_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('FFPID solver not available, waiting...')
         
         # Request message definition
@@ -109,10 +109,10 @@ class FFPIDNode(Node):
         check_control_inputs(jnp.zeros(self.n_u), self.uopt_previous)
 
         # Generate reference trajectory
-        z_ref, t_ref = self.generate_ref_trajectory(10, 0.01, 'circle', 0.075)
+        z_ref, t_ref = self.generate_ref_trajectory(10, 0.01, 'circle', 0.1)
         self.z_interp = interp1d(t_ref, z_ref, axis=0,
                                  bounds_error=False, fill_value=(z_ref[0, :], z_ref[-1, :]))
-        
+        self.T = t_ref[-1]
         self.clock = self.get_clock()
         self.start_time = self.clock.now().nanoseconds / 1e9
 
@@ -130,17 +130,22 @@ class FFPIDNode(Node):
         y_centered = y_new - self.rest_position
         
         # The tip x and z positions is what we want to track
-        y_tip_xz = y_centered[[-3, -1]]
-        self.req.y0 = jnp2arr(y_tip_xz)
+        y_tip_xz = y_centered[jnp.array([-3, -1])]
+        self.req.y0 = y_tip_xz.flatten().tolist()
 
         t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
-        z = self.z_interp(t0)
-        self.req.z = jnp2arr(z)
+        if t0 > self.T:
+            self.get_logger().info(f'Trajectory is finished! At {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f}')
+            self.destroy_node()
+            rclpy.shutdown()
+        else:
+            z = self.z_interp(t0)
+            self.req.z = z.flatten().tolist()
 
-        # Send the request
-        self.future = self.mpc_client.call_async(self.req)
-        self.future.add_done_callback(self.service_callback)
+            # Send the request
+            self.future = self.ffpid_client.call_async(self.req)
+            self.future.add_done_callback(self.service_callback)
 
     def service_callback(self, async_response):
         """
@@ -149,15 +154,10 @@ class FFPIDNode(Node):
         try:
             response = async_response.result()
 
-            if response.done:
-                self.get_logger().info(f'Trajectory is finished! At {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f}')
-                self.destroy_node()
-                rclpy.shutdown()
-            else:
-                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.uopt_previous)
-                self.publish_control_inputs(self.safe_control_input.tolist())
+            safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.uopt_previous)
+            self.publish_control_inputs(safe_control_inputs.tolist())
 
-                self.uopt_previous = safe_control_inputs
+            self.uopt_previous = safe_control_inputs
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
@@ -181,7 +181,7 @@ class FFPIDNode(Node):
         z_ref = jnp.zeros((len(t), 2))
 
         if traj_type == 'circle':
-            z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
+            z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t)))
             z_ref = z_ref.at[:, 1].set(size * jnp.sin(2 * jnp.pi / T * t))
         elif traj_type == 'figure_eight':
             z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
