@@ -15,7 +15,8 @@ class FFPIDSolverNode(Node):
     def __init__(self):
         super().__init__('ffpid_solver_node')
         self.declare_parameters(namespace='', parameters=[
-            ('alpha', 1.0)          # smoothing coefficient, closer to 0 is more smoothing
+            ('knn_k', 3),            # k, number of nearest neighbors in KNN
+            ('alpha', 1.0)           # smoothing coefficient, closer to 0 is more smoothing
         ])
 
         self.alpha = self.get_parameter('alpha').value
@@ -26,7 +27,7 @@ class FFPIDSolverNode(Node):
                                        0.09242, -0.31915, 0.09713])
 
         # Initialization
-        self.smooth_stat = np.array([0., 0., 0., 0., 0., 0.])
+        self.smooth_stat = np.zeros(2)
 
         data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
         self.data_dir = data_dir
@@ -37,7 +38,7 @@ class FFPIDSolverNode(Node):
         for seed in range(1, max_seed+1):
             self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_circle_seed{seed}.csv')])
         self.ys_ik = self.ys_ik.drop(columns='ID')
-        self.ys_ik = self.ys_ik - self.rest_positions # center about zero
+        self.ys_ik = self.ys_ik - self.rest_position # center about zero
         self.ys_ik = self.ys_ik.values  # Convert to numpy array
 
         # Load control inputs data
@@ -83,9 +84,12 @@ class FFPIDSolverNode(Node):
         # Calculate the feed-forward control inputs
         u_ik = np.dot(weights, u_neighbors)
 
+        # We only actually use u1 and u6 for now
+        u_ik = u_ik[[1, -1]]
+
         # Calculate the error
         y = np.array(request.y0)
-        e = z_des - y
+        e = z_des.flatten() - y
 
         # Calculate the P(ID) control inputs
         u_pid = self.K @ e
@@ -97,13 +101,19 @@ class FFPIDSolverNode(Node):
         self.smooth_stat = self.alpha * u_opt + (1 - self.alpha) * self.smooth_stat
         u_opt = self.smooth_stat
 
-        response.uopt = u_opt.tolist()
+        # Convert back to format for all control inputs
+        u_ffpid = np.array([u_opt[0], 0, 0, 0, 0, u_opt[1]])
+
+        response.uopt = u_ffpid.tolist()
         return response
     
 
 def main(args=None):
+    """
+    Run the ROS2 node with single-threaded executor. 
+    """
     rclpy.init(args=args)
-    ffpid_solver_node = FFPIDSolverNode
+    ffpid_solver_node = FFPIDSolverNode()
     rclpy.spin(ffpid_solver_node)
     ffpid_solver_node.destroy_node()
     rclpy.shutdown()
