@@ -56,7 +56,7 @@ class FFPIDSolverNode(Node):
         self.knn.fit(self.ys_ik[:, [-3, -1]])
 
         # Gain matrix K
-        c = 0.1  # tunable parameter
+        c = 0  # tunable parameter
         theta = 15 * np.pi / 180
         self.K = -c * np.array([
                                 [np.cos(theta), -np.sin(theta)],
@@ -93,6 +93,11 @@ class FFPIDSolverNode(Node):
 
         # Calculate the P(ID) control inputs
         u_pid = self.K @ e
+        # u_pid = 1 / np.linalg.norm(y) * self.K @ e
+
+        print('IK: ', u_ik)
+        print('e: ', e)
+        print('PID: ', u_pid)
 
         # Combine feed-forward and PID control inputs
         u_opt = u_ik + u_pid

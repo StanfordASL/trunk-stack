@@ -22,7 +22,6 @@ class DataCollectionNode(Node):
         ])
 
         self.debug = self.get_parameter('debug').value
-        self.update_period = self.get_parameter('update_period').value
         self.traj_time = self.get_parameter('traj_time').value
         self.mocap_type = self.get_parameter('mocap_type').value
         self.control_type = self.get_parameter('control_type').value
