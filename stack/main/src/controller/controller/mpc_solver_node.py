@@ -86,6 +86,7 @@ class MPCSolverNode(Node):
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
+
         z, zf, u = self.get_target(0.0)
         self.gusto = GuSTO(model, config, x0, self.u_init, self.x_init, z=z, u=u,
                            zf=zf, U=U, X=X, Xf=Xf, dU=dU, **kwargs)
@@ -105,7 +106,7 @@ class MPCSolverNode(Node):
     def gusto_callback(self, request, response):
         """
         Callback function that runs when the service is queried, request message contains:
-        t0, x0
+        t0, y0, u0
 
         and the response message will contain:
 
@@ -146,9 +147,11 @@ class MPCSolverNode(Node):
         self.u_init = u_init_temp  # Assign the modified copy back
         self.x_init = x_init_temp
 
+        # Update LOCP parameter with the previously applied control
+        self.gusto.locp.u0_prev.value = jnp.asarray(request.u0)
+
         # Solve GuSTO and get solution
         self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
-
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
 
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
