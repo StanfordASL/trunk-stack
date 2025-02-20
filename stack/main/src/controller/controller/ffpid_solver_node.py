@@ -38,7 +38,7 @@ class FFPIDSolverNode(Node):
         # for seed in range(1, max_seed+1):
         #     self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir +f'/trajectories/steady_state/observations_circle_seed{seed}.csv')])
         self.ys_ik = pd.read_csv(data_dir + '/trajectories/dynamic/observations_controlled_9.csv')
-        self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir + f'/trajectories/dynamic/controlled_circle_6.csv')])
+        self.ys_ik = pd.concat([self.ys_ik, pd.read_csv(data_dir + f'/trajectories/dynamic/observations_controlled_circle_6.csv')])
         self.ys_ik = self.ys_ik.drop(columns=['ID', 'phi1', 'phi2', 'phi3', 'phi4', 'phi5', 'phi6'])
         self.ys_ik = self.ys_ik - self.rest_position # center about zero
         self.ys_ik = self.ys_ik.values  # Convert to numpy array
