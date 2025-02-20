@@ -65,10 +65,10 @@ class MPCNode(Node):
         super().__init__('mpc_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('n_z', 2),                                     # 2 (number of performance vars)
+            ('n_z', 3),                                     # 2 (number of performance vars)
             ('n_u', 6),                                     # 6 (number of control inputs)
-            ('n_obs', 2),                                   # 2 (2D, 3D or 6D observations)
-            ('n_delay', 4),                                 # 4 (number of delays applied to observations)
+            ('n_obs', 3),                                   # 2 (2D, 3D or 6D observations)
+            ('n_delay', 3),                                 # 4 (number of delays applied to observations)
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -181,19 +181,20 @@ class MPCNode(Node):
         Execute MPC at a fixed rate.
         """
         if not self.initialized:
-            self.send_request(0.0, jnp.zeros(self.n_y), wait=True)
+            self.send_request(0.0, jnp.zeros(self.n_y), jnp.zeros(self.n_u), wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         elif self.latest_y is not None:
-            self.send_request(self.t0, self.latest_y, wait=False)
+            self.send_request(self.t0, self.latest_y, self.uopt_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
-    def send_request(self, t0, y0, wait=False):
+    def send_request(self, t0, y0, u0, wait=False):
         """
         Send request to MPC solver.
         """
         self.req.t0 = t0
         self.req.y0 = jnp2arr(y0)
+        self.req.u0 = jnp2arr(u0)
         self.future = self.mpc_client.call_async(self.req)
 
         if wait:
@@ -213,11 +214,10 @@ class MPCNode(Node):
                 rclpy.shutdown()
             else:
                 safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.uopt_previous)
-                # self.publish_control_inputs(safe_control_inputs.tolist())
+                self.publish_control_inputs(safe_control_inputs.tolist())
 
-                # TODO: John Edits
-                self.safe_control_input = (1 - self.alpha_smooth) * self.safe_control_input + self.alpha_smooth * safe_control_inputs
-                self.publish_control_inputs(self.safe_control_input.tolist())
+                # self.safe_control_input = (1 - self.alpha_smooth) * self.safe_control_input + self.alpha_smooth * safe_control_inputs
+                # self.publish_control_inputs(self.safe_control_input.tolist())
 
                 # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
                 # self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
