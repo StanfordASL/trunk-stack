@@ -33,7 +33,7 @@ class MPCInitializerNode(Node):
         self._load_model()
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'point', 0.075)
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.05)
 
         # MPC configuration
         U = HyperRectangle([0.45]*6, [-0.45]*6)
@@ -90,7 +90,7 @@ class MPCInitializerNode(Node):
                 z_ref = z_ref.at[:, 1].set(size * jnp.sin(2 * jnp.pi / T * t))
             elif traj_type == 'point':
                 z_ref = z_ref.at[:, 0].set(jnp.zeros_like(t))
-                z_ref = z_ref.at[:, 2].set(size * jnp.ones_like(t))
+                z_ref = z_ref.at[:, 2].set(-size * jnp.ones_like(t))
             elif traj_type == 'figure_eight':
                 z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
                 z_ref = z_ref.at[:, 1].set(size * jnp.sin(4 * jnp.pi / T * t))
@@ -108,13 +108,13 @@ class MPCInitializerNode(Node):
                 raise ValueError('Invalid trajectory type: ' + traj_type + '. Valid options are: "circle" or "figure_eight".')
         elif self.model.n_z == 3:
             if traj_type == 'circle':
-                z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
+                z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
                 z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
-                z_ref = z_ref.at[:, 2].set(size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 2].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
             elif traj_type == 'point':
                 z_ref = z_ref.at[:, 0].set(jnp.zeros_like(t))
                 z_ref = z_ref.at[:, 1].set(jnp.zeros_like(t))
-                z_ref = z_ref.at[:, 2].set(size * jnp.ones_like(t))
+                z_ref = z_ref.at[:, 2].set(-size * jnp.ones_like(t))
             elif traj_type == 'figure_eight':
                 z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
                 z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
