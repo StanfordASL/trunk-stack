@@ -65,11 +65,12 @@ class MPCNode(Node):
     def __init__(self):
         super().__init__('mpc_node')
         self.declare_parameters(namespace='', parameters=[
-            ('debug', False),                               # False or True (print debug messages)
-            ('n_z', 3),                                     # 2 (number of performance vars)
-            ('n_u', 6),                                     # 6 (number of control inputs)
-            ('n_obs', 3),                                   # 2 (2D, 3D or 6D observations)
-            ('n_delay', 3),                                 # 4 (number of delays applied to observations)
+            ('debug', False),                               # print debug messages
+            ('n_z', 3),                                     # number of performance vars
+            ('n_u', 6),                                     # number of control inputs
+            ('n_obs', 3),                                   # 2D, 3D or 6D observations
+            ('n_delay', 3),                                 # number of delays applied to observations
+            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -78,12 +79,17 @@ class MPCNode(Node):
         self.n_u = self.get_parameter('n_u').value
         self.n_obs = self.get_parameter('n_obs').value
         self.n_delay = self.get_parameter('n_delay').value
+        self.n_exec = self.get_parameter('n_exec').value
         self.results_name = self.get_parameter('results_name').value
 
         # Initialize the CSV file
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
         self.results_file = os.path.join(self.data_dir, f"trajectories/closed_loop/{self.results_name}.csv")
         self.initialize_csv()
+
+        # Collect buffer of control inputs for multiple executions
+        self.control_buffer = []
+        self.buffer_index = 0
         
         # We perform smoothing to handle initial transients
         self.alpha_smooth = 0.2
@@ -146,12 +152,20 @@ class MPCNode(Node):
         # JIT compile this function
         check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
 
-        # Create timer to execute MPC at fixed frequency
+        # Create timer to receive MPC results at fixed frequency
         self.controller_period = 0.025
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
-                    self.mpc_executor_callback,
+                    self.mpc_callback,
                     callback_group=self.callback_group)
+        
+        # Timer for executing buffered controls
+        self.buffer_execution_period = 0.01  # 100 Hz, same as dt in MPC
+        self.buffer_timer = self.create_timer(
+            self.buffer_execution_period,
+            self.execute_buffer_callback,
+            callback_group=self.callback_group
+        )
 
         self.get_logger().info(f'MPC node has been started with controller frequency: {1/self.controller_period:.2f} [Hz].')
 
@@ -186,9 +200,24 @@ class MPCNode(Node):
         
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
-    def mpc_executor_callback(self):
+    def execute_buffer_callback(self):
         """
-        Execute MPC at a fixed rate.
+        Execute the next control input from the buffer.
+        """
+        if self.control_buffer and self.buffer_index < len(self.control_buffer):
+            control_inputs = jnp.array(self.control_buffer[self.buffer_index * self.n_u:(self.buffer_index + 1) * self.n_u])
+            safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
+            # self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
+            self.publish_control_inputs(safe_control_inputs.tolist())
+            self.u_previous = safe_control_inputs
+            self.buffer_index += 1
+            
+            if self.debug:
+                self.get_logger().info(f'Executing buffer index {self.buffer_index} of {len(self.control_buffer)}')
+
+    def mpc_callback(self):
+        """
+        Receive MPC results at a fixed rate.
         """
         if not self.initialized:
             self.y0 = jnp.zeros(self.n_y)
@@ -225,11 +254,9 @@ class MPCNode(Node):
                 self.destroy_node()
                 rclpy.shutdown()
             else:
-                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.u_previous)
-                self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
-                self.publish_control_inputs(self.smooth_control_inputs.tolist())
-
-                self.u_previous = self.smooth_control_inputs
+                # Store the first n_exec control inputs in the buffer for execution
+                self.control_buffer = list(response.uopt[:self.n_exec * self.n_u])
+                self.buffer_index = 0
 
                 # Save to csv file
                 self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt, self.y0[:self.n_y])
