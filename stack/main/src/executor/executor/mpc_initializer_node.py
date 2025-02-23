@@ -33,21 +33,17 @@ class MPCInitializerNode(Node):
         self._load_model()
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.05)
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'point', 0.075)
 
         # MPC configuration
-        U = HyperRectangle([0.4]*6, [-0.4]*6)
-        dU = HyperRectangle([0.1]*6, [-0.1]*6)
-        # U = None
+        U = HyperRectangle([0.45]*6, [-0.45]*6)
         dU = None
-
         Qz = 5 * jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
         Qzf = 10 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
         R_tip, R_mid, R_top = 0.001, 0.005, 0.01
         R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
-        # R = jnp.zeros((self.model.n_u, self.model.n_u))
         R_du = 0.05 * jnp.eye(self.model.n_u)
 
         gusto_config = GuSTOConfig(
@@ -92,6 +88,9 @@ class MPCInitializerNode(Node):
             if traj_type == 'circle':
                 z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
                 z_ref = z_ref.at[:, 1].set(size * jnp.sin(2 * jnp.pi / T * t))
+            elif traj_type == 'point':
+                z_ref = z_ref.at[:, 0].set(jnp.zeros_like(t))
+                z_ref = z_ref.at[:, 2].set(size * jnp.ones_like(t))
             elif traj_type == 'figure_eight':
                 z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
                 z_ref = z_ref.at[:, 1].set(size * jnp.sin(4 * jnp.pi / T * t))
@@ -112,6 +111,10 @@ class MPCInitializerNode(Node):
                 z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
                 z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
                 z_ref = z_ref.at[:, 2].set(size * jnp.sin(2 * jnp.pi / T * t))
+            elif traj_type == 'point':
+                z_ref = z_ref.at[:, 0].set(jnp.zeros_like(t))
+                z_ref = z_ref.at[:, 1].set(jnp.zeros_like(t))
+                z_ref = z_ref.at[:, 2].set(size * jnp.ones_like(t))
             elif traj_type == 'figure_eight':
                 z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
                 z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
