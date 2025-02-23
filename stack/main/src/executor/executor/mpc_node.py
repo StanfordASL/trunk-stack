@@ -147,7 +147,7 @@ class MPCNode(Node):
         check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
 
         # Create timer to execute MPC at fixed frequency
-        self.controller_period = 0.02
+        self.controller_period = 0.025
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
                     self.mpc_executor_callback,
