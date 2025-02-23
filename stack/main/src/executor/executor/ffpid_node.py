@@ -71,9 +71,9 @@ class FFPIDNode(Node):
         self.n_u = 6
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.10056, -0.10541, 0.10350,
-                                        0.09808, -0.20127, 0.10645,
-                                        0.09242, -0.31915, 0.09713])
+        self.rest_position = jnp.array([0.1018, -0.1075, 0.1062,
+                                        0.1037, -0.2055, 0.1148,
+                                        0.1025, -0.3254, 0.1129])
 
         # Subscribe to current positions
         self.mocap_subscription = self.create_subscription(

@@ -30,8 +30,7 @@ class RunExperimentNode(Node):
 
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
-        # Settled positions of the rigid bodies
-        self.rest_positions = jnp.array([0.1005, -0.10698, 0.10445, -0.10302, -0.20407, 0.10933, 0.10581, -0.32308, 0.10566])
+        # Offset of avp with respect to Trunk mocap coordinate system
         self.avp_offset = jnp.array([0, -0.10698, 0, 0, -0.20407, 0, 0, -0.32308, 0])
 
         # Get desired states
