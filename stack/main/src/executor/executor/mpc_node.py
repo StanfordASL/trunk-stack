@@ -1,4 +1,5 @@
 import os
+import csv
 
 import jax
 import jax.numpy as jnp
@@ -69,6 +70,7 @@ class MPCNode(Node):
             ('n_u', 6),                                     # 6 (number of control inputs)
             ('n_obs', 3),                                   # 2 (2D, 3D or 6D observations)
             ('n_delay', 3),                                 # 4 (number of delays applied to observations)
+            ('results_name', 'test_experiment')             # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -76,9 +78,16 @@ class MPCNode(Node):
         self.n_u = self.get_parameter('n_u').value
         self.n_obs = self.get_parameter('n_obs').value
         self.n_delay = self.get_parameter('n_delay').value
+        self.results_name = self.get_parameter('results_name').value
+
+        # Initialize the CSV file
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.results_file = os.path.join(self.data_dir, f"trajectories/closed_loop/{self.results_name}.csv")
+        self.initialize_csv()
+        
+        # We perform smoothing to handle initial transients
         self.alpha_smooth = 0.2
-        self.safe_control_input = jnp.zeros(6)
+        self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
         self.n_y = self.n_obs * (self.n_delay + 1)
@@ -88,6 +97,7 @@ class MPCNode(Node):
                                         0.09808, -0.20127, 0.10645,
                                         0.09242, -0.31915, 0.09713])
         
+        # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
         # Subscribe to current positions
@@ -95,7 +105,7 @@ class MPCNode(Node):
             TrunkRigidBodies,
             '/trunk_rigid_bodies',
             self.mocap_listener_callback,
-            QoSProfile(depth=10),
+            QoSProfile(depth=3),
             callback_group=self.callback_group
         )
 
@@ -116,14 +126,14 @@ class MPCNode(Node):
         self.controls_publisher = self.create_publisher(
             AllMotorsControl,
             '/all_motors_control',
-            QoSProfile(depth=10)
+            QoSProfile(depth=3)
         )
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
 
         # Maintain previous control inputs
-        self.uopt_previous = jnp.zeros(self.n_u)
+        self.u_previous = jnp.zeros(self.n_u)
 
         self.clock = self.get_clock()
 
@@ -134,7 +144,7 @@ class MPCNode(Node):
         self.mpc_executor_callback()
 
         # JIT compile this function
-        check_control_inputs(jnp.zeros(self.n_u), self.uopt_previous)
+        check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
 
         # Create timer to execute MPC at fixed frequency
         self.controller_period = 0.04
@@ -181,11 +191,13 @@ class MPCNode(Node):
         Execute MPC at a fixed rate.
         """
         if not self.initialized:
-            self.send_request(0.0, jnp.zeros(self.n_y), jnp.zeros(self.n_u), wait=True)
+            self.y0 = jnp.zeros(self.n_y)
+            self.send_request(0.0, self.y0, self.u_previous, wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         elif self.latest_y is not None:
-            self.send_request(self.t0, self.latest_y, self.uopt_previous, wait=False)
+            self.y0 = self.latest_y
+            self.send_request(self.t0, self.y0, self.u_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
     def send_request(self, t0, y0, u0, wait=False):
@@ -213,16 +225,14 @@ class MPCNode(Node):
                 self.destroy_node()
                 rclpy.shutdown()
             else:
-                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.uopt_previous)
-                self.publish_control_inputs(safe_control_inputs.tolist())
+                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.u_previous)
+                self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
+                self.publish_control_inputs(self.smooth_control_inputs.tolist())
 
-                # self.safe_control_input = (1 - self.alpha_smooth) * self.safe_control_input + self.alpha_smooth * safe_control_inputs
-                # self.publish_control_inputs(self.safe_control_input.tolist())
+                self.u_previous = self.smooth_control_inputs
 
-                # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
-                # self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
-
-                self.uopt_previous = safe_control_inputs
+                # Save to csv file
+                self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt, self.y0[:self.n_y])
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
@@ -237,6 +247,22 @@ class MPCNode(Node):
         self.controls_publisher.publish(control_message)
         if self.debug:
             self.get_logger().info(f'Published new motor control setting: {control_inputs}.')
+
+    def initialize_csv(self):
+        """
+        Initialize the CSV file with headers.
+        """
+        with open(self.results_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['topt', 'xopt', 'uopt', 'zopt', 'y'])
+
+    def save_to_csv(self, topt, xopt, uopt, zopt, y):
+        """
+        Save optimized quantities by MPC and observations to CSV file.
+        """
+        with open(self.results_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt), y.tolist()])
 
 
 def main(args=None):
