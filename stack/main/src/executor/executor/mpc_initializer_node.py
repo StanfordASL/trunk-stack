@@ -33,7 +33,7 @@ class MPCInitializerNode(Node):
         self._load_model()
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.05)
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'point', 0.085)
 
         # MPC configuration
         U = HyperRectangle([0.45]*6, [-0.45]*6)
