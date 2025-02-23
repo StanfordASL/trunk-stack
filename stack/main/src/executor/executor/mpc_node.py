@@ -70,7 +70,7 @@ class MPCNode(Node):
             ('n_u', 6),                                     # number of control inputs
             ('n_obs', 3),                                   # 2D, 3D or 6D observations
             ('n_delay', 3),                                 # number of delays applied to observations
-            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
+            # ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -79,7 +79,7 @@ class MPCNode(Node):
         self.n_u = self.get_parameter('n_u').value
         self.n_obs = self.get_parameter('n_obs').value
         self.n_delay = self.get_parameter('n_delay').value
-        self.n_exec = self.get_parameter('n_exec').value
+        # self.n_exec = self.get_parameter('n_exec').value
         self.results_name = self.get_parameter('results_name').value
 
         # Initialize the CSV file
@@ -92,7 +92,7 @@ class MPCNode(Node):
         self.buffer_index = 0
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.2
+        self.alpha_smooth = 0.3
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
@@ -147,7 +147,7 @@ class MPCNode(Node):
         self.initialized = False
 
         # Initialize by calling mpc callback function
-        self.mpc_executor_callback()
+        self.mpc_callback()
 
         # JIT compile this function
         check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
@@ -206,10 +206,12 @@ class MPCNode(Node):
         """
         if self.control_buffer and self.buffer_index < len(self.control_buffer):
             control_inputs = jnp.array(self.control_buffer[self.buffer_index * self.n_u:(self.buffer_index + 1) * self.n_u])
+            self.get_logger().info(f'Buffer index {self.buffer_index} with control inputs {control_inputs}')
+
             safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
-            # self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
-            self.publish_control_inputs(safe_control_inputs.tolist())
-            self.u_previous = safe_control_inputs
+            self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
+            self.publish_control_inputs(self.smooth_control_inputs.tolist())
+            self.u_previous = self.smooth_control_inputs
             self.buffer_index += 1
             
             if self.debug:
@@ -254,8 +256,8 @@ class MPCNode(Node):
                 self.destroy_node()
                 rclpy.shutdown()
             else:
-                # Store the first n_exec control inputs in the buffer for execution
-                self.control_buffer = list(response.uopt[:self.n_exec * self.n_u])
+                # Store the optimized control inputs in the buffer for execution
+                self.control_buffer = list(response.uopt)
                 self.buffer_index = 0
 
                 # Save to csv file
@@ -299,7 +301,7 @@ def main(args=None):
     rclpy.init(args=args)
     mpc_node = MPCNode()
 
-    executor = MultiThreadedExecutor(num_threads=4)
+    executor = MultiThreadedExecutor(num_threads=6)
     executor.add_node(mpc_node)
     try:
         executor.spin()
