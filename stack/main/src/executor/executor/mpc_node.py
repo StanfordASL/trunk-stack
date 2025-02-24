@@ -1,5 +1,7 @@
 import os
 import csv
+import time
+from threading import Lock
 
 import jax
 import jax.numpy as jnp
@@ -70,7 +72,7 @@ class MPCNode(Node):
             ('n_u', 6),                                     # number of control inputs
             ('n_obs', 3),                                   # 2D, 3D or 6D observations
             ('n_delay', 3),                                 # number of delays applied to observations
-            # ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
+            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -79,7 +81,7 @@ class MPCNode(Node):
         self.n_u = self.get_parameter('n_u').value
         self.n_obs = self.get_parameter('n_obs').value
         self.n_delay = self.get_parameter('n_delay').value
-        # self.n_exec = self.get_parameter('n_exec').value
+        self.n_exec = self.get_parameter('n_exec').value
         self.results_name = self.get_parameter('results_name').value
 
         # Initialize the CSV file
@@ -90,6 +92,7 @@ class MPCNode(Node):
         # Collect buffer of control inputs for multiple executions
         self.control_buffer = []
         self.buffer_index = 0
+        self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
         self.alpha_smooth = 0.3
@@ -183,12 +186,8 @@ class MPCNode(Node):
         y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
         y_centered = y_new - self.rest_position
 
-        if self.n_z == 2:
-            # Subselect x, z of tip
-            y_centered_tip = y_centered[jnp.array([-3, -1])]
-        elif self.n_z == 3:
-            # Subselect tip
-            y_centered_tip = y_centered[-3:]
+        # Subselect tip
+        y_centered_tip = y_centered[-3:]
 
         # Update the current observations, including delay embeddings
         if self.latest_y is None:
@@ -204,18 +203,22 @@ class MPCNode(Node):
         """
         Execute the next control input from the buffer.
         """
-        if self.control_buffer and self.buffer_index < len(self.control_buffer):
-            control_inputs = jnp.array(self.control_buffer[self.buffer_index * self.n_u:(self.buffer_index + 1) * self.n_u])
-            self.get_logger().info(f'Buffer index {self.buffer_index} with control inputs {control_inputs}')
-
+        with self.buffer_lock:
+            if not self.control_buffer or self.buffer_index >= len(self.control_buffer):
+                return
+                            
+            control_inputs = self.control_buffer[self.buffer_index]
             safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
             self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
-            self.publish_control_inputs(self.smooth_control_inputs.tolist())
-            self.u_previous = self.smooth_control_inputs
-            self.buffer_index += 1
-            
+
             if self.debug:
                 self.get_logger().info(f'Executing buffer index {self.buffer_index} of {len(self.control_buffer)}')
+            
+            self.buffer_index += 1
+        
+        self.publish_control_inputs(self.smooth_control_inputs.tolist())
+        self.u_previous = self.smooth_control_inputs
+        
 
     def mpc_callback(self):
         """
@@ -257,8 +260,12 @@ class MPCNode(Node):
                 rclpy.shutdown()
             else:
                 # Store the optimized control inputs in the buffer for execution
-                self.control_buffer = list(response.uopt)
-                self.buffer_index = 0
+                new_buffer = []
+                for i in range(self.n_exec):
+                    new_buffer.append(jnp.array(response.uopt[i*self.n_u:(i+1)*self.n_u]))
+                with self.buffer_lock:
+                    self.control_buffer = new_buffer
+                    self.buffer_index = 0
 
                 # Save to csv file
                 self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt, self.y0[:self.n_y])
