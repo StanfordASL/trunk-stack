@@ -33,7 +33,8 @@ class MPCInitializerNode(Node):
         self._load_model()
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'point', 0.075)
+        dt = 0.02
+        z_ref, t = self._generate_ref_trajectory(10, dt, 'circle', 0.04)
 
         # MPC configuration
         U = HyperRectangle([0.45]*6, [-0.45]*6)
@@ -53,11 +54,12 @@ class MPCInitializerNode(Node):
             R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
-            N=6
+            N=6,
+            dt=dt
         )
 
         x0 = jnp.zeros(self.model.n_x)
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, z=z_ref, U=U, dU=dU, solver="GUROBI")
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, dt=dt, z=z_ref, U=U, dU=dU, solver="GUROBI")
 
 
     def _load_model(self):

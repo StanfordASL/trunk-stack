@@ -67,7 +67,9 @@ class MPCSolverNode(Node):
     def __init__(self, model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
                  U=None, X=None, Xf=None, dU=None, **kwargs):
         self.model = model
-        if dt is None and t is not None:
+        if dt is not None:
+            self.dt = dt
+        elif dt is None and t is not None:
             self.dt = t[1] - t[0]
         self.N = config.N
         self.t = t
