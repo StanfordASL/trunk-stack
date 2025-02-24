@@ -33,7 +33,7 @@ class MPCInitializerNode(Node):
         self._load_model()
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'point', 0.06)
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'point', 0.075)
 
         # MPC configuration
         U = HyperRectangle([0.45]*6, [-0.45]*6)
@@ -44,7 +44,7 @@ class MPCInitializerNode(Node):
         Qzf = Qzf.at[1, 1].set(0)
         R_tip, R_mid, R_top = 0.001, 0.005, 0.01
         R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
-        R_du = 0.06 * jnp.eye(self.model.n_u)
+        R_du = 0.05 * jnp.eye(self.model.n_u)
 
         gusto_config = GuSTOConfig(
             Qz=Qz,

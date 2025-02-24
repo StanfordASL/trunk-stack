@@ -1,6 +1,5 @@
 import os
 import csv
-import time
 from threading import Lock
 
 import jax
@@ -95,7 +94,7 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.3
+        self.alpha_smooth = 0
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
@@ -206,19 +205,18 @@ class MPCNode(Node):
         with self.buffer_lock:
             if not self.control_buffer or self.buffer_index >= len(self.control_buffer):
                 return
-                            
+
             control_inputs = self.control_buffer[self.buffer_index]
             safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
             self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
 
             if self.debug:
                 self.get_logger().info(f'Executing buffer index {self.buffer_index} of {len(self.control_buffer)}')
-            
+
             self.buffer_index += 1
-        
+
         self.publish_control_inputs(self.smooth_control_inputs.tolist())
         self.u_previous = self.smooth_control_inputs
-        
 
     def mpc_callback(self):
         """
