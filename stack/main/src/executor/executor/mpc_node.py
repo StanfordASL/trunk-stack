@@ -71,7 +71,7 @@ class MPCNode(Node):
             ('n_u', 6),                                     # number of control inputs
             ('n_obs', 3),                                   # 2D, 3D or 6D observations
             ('n_delay', 3),                                 # number of delays applied to observations
-            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
+            ('n_exec', 3),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -155,14 +155,14 @@ class MPCNode(Node):
         check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
-        self.controller_period = 0.025
+        self.controller_period = 0.06
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
                     self.mpc_callback,
                     callback_group=self.callback_group)
         
         # Timer for executing buffered controls
-        self.buffer_execution_period = 0.01  # 100 Hz, same as dt in MPC
+        self.buffer_execution_period = 0.02  # same as dt in MPC
         self.buffer_timer = self.create_timer(
             self.buffer_execution_period,
             self.execute_buffer_callback,
