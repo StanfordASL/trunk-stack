@@ -35,6 +35,7 @@ class GuSTOConfig:
     convg_thresh: float = 0.01          # convergence threshold
     verbose: int = 0                    # verbosity level (0, 1, 2)
     warm_start: bool = True             # warm start the solver
+    R_du: jnp.ndarray = None            # control rate weighting matrix
 
 
 class GuSTO:
@@ -102,7 +103,7 @@ class GuSTO:
         self.locp = LOCP(self.N, self.H, self.Qz, self.R, Qzf=self.Qzf,
                          U=self.U, X=self.X, Xf=self.Xf, dU=self.dU,
                          verbose=locp_verbose, warm_start=self.warm_start, x_char=self.x_char,
-                         nonlinear_perf_mapping=self.nonlinear_perf_mapping, **kwargs)
+                         nonlinear_perf_mapping=self.nonlinear_perf_mapping, R_du=self.R_du, **kwargs)
 
         # First SCP solve
         self.solve(x0, u_init, x_init, z, zf, u)

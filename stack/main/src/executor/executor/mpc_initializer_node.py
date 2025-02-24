@@ -23,7 +23,7 @@ class MPCInitializerNode(Node):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g_4D_slow'),      # 'ssmr_200g' (what model to use)
+            ('model_name', 'ssm_origin_300g_slow'),         # 'ssmr_200g' (what model to use)
         ])
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
@@ -33,25 +33,24 @@ class MPCInitializerNode(Node):
         self._load_model()
 
         # Generate reference trajectory
-        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'circle', 0.05)
+        z_ref, t = self._generate_ref_trajectory(10, 0.01, 'point', 0.075)
 
         # MPC configuration
-        U = HyperRectangle([0.4]*6, [-0.4]*6)
-        dU = HyperRectangle([0.1]*6, [-0.1]*6)
-        # U = None
+        U = HyperRectangle([0.45]*6, [-0.45]*6)
         dU = None
-
         Qz = 5 * jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
         Qzf = 10 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
         R_tip, R_mid, R_top = 0.001, 0.005, 0.01
         R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
+        R_du = 0.05 * jnp.eye(self.model.n_u)
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
             Qzf=Qzf,
             R=R,
+            R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
             N=6
@@ -89,6 +88,9 @@ class MPCInitializerNode(Node):
             if traj_type == 'circle':
                 z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
                 z_ref = z_ref.at[:, 1].set(size * jnp.sin(2 * jnp.pi / T * t))
+            elif traj_type == 'point':
+                z_ref = z_ref.at[:, 0].set(jnp.zeros_like(t))
+                z_ref = z_ref.at[:, 2].set(-size * jnp.ones_like(t))
             elif traj_type == 'figure_eight':
                 z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
                 z_ref = z_ref.at[:, 1].set(size * jnp.sin(4 * jnp.pi / T * t))
@@ -106,9 +108,13 @@ class MPCInitializerNode(Node):
                 raise ValueError('Invalid trajectory type: ' + traj_type + '. Valid options are: "circle" or "figure_eight".')
         elif self.model.n_z == 3:
             if traj_type == 'circle':
-                z_ref = z_ref.at[:, 0].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
+                z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
                 z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
-                z_ref = z_ref.at[:, 2].set(size * jnp.sin(2 * jnp.pi / T * t))
+                z_ref = z_ref.at[:, 2].set(size * (jnp.cos(2 * jnp.pi / T * t) - 1))
+            elif traj_type == 'point':
+                z_ref = z_ref.at[:, 0].set(jnp.zeros_like(t))
+                z_ref = z_ref.at[:, 1].set(jnp.zeros_like(t))
+                z_ref = z_ref.at[:, 2].set(-size * jnp.ones_like(t))
             elif traj_type == 'figure_eight':
                 z_ref = z_ref.at[:, 0].set(size * jnp.sin(2 * jnp.pi / T * t))
                 z_ref = z_ref.at[:, 1].set(size / 2 * jnp.ones_like(t))
