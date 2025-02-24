@@ -1,4 +1,6 @@
 import os
+import csv
+from threading import Lock
 
 import jax
 import jax.numpy as jnp
@@ -64,11 +66,13 @@ class MPCNode(Node):
     def __init__(self):
         super().__init__('mpc_node')
         self.declare_parameters(namespace='', parameters=[
-            ('debug', False),                               # False or True (print debug messages)
-            ('n_z', 2),                                     # 2 (number of performance vars)
-            ('n_u', 6),                                     # 6 (number of control inputs)
-            ('n_obs', 2),                                   # 2 (2D, 3D or 6D observations)
-            ('n_delay', 4),                                 # 4 (number of delays applied to observations)
+            ('debug', False),                               # print debug messages
+            ('n_z', 3),                                     # number of performance vars
+            ('n_u', 6),                                     # number of control inputs
+            ('n_obs', 3),                                   # 2D, 3D or 6D observations
+            ('n_delay', 3),                                 # number of delays applied to observations
+            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
+            ('results_name', 'test_experiment')             # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -76,18 +80,32 @@ class MPCNode(Node):
         self.n_u = self.get_parameter('n_u').value
         self.n_obs = self.get_parameter('n_obs').value
         self.n_delay = self.get_parameter('n_delay').value
+        self.n_exec = self.get_parameter('n_exec').value
+        self.results_name = self.get_parameter('results_name').value
+
+        # Initialize the CSV file
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
-        self.alpha_smooth = 0.2
-        self.safe_control_input = jnp.zeros(6)
+        self.results_file = os.path.join(self.data_dir, f"trajectories/closed_loop/{self.results_name}.csv")
+        self.initialize_csv()
+
+        # Collect buffer of control inputs for multiple executions
+        self.control_buffer = []
+        self.buffer_index = 0
+        self.buffer_lock = Lock()
+        
+        # We perform smoothing to handle initial transients
+        self.alpha_smooth = 0
+        self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
         self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.10056, -0.10541, 0.10350,
-                                        0.09808, -0.20127, 0.10645,
-                                        0.09242, -0.31915, 0.09713])
+        self.rest_position = jnp.array([0.1018, -0.1075, 0.1062,
+                                        0.1037, -0.2055, 0.1148,
+                                        0.1025, -0.3254, 0.1129])
         
+        # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
         # Subscribe to current positions
@@ -95,7 +113,7 @@ class MPCNode(Node):
             TrunkRigidBodies,
             '/trunk_rigid_bodies',
             self.mocap_listener_callback,
-            QoSProfile(depth=10),
+            QoSProfile(depth=3),
             callback_group=self.callback_group
         )
 
@@ -116,14 +134,14 @@ class MPCNode(Node):
         self.controls_publisher = self.create_publisher(
             AllMotorsControl,
             '/all_motors_control',
-            QoSProfile(depth=10)
+            QoSProfile(depth=3)
         )
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
 
         # Maintain previous control inputs
-        self.uopt_previous = jnp.zeros(self.n_u)
+        self.u_previous = jnp.zeros(self.n_u)
 
         self.clock = self.get_clock()
 
@@ -131,17 +149,25 @@ class MPCNode(Node):
         self.initialized = False
 
         # Initialize by calling mpc callback function
-        self.mpc_executor_callback()
+        self.mpc_callback()
 
         # JIT compile this function
-        check_control_inputs(jnp.zeros(self.n_u), self.uopt_previous)
+        check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
 
-        # Create timer to execute MPC at fixed frequency
-        self.controller_period = 0.04
+        # Create timer to receive MPC results at fixed frequency
+        self.controller_period = 0.025
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
-                    self.mpc_executor_callback,
+                    self.mpc_callback,
                     callback_group=self.callback_group)
+        
+        # Timer for executing buffered controls
+        self.buffer_execution_period = 0.01  # 100 Hz, same as dt in MPC
+        self.buffer_timer = self.create_timer(
+            self.buffer_execution_period,
+            self.execute_buffer_callback,
+            callback_group=self.callback_group
+        )
 
         self.get_logger().info(f'MPC node has been started with controller frequency: {1/self.controller_period:.2f} [Hz].')
 
@@ -159,12 +185,8 @@ class MPCNode(Node):
         y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
         y_centered = y_new - self.rest_position
 
-        if self.n_z == 2:
-            # Subselect x, z of tip
-            y_centered_tip = y_centered[jnp.array([-3, -1])]
-        elif self.n_z == 3:
-            # Subselect tip
-            y_centered_tip = y_centered[-3:]
+        # Subselect tip
+        y_centered_tip = y_centered[-3:]
 
         # Update the current observations, including delay embeddings
         if self.latest_y is None:
@@ -176,24 +198,47 @@ class MPCNode(Node):
         
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
-    def mpc_executor_callback(self):
+    def execute_buffer_callback(self):
         """
-        Execute MPC at a fixed rate.
+        Execute the next control input from the buffer.
+        """
+        with self.buffer_lock:
+            if not self.control_buffer or self.buffer_index >= len(self.control_buffer):
+                return
+
+            control_inputs = self.control_buffer[self.buffer_index]
+            safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
+            self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
+
+            if self.debug:
+                self.get_logger().info(f'Executing buffer index {self.buffer_index} of {len(self.control_buffer)}')
+
+            self.buffer_index += 1
+
+        self.publish_control_inputs(self.smooth_control_inputs.tolist())
+        self.u_previous = self.smooth_control_inputs
+
+    def mpc_callback(self):
+        """
+        Receive MPC results at a fixed rate.
         """
         if not self.initialized:
-            self.send_request(0.0, jnp.zeros(self.n_y), wait=True)
+            self.y0 = jnp.zeros(self.n_y)
+            self.send_request(0.0, self.y0, self.u_previous, wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
         elif self.latest_y is not None:
-            self.send_request(self.t0, self.latest_y, wait=False)
+            self.y0 = self.latest_y
+            self.send_request(self.t0, self.y0, self.u_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
-    def send_request(self, t0, y0, wait=False):
+    def send_request(self, t0, y0, u0, wait=False):
         """
         Send request to MPC solver.
         """
         self.req.t0 = t0
         self.req.y0 = jnp2arr(y0)
+        self.req.u0 = jnp2arr(u0)
         self.future = self.mpc_client.call_async(self.req)
 
         if wait:
@@ -212,17 +257,16 @@ class MPCNode(Node):
                 self.destroy_node()
                 rclpy.shutdown()
             else:
-                safe_control_inputs = check_control_inputs(jnp.array(response.uopt[:self.n_u]), self.uopt_previous)
-                # self.publish_control_inputs(safe_control_inputs.tolist())
+                # Store the optimized control inputs in the buffer for execution
+                new_buffer = []
+                for i in range(self.n_exec):
+                    new_buffer.append(jnp.array(response.uopt[i*self.n_u:(i+1)*self.n_u]))
+                with self.buffer_lock:
+                    self.control_buffer = new_buffer
+                    self.buffer_index = 0
 
-                # TODO: John Edits
-                self.safe_control_input = (1 - self.alpha_smooth) * self.safe_control_input + self.alpha_smooth * safe_control_inputs
-                self.publish_control_inputs(self.safe_control_input.tolist())
-
-                # self.get_logger().info(f'We command the control inputs: {safe_control_inputs.tolist()}.')
-                # self.get_logger().info(f'We would command the control inputs: {response.uopt[:6]}.')
-
-                self.uopt_previous = safe_control_inputs
+                # Save to csv file
+                self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt, self.y0[:self.n_y])
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
@@ -238,6 +282,22 @@ class MPCNode(Node):
         if self.debug:
             self.get_logger().info(f'Published new motor control setting: {control_inputs}.')
 
+    def initialize_csv(self):
+        """
+        Initialize the CSV file with headers.
+        """
+        with open(self.results_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['topt', 'xopt', 'uopt', 'zopt', 'y'])
+
+    def save_to_csv(self, topt, xopt, uopt, zopt, y):
+        """
+        Save optimized quantities by MPC and observations to CSV file.
+        """
+        with open(self.results_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt), y.tolist()])
+
 
 def main(args=None):
     """
@@ -246,7 +306,7 @@ def main(args=None):
     rclpy.init(args=args)
     mpc_node = MPCNode()
 
-    executor = MultiThreadedExecutor(num_threads=4)
+    executor = MultiThreadedExecutor(num_threads=6)
     executor.add_node(mpc_node)
     try:
         executor.spin()

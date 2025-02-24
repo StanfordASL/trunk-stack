@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'ik_solver_node = controller.ik_solver_node:main',
             'mpc_solver_node = controller.mpc_solver_node:main',
+            'ffpid_solver_node = controller.ffpid_solver_node:main',
         ],
     },
 )
