@@ -71,7 +71,7 @@ class MPCNode(Node):
             ('n_u', 6),                                     # number of control inputs
             ('n_obs', 3),                                   # 2D, 3D or 6D observations
             ('n_delay', 3),                                 # number of delays applied to observations
-            ('n_exec', 3),                                  # number of control inputs to execute from MPC solution
+            ('n_exec', 1),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -94,7 +94,7 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0
+        self.alpha_smooth = 0.3 # TODO: Change
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
@@ -155,7 +155,7 @@ class MPCNode(Node):
         check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
-        self.controller_period = 0.06
+        self.controller_period = 0.02
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
                     self.mpc_callback,
