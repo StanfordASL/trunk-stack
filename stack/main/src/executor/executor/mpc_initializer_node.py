@@ -34,18 +34,19 @@ class MPCInitializerNode(Node):
 
         # Generate reference trajectory
         dt = 0.02
-        z_ref, t = self._generate_ref_trajectory(10, dt, 'circle', 0.04)
+        z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.08)
 
         # MPC configuration
-        U = HyperRectangle([0.45]*6, [-0.45]*6)
+        # U = HyperRectangle([0.45]*6, [-0.45]*6)
+        U = None
         dU = None
-        Qz = 5 * jnp.eye(self.model.n_z)
+        Qz = 100.0 * jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
-        Qzf = 10 * jnp.eye(self.model.n_z)
+        Qzf = 0.0 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
         R_tip, R_mid, R_top = 0.001, 0.005, 0.01
-        R = jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
-        R_du = 0.05 * jnp.eye(self.model.n_u)
+        R = 0.0 * jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
+        R_du = 0.001 * jnp.eye(self.model.n_u)
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
@@ -60,7 +61,6 @@ class MPCInitializerNode(Node):
 
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, dt=dt, z=z_ref, U=U, dU=dU, solver="GUROBI")
-
 
     def _load_model(self):
         """
