@@ -59,7 +59,7 @@ class IKSolverNode(Node):
     def __init__(self):
         super().__init__('ik_solver_node')
         self.declare_parameters(namespace='', parameters=[
-            ('ik_type', 'slow_manifold'),  # 'nn' or 'lq' or 'interp' or 'slow_manifold'
+            ('ik_type', 'slow_manifold'),  # 'nn' or 'lq' or 'interp' or 'slow_manifold' or 'ffpid_sm'
             ('u2y_file', 'u2y.npy'),  # for least=squares (lq)
             ('y2u_file', 'y2u_8seeds.npy'),  # for least=squares (lq)
             ('u_min', -0.25),
@@ -82,7 +82,9 @@ class IKSolverNode(Node):
         self.alpha = self.get_parameter('alpha').value
 
         # Define rest positions
-        self.rest_positions = np.array([0.10056, -0.10541, 0.10350, 0.09808, -0.20127, 0.10645, 0.09242, -0.31915, 0.09713]) #from 2/2/25
+        self.rest_positions = np.array([0.10056, -0.10541, 0.10350,
+                                        0.09808, -0.20127, 0.10645,
+                                        0.09242, -0.31915, 0.09713]) #from 2/2/25
 
         # Initializations
         self.u_opt_previous = np.array([0., 0., 0., 0., 0., 0.])  # initially no control input
@@ -104,6 +106,15 @@ class IKSolverNode(Node):
             # self.get_logger().info(f'decoder_exp shape = {self.decoder_exp.shape}')
             # self.get_logger().info(f'const_coeff shape = {self.const_coeff.shape}')
             # self.get_logger().info(f'decoder_coeff shape = {self.decoder_coeff.shape}')
+        elif self.ik_type == 'ffpid_sm':
+            # Gain matrix K
+            c = 0  # tunable parameter
+            theta = 15 * np.pi / 180
+            self.K = -c * np.array([
+                                    [np.cos(theta), -np.sin(theta)],
+                                    [np.sin(theta), np.cos(theta)]
+                    ])
+            
         elif self.ik_type == 'nn':
             self.neural_ik_model = MLP()
             self.neural_ik_model.load_state_dict(torch.load(os.path.join(data_dir, 'models/ik/neural_ik_model_state.pth'), weights_only=False))
@@ -202,6 +213,48 @@ class IKSolverNode(Node):
         u_opt = self.check_control_inputs(u_opt.flatten())
         response.uopt = u_opt.tolist()
 
+        return response
+    
+    # todo: debug
+    def ffpid_callback(self, request, response):
+        zf_des = np.array(request.zf) # desired positions
+        zf_des += self.rest_positions # It is already zero centered straight from the AVP... so we need to offset away from zero into the frame we learned the model in
+
+        zf_des_spec = zf_des[3:] # only command desired positions for mid and tip
+        monomials = self.phi(zf_des_spec, self.decoder_exp)
+        u = (self.decoder_coeff @ monomials).reshape(self.const_coeff.shape[0], 1)
+
+        self.const_coeff = self.const_coeff.reshape(self.const_coeff.shape[0],1)
+        u_sm = u + self.const_coeff # add constant coefficients
+
+        # We only actually use u1 and u6 for now
+        u_ik = u_ik[[1, -1]]
+
+        # Calculate the error
+        y = np.array(request.y0)
+        e = zf_des.flatten() - y
+
+        # Calculate the P(ID) control inputs
+        u_pid = self.K @ e
+        # u_pid = 1 / np.linalg.norm(y) * self.K @ e
+
+        print('IK: ', u_ik)
+        print('e: ', e)
+        print('PID: ', u_pid)
+
+        # Combine feed-forward and PID control inputs
+        u_opt = u_ik + u_pid
+
+        # Do exponential smoothing
+        self.smooth_stat = self.alpha * u_opt + (1 - self.alpha) * self.smooth_stat
+        u_opt = self.smooth_stat
+
+        # check control inputs !!!
+
+        # Convert back to format for all control inputs
+        u_ffpid = np.array([u_opt[0], 0, 0, 0, 0, u_opt[1]])
+
+        response.uopt = u_ffpid.tolist()
         return response
 
     def interp_ik_callback(self, request, response):
