@@ -15,8 +15,6 @@ find_package(geometry_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AllMotorsControl.msg"
   "msg/AllMotorsStatus.msg"
-  "msg/SingleMotorControl.msg"
-  "msg/SingleMotorStatus.msg"
   "msg/TrunkMarkers.msg"
   "msg/TrunkRigidBodies.msg"
   "srv/ControlSolver.srv"

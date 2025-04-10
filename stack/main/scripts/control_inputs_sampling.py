@@ -127,7 +127,46 @@ def adiabatic_step_sampling(control_variables, seed):
     return control_inputs_df
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, tip_radius = 0.45, mid_radius = 0.375, base_radius = 0.325, n_samples=15000):
+def perlin_noise_sampling_old_motors(control_variables, seed, tip_radius = 0.45, mid_radius = 0.375, base_radius = 0.325, n_samples=15000):
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    
+    n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
+    seeds = seed * np.arange(1,7) # one for each control input
+
+    maxs = [tip_radius, mid_radius, base_radius, base_radius, mid_radius, tip_radius] # tip: 1, 6; mid: 2, 5; base: 3, 4
+    mins = [-x for x in maxs]
+
+    control_inputs = np.zeros((n_samples, 6))
+    for i in range(len(seeds)):
+        noise = PerlinNoise(octaves=n_octaves, seed=int(seeds[i])) # noise for each control input
+        ctrl = np.array([noise(x / n_samples) for x in range(n_samples)])
+
+        # normalize perlin noise to safe range
+        ctrl = (ctrl - ctrl.min()) / (ctrl.max() - ctrl.min()) # normalize from 0 to 1
+        ctrl = ctrl * (maxs[i] - mins[i]) + mins[i] # scale from min to max
+        control_inputs[:,i] = ctrl
+    
+    # convert to df
+    ids = np.arange(n_samples)
+    ids = ids[:, np.newaxis]
+    inputs = np.hstack((ids, control_inputs))
+    inputs_df = pd.DataFrame(inputs, columns = control_inputs_df.columns)
+    control_inputs_df = pd.concat([control_inputs_df, inputs_df], ignore_index=True)
+
+    # plot the control inputs
+    fig, axes = plt.subplots(2, 3, figsize=(12, 6))  # 2 rows, 3 columns
+
+    for i, ax in enumerate(axes.flat):
+        ax.plot(control_inputs[:,i]) 
+        ax.set_title(f"U_{i+1}") 
+
+    plt.tight_layout()
+    plt.show()
+
+    return control_inputs_df
+
+# for creating smooth random control trajectories
+def perlin_noise_sampling(control_variables, seed, rest_angles, tip_radius = 0.45, mid_radius = 0.375, base_radius = 0.325, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
@@ -415,6 +454,7 @@ def visualize_samples(control_inputs_df):
 
 def main(data_type, sampling_type, seed=None):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
+    rest_angles = [198.0, 204.0, 189.0, 211.0, 200.0, 192.0]
     # data_dir for mark's mac starts with '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data'
     # data_dir for workstation is '/home/trunk/Documents/trunk-stack/stack/main/data'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
@@ -440,7 +480,7 @@ def main(data_type, sampling_type, seed=None):
     elif sampling_type == 'adiabatic_global':
         control_inputs_df = adiabatic_global_sampling(control_variables, seed)
     elif sampling_type == 'random_smooth':
-        control_inputs_df = perlin_noise_sampling(control_variables, seed)
+        control_inputs_df = perlin_noise_sampling(control_variables, seed, rest_angles)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
