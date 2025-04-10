@@ -170,7 +170,7 @@ def smooth_lin_interpolated_beta(seed=0):
 
     return control_inputs_df
 
-# OLD, not smooth at transitions, should be deprecated
+# OLD, not smooth at transitions, should be deprecated DO NOT USE
 def linear_interpolated_beta(seed=0):
     # Parameters
     sample_size = 90
