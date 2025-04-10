@@ -1,5 +1,0 @@
-uint32 number_of_images
----
-# Image saved?
-bool success
-string img_filename
