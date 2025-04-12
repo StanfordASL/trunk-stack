@@ -166,13 +166,14 @@ def perlin_noise_sampling_old_motors(control_variables, seed, tip_radius = 0.45,
     return control_inputs_df
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, rest_angles, tip_radius = 0.45, mid_radius = 0.375, base_radius = 0.325, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, rest_angles, tip_radius = 80, mid_radius = 50, base_radius = 30, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
     seeds = seed * np.arange(1,7) # one for each control input
 
-    maxs = [tip_radius, mid_radius, base_radius, base_radius, mid_radius, tip_radius] # tip: 1, 6; mid: 2, 5; base: 3, 4
+    # max displacement from rest pos in degrees
+    maxs = [mid_radius, tip_radius, base_radius, tip_radius, base_radius, mid_radius] # tip: 2, 4; mid: 1, 6; base: 3, 5
     mins = [-x for x in maxs]
 
     control_inputs = np.zeros((n_samples, 6))
@@ -185,6 +186,9 @@ def perlin_noise_sampling(control_variables, seed, rest_angles, tip_radius = 0.4
         ctrl = ctrl * (maxs[i] - mins[i]) + mins[i] # scale from min to max
         control_inputs[:,i] = ctrl
     
+    # currently zero-centered, need to center around rest positions
+    control_inputs += rest_angles
+
     # convert to df
     ids = np.arange(n_samples)
     ids = ids[:, np.newaxis]
@@ -490,6 +494,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'circle'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
-    seed = 1                            # choose integer seed number
+    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
+    seed = 2                            # choose integer seed number
     main(data_type, sampling_type, seed)
