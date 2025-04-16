@@ -1,7 +1,3 @@
-DYNAMIXEL Graph,3
-ItemCount,2
--1,1130,XM540-W150,Realtime Tick,#000000,0
--1,1130,XM540-W150,Present Position,#ffff00,0
 Time[ms],Realtime Tick,Present Position
 0,6427,2305
 200,6627,2305
