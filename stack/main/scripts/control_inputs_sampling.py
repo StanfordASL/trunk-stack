@@ -128,7 +128,7 @@ def adiabatic_step_sampling(control_variables, seed):
 
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, rest_angles, tip_radius = 80, mid_radius = 50, base_radius = 30, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, tip_radius = 80, mid_radius = 50, base_radius = 30, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
@@ -147,9 +147,7 @@ def perlin_noise_sampling(control_variables, seed, rest_angles, tip_radius = 80,
         ctrl = (ctrl - ctrl.min()) / (ctrl.max() - ctrl.min()) # normalize from 0 to 1
         ctrl = ctrl * (maxs[i] - mins[i]) + mins[i] # scale from min to max
         control_inputs[:,i] = ctrl
-    
-    # currently zero-centered, need to center around rest positions
-    control_inputs += rest_angles
+
 
     # convert to df
     ids = np.arange(n_samples)
@@ -272,7 +270,7 @@ def beta_sampling(control_variables, seed, sample_size=100):
     return control_inputs_df
 
 
-def circle_sampling(control_variables, random_seed, rest_angles, tip_radius = 80, mid_radius = 50, base_radius = 30, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
+def circle_sampling(control_variables, random_seed, tip_radius = 80, mid_radius = 50, base_radius = 30, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
     np.random.seed(random_seed)
 
     sampled_angles = np.linspace(0, 2*2*np.pi, num_samples_on_circle + 1) + phase_shift  # CHange back to 2*np.pi to get only one circle no flipping for now
@@ -293,9 +291,6 @@ def circle_sampling(control_variables, random_seed, rest_angles, tip_radius = 80
 
     circle_samples = np.column_stack((u1s, u2s, u3s, u4s, u5s, u6s))
     circle_samples += np.random.uniform(-noise_amplitude, noise_amplitude, circle_samples.shape) # add noise if noise_amplitude != 0
-
-    # currently zero-centered, need to center around rest positions
-    circle_samples += rest_angles
 
     control_inputs_df = pd.DataFrame(circle_samples, columns=control_variables)
     control_inputs_df.insert(0, 'ID', np.arange(0, len(circle_samples)))
@@ -422,7 +417,6 @@ def visualize_samples(control_inputs_df):
 
 def main(data_type, sampling_type, seed=None):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
-    rest_angles = [198.0, 204.0, 189.0, 211.0, 200.0, 192.0]
     # data_dir for mark's mac starts with '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data'
     # data_dir for workstation is '/home/trunk/Documents/trunk-stack/stack/main/data'
     data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
@@ -440,7 +434,7 @@ def main(data_type, sampling_type, seed=None):
     elif sampling_type=='targeted':
         control_inputs_df = targeted_sampling(control_variables, seed)
     elif sampling_type =='circle':
-        control_inputs_df = circle_sampling(control_variables, seed, rest_angles)
+        control_inputs_df = circle_sampling(control_variables, seed)
     elif sampling_type == 'adiabatic_manual':
         control_inputs_df = adiabatic_manual_sampling(control_variables)
     elif sampling_type == 'adiabatic_step':
@@ -448,7 +442,7 @@ def main(data_type, sampling_type, seed=None):
     elif sampling_type == 'adiabatic_global':
         control_inputs_df = adiabatic_global_sampling(control_variables, seed)
     elif sampling_type == 'random_smooth':
-        control_inputs_df = perlin_noise_sampling(control_variables, seed, rest_angles)
+        control_inputs_df = perlin_noise_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
