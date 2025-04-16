@@ -4,7 +4,7 @@ import time
 import rclpy  # type: ignore
 from rclpy.node import Node  # type: ignore
 from rclpy.qos import QoSProfile  # type: ignore
-from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkMarkers, TrunkRigidBodies, AllMotorsStatus
+from interfaces.msg import AllMotorsControl, TrunkMarkers, TrunkRigidBodies, AllMotorsStatus
 
 
 def load_control_inputs(control_input_csv_file):
@@ -278,21 +278,15 @@ class DataCollectionNode(Node):
             control_inputs = self.control_inputs
         control_message = AllMotorsControl()
         mode = 1 if self.control_type == 'position' else 0  # default to 'output' control
-        control_message.motors_control = [
-            SingleMotorControl(mode=mode, value=value) for value in control_inputs
-        ]
+        control_message.motors_control = control_inputs
         self.controls_publisher.publish(control_message)
         if self.debug:
             self.get_logger().info('Published new motor control setting: ' + str(control_inputs))
 
     def extract_angles(self, msg):
-        statuses = msg.motors_status
+        angles = msg.positions
         self.angle_update_count += 1
         self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
-        angles = []
-        for status in statuses:
-            angle = status.position
-            angles.append(angle)
         return angles
 
     def extract_positions(self, msg):

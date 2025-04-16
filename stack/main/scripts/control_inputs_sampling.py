@@ -126,44 +126,6 @@ def adiabatic_step_sampling(control_variables, seed):
 
     return control_inputs_df
 
-# for creating smooth random control trajectories
-def perlin_noise_sampling_old_motors(control_variables, seed, tip_radius = 0.45, mid_radius = 0.375, base_radius = 0.325, n_samples=15000):
-    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
-    
-    n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
-    seeds = seed * np.arange(1,7) # one for each control input
-
-    maxs = [tip_radius, mid_radius, base_radius, base_radius, mid_radius, tip_radius] # tip: 1, 6; mid: 2, 5; base: 3, 4
-    mins = [-x for x in maxs]
-
-    control_inputs = np.zeros((n_samples, 6))
-    for i in range(len(seeds)):
-        noise = PerlinNoise(octaves=n_octaves, seed=int(seeds[i])) # noise for each control input
-        ctrl = np.array([noise(x / n_samples) for x in range(n_samples)])
-
-        # normalize perlin noise to safe range
-        ctrl = (ctrl - ctrl.min()) / (ctrl.max() - ctrl.min()) # normalize from 0 to 1
-        ctrl = ctrl * (maxs[i] - mins[i]) + mins[i] # scale from min to max
-        control_inputs[:,i] = ctrl
-    
-    # convert to df
-    ids = np.arange(n_samples)
-    ids = ids[:, np.newaxis]
-    inputs = np.hstack((ids, control_inputs))
-    inputs_df = pd.DataFrame(inputs, columns = control_inputs_df.columns)
-    control_inputs_df = pd.concat([control_inputs_df, inputs_df], ignore_index=True)
-
-    # plot the control inputs
-    fig, axes = plt.subplots(2, 3, figsize=(12, 6))  # 2 rows, 3 columns
-
-    for i, ax in enumerate(axes.flat):
-        ax.plot(control_inputs[:,i]) 
-        ax.set_title(f"U_{i+1}") 
-
-    plt.tight_layout()
-    plt.show()
-
-    return control_inputs_df
 
 # for creating smooth random control trajectories
 def perlin_noise_sampling(control_variables, seed, rest_angles, tip_radius = 80, mid_radius = 50, base_radius = 30, n_samples=15000):
@@ -310,7 +272,7 @@ def beta_sampling(control_variables, seed, sample_size=100):
     return control_inputs_df
 
 
-def circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.0, base_radius = 0.0, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
+def circle_sampling(control_variables, random_seed, rest_angles, tip_radius = 80, mid_radius = 50, base_radius = 30, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
     np.random.seed(random_seed)
 
     sampled_angles = np.linspace(0, 2*2*np.pi, num_samples_on_circle + 1) + phase_shift  # CHange back to 2*np.pi to get only one circle no flipping for now
@@ -321,17 +283,19 @@ def circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radiu
     # sampled_angles = np.concatenate((sampled_angles_fwd, sampled_angles_bkwd))
 
     offset = (1/6)*np.pi # 30 degree angle offset between cables
-    # set control inputs based on geometry of cable arrangement
-    u1s = tip_radius * np.cos(sampled_angles)
-    u6s = - tip_radius * np.sin(sampled_angles)
-    u5s = - mid_radius * np.cos(sampled_angles + offset) 
-    u2s = mid_radius * np.sin(sampled_angles + offset)
-    u4s = base_radius * np.cos(sampled_angles + 2 * offset) 
-    u3s = - base_radius * np.sin(sampled_angles + 2 * offset)
+    # set control inputs based on geometry of cable arrangement - circle should start in direction of +u4
+    u4s = tip_radius * np.cos(sampled_angles)
+    u2s = - tip_radius * np.sin(sampled_angles)
+    u1s = - mid_radius * np.cos(sampled_angles + offset)
+    u6s = mid_radius * np.sin(sampled_angles + offset)
+    u5s = base_radius * np.cos(sampled_angles + 2*offset)
+    u3s = - base_radius * np.sin(sampled_angles + 2*offset)
 
     circle_samples = np.column_stack((u1s, u2s, u3s, u4s, u5s, u6s))
-    circle_samples += np.random.uniform(-noise_amplitude, noise_amplitude, circle_samples.shape)
-    # we are not checking the circle values with check_control_inputs
+    circle_samples += np.random.uniform(-noise_amplitude, noise_amplitude, circle_samples.shape) # add noise if noise_amplitude != 0
+
+    # currently zero-centered, need to center around rest positions
+    circle_samples += rest_angles
 
     control_inputs_df = pd.DataFrame(circle_samples, columns=control_variables)
     control_inputs_df.insert(0, 'ID', np.arange(0, len(circle_samples)))
@@ -476,7 +440,7 @@ def main(data_type, sampling_type, seed=None):
     elif sampling_type=='targeted':
         control_inputs_df = targeted_sampling(control_variables, seed)
     elif sampling_type =='circle':
-        control_inputs_df = circle_sampling(control_variables, seed)
+        control_inputs_df = circle_sampling(control_variables, seed, rest_angles)
     elif sampling_type == 'adiabatic_manual':
         control_inputs_df = adiabatic_manual_sampling(control_variables)
     elif sampling_type == 'adiabatic_step':
@@ -494,6 +458,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
-    seed = 2                            # choose integer seed number
+    sampling_type = 'circle'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
+    seed = 1                            # choose integer seed number
     main(data_type, sampling_type, seed)
