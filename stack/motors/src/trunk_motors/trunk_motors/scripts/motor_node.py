@@ -14,6 +14,8 @@ class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
 
+        self.rest_positions = np.array([198, 204, 189, 211, 200, 192]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
+
         # initialize motors client
         self.motor_ids = [1, 2, 3, 4, 5, 6] # all 6 trunk motors
         self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB0')
@@ -44,11 +46,13 @@ class MotorNode(Node):
 
         # read out initial positions
         self.get_logger().info('Initial motor status: ')
-        positions, velocities, currents = self.read_status()
+        positions = self.read_status()
+        positions_raw = positions + self.rest_positions
+
         for idx, id in enumerate(self.motor_ids):
-            self.get_logger().info(f"Motor {id} position: {positions[idx]*180/np.pi:.2f} degrees") # display in degrees
-            # self.get_logger().info(f"Motor {id} velocity: {velocities[idx]} ")
-            # self.get_logger().info(f'Motor {id} current: {currents[idx]} ')
+            self.get_logger().info(f"Motor {id} position: {positions[idx]:.2f} degrees") # display in degrees
+        for idx, id in enumerate(self.motor_ids):
+            self.get_logger().info(f"Motor {id} raw position: {positions_raw[idx]:.2f} degrees") # display in degrees
 
         self.get_logger().info('Motor control node initialized!')
         
@@ -56,8 +60,11 @@ class MotorNode(Node):
     def command_positions(self, msg):
         # commands new positions to the motors
         positions = msg.motors_control
-        positions = [np.pi/180 * pos for pos in positions] # receives a position in degrees, convert to radians for dynamixel sdk
-        self.dxl_client.write_desired_pos(self.motor_ids, np.array(positions))
+        positions = np.array(positions)
+        positions += self.rest_positions # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
+
+        positions *= np.pi/180 # receives a position in degrees, convert to radians for dynamixel sdk
+        self.dxl_client.write_desired_pos(self.motor_ids, positions)
 
         # for idx, id in enumerate(self.motor_ids):
         #     self.get_logger().info(f"commanded motor {id} to {positions[idx]*180/np.pi:.2f} degrees")
@@ -66,17 +73,17 @@ class MotorNode(Node):
     def read_status(self):
         # reads and publishes the motor position, velocity, and current
         positions, velocities, currents = self.dxl_client.read_pos_vel_cur()
-        positions = positions.tolist()
-        velocities = velocities.tolist()
-        currents = currents.tolist()
+
+        positions *= 180/np.pi # dynamixel position in rad, convert to degrees
+        positions -= self.rest_positions # motor sends real positions, we want to read zero centered positions
 
         msg = AllMotorsStatus()
-        msg.positions = [180/np.pi * pos for pos in positions] # dynamixel position in rad, publish in degrees
-        msg.velocities = [1 * vel for vel in velocities] # TODO: determine if in rpm (should be)
-        msg.currents = [1 * cur for cur in currents] # TODO: determine if in mA (should be)
+        msg.positions = positions.tolist()
+        msg.velocities = velocities.tolist() # TODO: determine if in rpm (should be)
+        msg.currents = currents.tolist() # TODO: determine if in mA (should be)
 
         self.status_publisher.publish(msg)
-        return (positions, velocities, currents)
+        return positions
         
 
     def shutdown(self):
