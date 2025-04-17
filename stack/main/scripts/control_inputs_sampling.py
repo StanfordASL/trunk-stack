@@ -39,13 +39,13 @@ def adiabatic_global_sampling(control_variables, random_seed):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     np.random.seed(random_seed)
 
-    phase_shift_large = (1/4)*np.pi # 0 deg
+    phase_shift_large = (np.pi/4)*np.pi 
     phase_shift_small = 0.0 # small circle rotated by 45 deg from large circle
-    control_inputs_large_circle = circle_sampling(control_variables, random_seed, tip_radius = 0.35, mid_radius = 0.30, base_radius = 0.25, phase_shift=phase_shift_large, noise_amplitude=0.0, num_samples_on_circle=4)
-    control_inputs_small_circle = circle_sampling(control_variables, random_seed, tip_radius = 0.3, mid_radius = 0.25, base_radius = 0.2, phase_shift=phase_shift_small, noise_amplitude=0.0, num_samples_on_circle=4)
+    control_inputs_large_circle = circle_sampling(control_variables, random_seed,  tip_radius = 60, mid_radius = 35, base_radius = 15, phase_shift=phase_shift_large, noise_amplitude=0.0, num_samples_on_circle=4, num_circles=1)
+    control_inputs_small_circle = circle_sampling(control_variables, random_seed, tip_radius = 20, mid_radius = 15, base_radius = 5, phase_shift=phase_shift_small, noise_amplitude=0.0, num_samples_on_circle=4, num_circles=1)
     
     # form the df of control input options
-    origin_df = pd.DataFrame([[0]*7], columns=control_inputs_df.columns)
+    origin_df = pd.DataFrame([[0]*7], columns=control_inputs_df.columns) # add in origin as one set of inputs
     control_inputs_equil_points = pd.concat([control_inputs_large_circle, control_inputs_small_circle, origin_df], ignore_index=True)
     n_equil_points = len(control_inputs_equil_points)
 
@@ -270,10 +270,10 @@ def beta_sampling(control_variables, seed, sample_size=100):
     return control_inputs_df
 
 
-def circle_sampling(control_variables, random_seed, tip_radius = 80, mid_radius = 50, base_radius = 30, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500):
+def circle_sampling(control_variables, random_seed, tip_radius = 50, mid_radius = 30, base_radius = 10, phase_shift=0.0, noise_amplitude=0.00, num_samples_on_circle=2*500, num_circles = 2):
     np.random.seed(random_seed)
 
-    sampled_angles = np.linspace(0, 2*2*np.pi, num_samples_on_circle + 1) + phase_shift  # CHange back to 2*np.pi to get only one circle no flipping for now
+    sampled_angles = np.linspace(0, num_circles*2*np.pi, num_samples_on_circle*num_circles + 1) + phase_shift  # CHange back to 2*np.pi to get only one circle no flipping for now
     sampled_angles = sampled_angles[:-1] # cut off the last value (repeated since 0 deg = 360 deg)
     print(sampled_angles * 180/np.pi)
     # sampled_angles_fwd = np.linspace(0, 2*np.pi, num_samples_on_circle)
@@ -452,6 +452,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'circle'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
+    sampling_type = 'adiabatic_global'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
     seed = 1                            # choose integer seed number
     main(data_type, sampling_type, seed)
