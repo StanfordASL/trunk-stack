@@ -14,7 +14,7 @@ class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
 
-        self.rest_positions = np.array([198, 204, 189, 211, 200, 192]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
+        self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
 
         # initialize motors client
         self.motor_ids = [1, 2, 3, 4, 5, 6] # all 6 trunk motors
