@@ -124,6 +124,8 @@ class DataCollectionNode(Node):
             if not self.angle_callback_received:
                 self.get_logger().info('Motor angles callback received first message')
                 self.angle_callback_received = True
+        else: # allows you to get around angle callback if you are not doing a control trajectory (only one to record angles)
+            self.angle_callback_received = True
 
     def listener_callback(self, msg):
         if not self.angle_callback_received:
