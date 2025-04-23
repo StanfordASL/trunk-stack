@@ -3,20 +3,14 @@ The motor controllers are connected to the Raspberry Pi 4 (4GB RAM), which has U
 Optionally one can enable the servo-driven gripper as well.
 
 ## Usage
-In the first terminal, run:
-```bash
-cd motors/
-sudo ./scripts/canableStart.sh  # start the CANable interface
-source install/setup.bash
-ros2 launch ros_phoenix trunk.launch.py
-```
-In the second terminal, run:
+In the first terminal to start the motors, run:
 ```bash
 cd motors/
 source install/setup.bash
-ros2 run converter converter_node  # optionally add --ros-args -p debug:=true
+ros2 launch trunk_motors launch_motors.py
 ```
-Last, in a third terminal, run:
+
+Last, in a third terminal, to start the gripper run:
 ```bash
 cd gripper/
 source install/setup.bash
