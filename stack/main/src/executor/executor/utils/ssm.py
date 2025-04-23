@@ -7,11 +7,300 @@ import jax.numpy as jnp
 from jax.experimental.ode import odeint
 from functools import partial
 from ssmlearnpy import SSMLearn
+from ssmlearnpy.reduced_dynamics.shift_or_differentiate import shift_or_differentiate
+from ssmlearnpy.geometry.encode_decode import decode_geometry
 from sklearn.utils.extmath import randomized_svd
 from scipy.linalg import orth
 import numpy as np
 import sympy as sp
 from .misc import trajectories_delay_embedding
+from .rff_kernel import FittedMapping
+
+
+class Control_Aug_SSM(SSMLearn):
+    def __init__(self,
+                 reduced_coordinates_aug: list = None,
+                 _lambda: jnp.ndarray = None,
+                 dim_x=0,
+                 SSM_basis: jnp.ndarray = None,
+                 specified_params: dict = None,
+                 orthogonalize: bool = False,
+                 num_obs_delays=0,
+                 **kwargs):
+        # Initialize the base class with necessary arguments.
+        super().__init__(**kwargs)
+        # Store additional data. Ensure that data provided as NumPy objects is later converted to JAX arrays.
+        self.emb_data['reduced_coordinates_aug'] = reduced_coordinates_aug
+        self._lambda = _lambda
+        self.dim_x = dim_x
+        self.SSM_basis = SSM_basis
+        self.orthogonalize = orthogonalize
+        self.num_obs_delays = num_obs_delays
+        self.specified_params = specified_params
+
+    def encode(self, y):
+        return self.SSM_basis.T @ y
+
+    def decode(self, y):
+        return (self.decoder.predict(y.T)).T
+
+    def get_parametrization_with_orth(
+            self,
+            rbf_args=None,
+            n_components=1000,
+            n_components_orth=1000,
+            **regression_args
+    ) -> None:
+        """
+        Learn a reparameterized mapping using JAX with orthogonalization of reduced coordinates.
+        The decoder call functions are fully JAX-compatible for differentiability.
+        """
+        if rbf_args is None:
+            rbf_args = {
+                'epsilon': 1.0,
+                'regularization': 1e-5,
+                'epsilon_orth': 1.0,
+                'regularization_orth': 1e-5,
+            }
+
+        # --- Step 1: Learn initial parametrization ---
+        n = self.ssm_dim
+        delayed_trajs_obs_np = self.input_data['observables']
+        num_obs_states = self.dim_x * (1 + self.num_obs_delays)
+
+        # Convert the numpy arrays to JAX arrays for full JAX compatibility
+        delayed_trajs_obs_jax = [jnp.array(traj[:num_obs_states, :]) for traj in delayed_trajs_obs_np]
+
+        # Define the initial parametrization (decoder)
+        ssm_paramonly = Control_Aug_SSM(
+            t=self.input_data['time'],
+            x=delayed_trajs_obs_jax,
+            reduced_coordinates_aug=self.emb_data['reduced_coordinates_aug'],
+            derive_embdedding=False,
+            ssm_dim=self.ssm_dim,
+            _lambda=self._lambda,
+            dim_x=self.dim_x,
+            SSM_basis=self.SSM_basis,
+            dynamics_type='flow',
+            orthogonalize=self.orthogonalize,
+            num_obs_delays=self.num_obs_delays,
+            specified_params=self.specified_params
+        )
+        ssm_paramonly.get_parametrization(
+            rbf_args={'epsilon': rbf_args.get('epsilon', 1.0),
+                      'regularization': rbf_args.get('regularization', 1.0)},
+            n_components=n_components
+        )
+
+        # At this point, ssm_paramonly.decoder.map_info['linear_part'] is the full Jacobian (V_lin)
+        v_lin = ssm_paramonly.decoder.map_info['linear_part']  # shape: (output_dim, input_dim)
+
+        # --- Step 2: Compute orthonormal basis for the tangent space ---
+        v_orth = orth(v_lin)  # shape: (input_dim, r); this gives a basis for the row space.
+
+        v_orth_2 = orth(v_lin.T)
+
+        if v_orth.shape[1] < n:
+            raise ValueError(f"Tangent space rank is deficient (got rank {v_orth.shape[1]} < {n})")
+
+        # Compute the transform T = V_orth^T @ V_lin. This maps the original coordinates to the new orthonormal ones.
+        transf = v_orth_2.T #v_orth.T @ v_lin  # resulting shape: (n, input_dim)
+        assert False, "Correctly implement that part."
+        # --- Step 3: Update SSM basis ---
+        self.SSM_basis = (transf @ self.SSM_basis.T).T  # Apply the transformation to the SSM basis
+
+        # --- Step 4: Orthogonalize the reduced coordinates ---
+        reduced_coords_orth = [transf @ traj for traj in self.emb_data['reduced_coordinates_aug']]
+
+        # --- Step 5: Build a new parametrization (decoder) on the orthogonalized coordinates ---
+        ssm_orth = Control_Aug_SSM(
+            t=self.input_data['time'],
+            x=delayed_trajs_obs_jax,
+            reduced_coordinates_aug=reduced_coords_orth,
+            derive_embdedding=False,
+            ssm_dim=self.ssm_dim,
+            _lambda=self._lambda,
+            dim_x=self.dim_x,
+            SSM_basis=self.SSM_basis,
+            dynamics_type='flow',
+            orthogonalize=self.orthogonalize,
+            num_obs_delays=self.num_obs_delays,
+            specified_params=self.specified_params
+        )
+
+        ssm_orth.emb_data = self.emb_data.copy()
+        ssm_orth.emb_data['reduced_coordinates_aug'] = reduced_coords_orth
+
+        ssm_orth.get_parametrization(
+            rbf_args={'epsilon': rbf_args.get('epsilon_orth', 1.0),
+                      'regularization': rbf_args.get('regularization_orth', 1.0)},
+            n_components=n_components_orth
+        )
+
+        # --- Step 6: Overwrite current decoder with new one and update reduced coordinates ---
+        self.decoder = ssm_orth.decoder
+        self.emb_data['reduced_coordinates_aug'] = reduced_coords_orth
+
+        return
+
+    def get_parametrization(self, rbf_args=None, n_components=1000, **regression_args) -> None:
+        """
+        Compute the parametrization (decoder) mapping from reduced coordinates to observables
+        using an approximate RBF kernel via random Fourier features and closed-form ridge regression,
+        implemented in JAX.
+        """
+        if rbf_args is None:
+            rbf_args = {'epsilon': 1.0, 'regularization': 1e-5}
+
+        if self.emb_data['reduced_coordinates_aug'] is not None:
+            # Process data.
+            X_list = [jnp.array(traj).T for traj in self.emb_data['reduced_coordinates_aug']]
+            X_concat = jnp.concatenate(X_list, axis=0)
+            Y_list = [jnp.array(traj).T for traj in self.emb_data['observables']]
+            Y_concat = jnp.concatenate(Y_list, axis=0)
+
+            if self.emb_data['params'] is not None:
+                params_arr = jnp.array(self.emb_data['params'])
+                params_list = []
+                for i, traj in enumerate(self.emb_data['reduced_coordinates_aug']):
+                    T = traj.shape[1]
+                    param_repeated = jnp.tile(params_arr[i], (T, 1))
+                    params_list.append(param_repeated)
+                params_concat = jnp.concatenate(params_list, axis=0)
+                X_aug = jnp.hstack((X_concat, params_concat))
+            else:
+                X_aug = X_concat
+
+            X_aug = jnp.array(X_aug)
+            Y_concat = jnp.array(Y_concat)
+
+            epsilon_val = rbf_args.get('epsilon', 1.0)
+            gamma = rbf_args.get('gamma', epsilon_val ** 2)
+            regularization_val = float(rbf_args.get('regularization', 1e-5))
+
+            self.decoder = FittedMapping.fit(X_aug, Y_concat, n_components, gamma, regularization_val,
+                                             **regression_args)
+        else:
+            self.encoder, self.decoder = self.fit_reduced_coords_and_parametrization(
+                self.emb_data['observables'], self.ssm_dim, **regression_args
+            )
+            self.emb_data['reduced_coordinates'] = [self.encoder.predict(trajectory) for trajectory in
+                                                    self.emb_data['observables']]
+        return
+
+    def get_reduced_dynamics(self, rbf_args={'epsilon': 1.0, 'regularization': 1e-5}, n_components=1000,
+                             **regression_args) -> None:
+        """
+        Compute the reduced dynamics using an approximate RBF kernel via random Fourier features
+        and closed-form ridge regression implemented in JAX.
+        """
+        # Shift or differentiate the data.
+        X, y = shift_or_differentiate(self.emb_data['reduced_coordinates_aug'], self.emb_data['time'],
+                                      self.dynamics_type)
+        X_concat = jnp.concatenate([jnp.array(Xi).T for Xi in X], axis=0)
+        y_concat = jnp.concatenate([jnp.array(yi).T for yi in y], axis=0)
+
+        if self.emb_data['params'] is not None:
+            params_arr = jnp.array(self.emb_data['params'])
+            params_list = []
+            for i, Xi in enumerate(X):
+                n_time = Xi.shape[1]
+                param_repeated = jnp.tile(params_arr[i], (n_time, 1))
+                params_list.append(param_repeated)
+            params_concat = jnp.concatenate(params_list, axis=0)
+            X_aug = jnp.hstack((X_concat, params_concat))
+        else:
+            X_aug = X_concat
+
+        X_aug = jnp.array(X_aug)
+        y_concat = jnp.array(y_concat)
+
+        epsilon_val = rbf_args.get('epsilon', 1.0)
+        gamma = rbf_args.get('gamma', epsilon_val ** 2)
+        regularization_val = float(rbf_args.get('regularization', 1e-5))
+
+        self.reduced_dynamics = FittedMapping.fit(X_aug, y_concat, n_components, gamma, regularization_val,
+                                                  **regression_args)
+        return
+
+    def predict_reduced_dynamics_runge_kutta(
+            self,
+            t: list,
+            x_reduced: list,
+            emb_u_desired: list = []
+    ) -> dict:
+        """
+        Predict the evolution of the reduced dynamics using a differentiable ODE solver (odeint)
+        from JAX.
+        """
+        if not t:
+            raise AssertionError("Time vector t is empty.")
+        else:
+            t_predict = jnp.array(t[0])
+            x_predict = []
+
+            for traj_idx in range(len(x_reduced)):
+
+                if emb_u_desired:
+                    emb_u_desired_array = jnp.array(emb_u_desired[0]).T
+
+                def get_control_input(t_val):
+                    return jnp.array([
+                        jnp.interp(t_val, t_predict, emb_u_desired_array[:, i])  # Interpolate each control dimension
+                        for i in range(emb_u_desired_array.shape[1])
+                    ])
+
+                def dynamics(z_fun, t_fun):
+                    if not emb_u_desired:
+                        current_control_vector = jnp.zeros(self.SSM_basis.shape[0])  # Zero control if no input
+                    else:
+                        current_control_vector = get_control_input(t_fun)  # Get control input at time t_fun
+
+                    # Predict the reduced dynamics and add the control term
+                    z_dot = self.reduced_dynamics.predict(
+                        X=z_fun.reshape(1, -1)) + self.SSM_basis.T @ current_control_vector
+                    return jnp.ravel(z_dot)  # Flatten to match expected output shape
+
+                print("Type of x_reduced: ", type(x_reduced))
+                print("Length of x_reduced: ", len(x_reduced))
+                print("Shape of an element in x_reduced: ", x_reduced[0].shape)
+                z0 = x_reduced[traj_idx].T
+                print("Shape of z0: ", z0.shape)
+                sol = odeint(dynamics, z0, t_predict)
+                x_predict.append(sol)
+
+            reduced_dynamics_predictions = {
+                'time': t_predict,
+                'reduced_coordinates': x_predict
+            }
+            return reduced_dynamics_predictions
+
+    def predict(
+            self,
+            t: list,
+            x: list,               # Initial condition of x
+            emb_u_desired: list    # Full array of control variables
+    ) -> dict:
+        # Convert initial conditions to JAX arrays.
+        init_condition_reduced = [self.SSM_basis.T @ jnp.array(init_condition) for init_condition in x]
+        reduced_dynamics_predictions = self.predict_reduced_dynamics_runge_kutta(
+            t=t,
+            x_reduced=init_condition_reduced,
+            emb_u_desired=emb_u_desired
+        )
+        t_predict = reduced_dynamics_predictions['time']
+        x_reduced_predict = [traj.T for traj in reduced_dynamics_predictions['reduced_coordinates']]
+
+        # print("Shape of the x_reduced_predict variable: ", x_reduced_predict[0].shape)
+
+        x_predict = decode_geometry(self.decode, x_reduced_predict)
+
+        predictions = {
+            'time': t_predict,
+            'reduced_coordinates': x_reduced_predict,
+            'observables': x_predict
+        }
+        return predictions
 
 
 class DelaySSM:

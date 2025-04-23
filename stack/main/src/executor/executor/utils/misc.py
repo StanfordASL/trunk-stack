@@ -57,6 +57,7 @@ class Polyhedron:
         x_proj_alt = results.x
         return x_proj_alt
 
+
 class HyperRectangle(Polyhedron):
     """
     Hyperrectangle class.

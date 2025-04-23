@@ -274,7 +274,6 @@ class DataCollectionNode(Node):
                     else:
                         self.check_settled_positions.append(self.extract_positions(msg))
 
-
     def publish_control_inputs(self, control_inputs=None):
         if control_inputs is None:
             control_inputs = self.control_inputs
@@ -308,7 +307,6 @@ class DataCollectionNode(Node):
         self.stored_angles.append(self.last_motor_angles) #store last motor angles when position is available
         if self.debug:
             self.get_logger().info("Stored angles: "+ str(self.last_motor_angles))
-
 
     def check_settled(self, tolerance=0.00025, window=5):
         if len(self.check_settled_positions) < window:
