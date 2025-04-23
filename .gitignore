@@ -1,3 +1,17 @@
+# IDE files
+.idea/
+
+# Virtual environments
+venv/
+
+# macOS system files
+.DS_Store
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+
 # Cache files
 .DS_Store
 .cache
