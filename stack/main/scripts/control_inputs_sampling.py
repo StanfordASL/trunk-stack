@@ -88,7 +88,7 @@ def adiabatic_step_sampling(control_variables, seed):
     print(const_input)
     print(const_input.shape)
 
-    # add perturbations
+    # add perturbations, positions[3]
     n_perturbations = 20    # number of perturbations per data collection round
     perturb_min = - 0.1
     perturb_max = 0.1
