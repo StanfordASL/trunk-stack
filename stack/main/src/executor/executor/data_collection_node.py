@@ -251,35 +251,27 @@ class DataCollectionNode(Node):
             # send a new control input once settled
             # have IDs correspond
             if self.is_collecting: 
-                if not self.ic_settled: # not settled: wait
-                    self.ic_settled = self.check_settled(window=20)
-                    if self.ic_settled:
-                        # Publish new control input
-                        self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
-                        self.publish_control_inputs()
-                        self.check_settled_positions = []
-                    else:
-                        self.check_settled_positions.append(self.extract_positions(msg))
-                    
-                else: 
-                    self.store_positions(msg)
-                    # Check settled because then the dynamic trajectory is done and we can continue
-                    if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
-                    (time.time() - self.previous_time) >= self.update_period:
-                        self.previous_time = time.time()
-                        self.is_collecting = False
-                        self.ic_settled = False
-                        names = self.extract_names(msg)
-                        self.process_data(names)
-                    else:
-                        self.check_settled_positions.append(self.extract_positions(msg))
+                self.store_positions(msg)
+                if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
+                    (time.time() - self.previous_time) >= self.update_period: # if dynamic traj is done or we've exceeded max traj length
+                    self.previous_time = time.time()
+                    self.is_collecting = False
+                    self.ic_settled = False
+                    names = self.extract_names(msg)
+                    self.process_data(names)
+
+                    # send new control inputs
+                    self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
+                    self.publish_control_inputs()
+                    self.check_settled_positions = []
+                else:
+                    self.check_settled_positions.append(self.extract_positions(msg))
 
 
     def publish_control_inputs(self, control_inputs=None):
         if control_inputs is None:
             control_inputs = self.control_inputs
         control_message = AllMotorsControl()
-        mode = 1 if self.control_type == 'position' else 0  # default to 'output' control
         control_message.motors_control = control_inputs
         self.controls_publisher.publish(control_message)
         if self.debug:
@@ -288,7 +280,8 @@ class DataCollectionNode(Node):
     def extract_angles(self, msg):
         angles = msg.positions
         self.angle_update_count += 1
-        self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
+        if self.debug:
+            self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
         return angles
 
     def extract_positions(self, msg):
