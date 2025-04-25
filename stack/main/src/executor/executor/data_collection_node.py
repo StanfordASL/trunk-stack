@@ -251,28 +251,21 @@ class DataCollectionNode(Node):
             # send a new control input once settled
             # have IDs correspond
             if self.is_collecting: 
-                if not self.ic_settled: # not settled: wait
-                    self.ic_settled = self.check_settled(window=20)
-                    if self.ic_settled:
-                        # Publish new control input
-                        self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
-                        self.publish_control_inputs()
-                        self.check_settled_positions = []
-                    else:
-                        self.check_settled_positions.append(self.extract_positions(msg))
-                    
-                else: 
-                    self.store_positions(msg)
-                    # Check settled because then the dynamic trajectory is done and we can continue
-                    if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
-                    (time.time() - self.previous_time) >= self.update_period:
-                        self.previous_time = time.time()
-                        self.is_collecting = False
-                        self.ic_settled = False
-                        names = self.extract_names(msg)
-                        self.process_data(names)
-                    else:
-                        self.check_settled_positions.append(self.extract_positions(msg))
+                self.store_positions(msg)
+                if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
+                    (time.time() - self.previous_time) >= self.update_period: # if dynamic traj is done or we've exceeded max traj length
+                    self.previous_time = time.time()
+                    self.is_collecting = False
+                    self.ic_settled = False
+                    names = self.extract_names(msg)
+                    self.process_data(names)
+
+                    # send new control inputs
+                    self.control_inputs = self.control_inputs_dict.get(self.current_control_id)
+                    self.publish_control_inputs()
+                    self.check_settled_positions = []
+                else:
+                    self.check_settled_positions.append(self.extract_positions(msg))
 
 
     def publish_control_inputs(self, control_inputs=None):
