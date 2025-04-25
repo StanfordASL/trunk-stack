@@ -13,11 +13,11 @@ from interfaces.msg import AllMotorsStatus
 class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
-        self.control_augmented = True # True if running Paul's control augmented data collected, False else
+        self.control_augmented = False # True if running Paul's control augmented data collected, False else
 
         if self.control_augmented:
-            self.rest_positions = np.array([196.0, 201.0])
-            self.motor_ids = [1, 2]
+            self.rest_positions = np.array([201.0, 210.0])
+            self.motor_ids = [2,4]
         else:
             self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
             self.motor_ids = [1, 2, 3, 4, 5, 6] # all 6 trunk motors
@@ -68,7 +68,7 @@ class MotorNode(Node):
         positions = np.array(positions)
 
         if self.control_augmented:
-            positions = positions[0:2]
+            positions = [positions[1], positions[3]]
             
         positions += self.rest_positions # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
 
