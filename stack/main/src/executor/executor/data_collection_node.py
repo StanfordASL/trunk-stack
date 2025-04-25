@@ -272,7 +272,6 @@ class DataCollectionNode(Node):
         if control_inputs is None:
             control_inputs = self.control_inputs
         control_message = AllMotorsControl()
-        mode = 1 if self.control_type == 'position' else 0  # default to 'output' control
         control_message.motors_control = control_inputs
         self.controls_publisher.publish(control_message)
         if self.debug:
@@ -281,7 +280,8 @@ class DataCollectionNode(Node):
     def extract_angles(self, msg):
         angles = msg.positions
         self.angle_update_count += 1
-        self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
+        if self.debug:
+            self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
         return angles
 
     def extract_positions(self, msg):
