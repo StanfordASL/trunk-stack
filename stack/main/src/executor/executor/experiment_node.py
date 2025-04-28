@@ -146,6 +146,10 @@ class RunExperimentNode(Node):
         self.future.add_done_callback(self.service_callback)
 
     def mocap_listener_callback(self, msg):
+
+        raise NotImplementedError("Change the state encoding here (align with model and include speed/motors)")
+        # Also check where the delay embeddings are then actually realized
+
         if self.debug:
             self.get_logger().info(f'Received mocap data: {msg.positions}.')
 

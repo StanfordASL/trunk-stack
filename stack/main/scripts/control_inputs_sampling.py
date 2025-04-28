@@ -11,10 +11,11 @@ def save_to_csv(df, control_inputs_file):
     df.to_csv(control_inputs_file, index=False)
     print(f'Control inputs have been saved to {control_inputs_file}')
 
+
 # sets the DC offset for an equilibrium of adiabatic data collection
 def set_adiabatic_control_offset(n_samples):
     # tip
-    u1_offset = 0.4 # for now just in one control input
+    u1_offset = 0.4  # for now just in one control input
     u6_offset = 0 
     u1 = np.full(n_samples, u1_offset)
     u6 = np.full(n_samples, u6_offset)
@@ -35,17 +36,18 @@ def set_adiabatic_control_offset(n_samples):
 
     return const_input
 
+
 def adiabatic_global_sampling(control_variables, random_seed):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     np.random.seed(random_seed)
 
     phase_shift_large = (np.pi/4)*np.pi 
-    phase_shift_small = 0.0 # small circle rotated by 45 deg from large circle
-    control_inputs_large_circle = circle_sampling(control_variables, random_seed,  tip_radius = 60, mid_radius = 35, base_radius = 15, phase_shift=phase_shift_large, noise_amplitude=0.0, num_samples_on_circle=4, num_circles=1)
-    control_inputs_small_circle = circle_sampling(control_variables, random_seed, tip_radius = 20, mid_radius = 15, base_radius = 5, phase_shift=phase_shift_small, noise_amplitude=0.0, num_samples_on_circle=4, num_circles=1)
+    phase_shift_small = 0.0  # small circle rotated by 45 deg from large circle
+    control_inputs_large_circle = circle_sampling(control_variables, random_seed,  tip_radius=60, mid_radius=35, base_radius=15, phase_shift=phase_shift_large, noise_amplitude=0.0, num_samples_on_circle=4, num_circles=1)
+    control_inputs_small_circle = circle_sampling(control_variables, random_seed, tip_radius=20, mid_radius=15, base_radius=5, phase_shift=phase_shift_small, noise_amplitude=0.0, num_samples_on_circle=4, num_circles=1)
     
     # form the df of control input options
-    origin_df = pd.DataFrame([[0]*7], columns=control_inputs_df.columns) # add in origin as one set of inputs
+    origin_df = pd.DataFrame([[0]*7], columns=control_inputs_df.columns)  # add in origin as one set of inputs
     control_inputs_equil_points = pd.concat([control_inputs_large_circle, control_inputs_small_circle, origin_df], ignore_index=True)
     n_equil_points = len(control_inputs_equil_points)
 
@@ -53,9 +55,9 @@ def adiabatic_global_sampling(control_variables, random_seed):
     # control_inputs_df = control_inputs_equil_points
     # control_inputs_df["ID"] = np.arange(n_equil_points)
 
-    run_time = 10 * 60 * 100 # total run time (10 mins * 60s * 100Hz)
+    run_time = 10 * 60 * 100  # total run time (10 mins * 60s * 100Hz)
     t_settle = 3 * 100  # number of timesteps to allow for settling [seconds * 100Hz]
-    num_traj = int(run_time/t_settle) # total number of trajectories
+    num_traj = int(run_time/t_settle)  # total number of trajectories
     print(f'Total run timesteps: {run_time}, n trajectories: {num_traj}')
 
     last_rand = None
@@ -71,7 +73,7 @@ def adiabatic_global_sampling(control_variables, random_seed):
                 
         row = control_inputs_equil_points.iloc[rand]
         row["ID"] = i
-        df = pd.DataFrame([row]*1, columns=control_inputs_df.columns) # change to [row]*t_settle if you want to manually do control inputs
+        df = pd.DataFrame([row]*1, columns=control_inputs_df.columns)  # change to [row]*t_settle if you want to manually do control inputs
         control_inputs_df = pd.concat([control_inputs_df, df], ignore_index=True)
         last_rand = rand
 
@@ -92,16 +94,16 @@ def adiabatic_step_sampling(control_variables, seed):
     n_perturbations = 20    # number of perturbations per data collection round
     perturb_min = - 0.1
     perturb_max = 0.1
-    t_initial = 3 * 100 # number of timesteps at initial point [seconds * 100Hz]
+    t_initial = 3 * 100  # number of timesteps at initial point [seconds * 100Hz]
     t_settle = 3 * 100  # number of timesteps to allow for settling [seconds * 100Hz]
-    t_step = 1 * 100 # number of timesteps to allow for step input [seconds * 100Hz]
+    t_step = 1 * 100  # number of timesteps to allow for step input [seconds * 100Hz]
 
     # initial time at equilibrium point
     initial_inputs = np.tile(const_input, (t_initial, 1))
     ids = np.zeros(t_initial)
     ids = ids[:, np.newaxis]
     initial_inputs = np.hstack((ids, initial_inputs))
-    initial_inputs_df = pd.DataFrame(initial_inputs, columns = control_inputs_df.columns)
+    initial_inputs_df = pd.DataFrame(initial_inputs, columns=control_inputs_df.columns)
     control_inputs_df = pd.concat([control_inputs_df, initial_inputs_df], ignore_index=True)
 
     # create perturbation inputs
@@ -115,52 +117,50 @@ def adiabatic_step_sampling(control_variables, seed):
 
         # release to equilibrium and hold at equilibrium for t_settle seconds
         const_inputs = np.tile(const_input, (t_settle, 1))
-        inputs = np.vstack((step_inputs, const_inputs)) # concatenate the step inputs and the return to constant
+        inputs = np.vstack((step_inputs, const_inputs))  # concatenate the step inputs and the return to constant
 
         ids = np.full(t_step + t_settle, i + 1)
         ids = ids[:, np.newaxis]
         inputs = np.hstack((ids, inputs))
-        inputs_df = pd.DataFrame(inputs, columns = control_inputs_df.columns)
+        inputs_df = pd.DataFrame(inputs, columns=control_inputs_df.columns)
         control_inputs_df = pd.concat([control_inputs_df, inputs_df], ignore_index=True)
-
 
     return control_inputs_df
 
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, tip_radius = 80, mid_radius = 50, base_radius = 30, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, tip_radius=80, mid_radius=50, base_radius=30, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
     seeds = seed * np.arange(1,7) # one for each control input
 
     # max displacement from rest pos in degrees
-    maxs = [mid_radius, tip_radius, base_radius, tip_radius, base_radius, mid_radius] # tip: 2, 4; mid: 1, 6; base: 3, 5
+    maxs = [mid_radius, tip_radius, base_radius, tip_radius, base_radius, mid_radius]  # tip:2, 4; mid: 1, 6; base: 3, 5
     mins = [-x for x in maxs]
 
     control_inputs = np.zeros((n_samples, 6))
     for i in range(len(seeds)):
-        noise = PerlinNoise(octaves=n_octaves, seed=int(seeds[i])) # noise for each control input
+        noise = PerlinNoise(octaves=n_octaves, seed=int(seeds[i]))  # noise for each control input
         ctrl = np.array([noise(x / n_samples) for x in range(n_samples)])
 
         # normalize perlin noise to safe range
-        ctrl = (ctrl - ctrl.min()) / (ctrl.max() - ctrl.min()) # normalize from 0 to 1
-        ctrl = ctrl * (maxs[i] - mins[i]) + mins[i] # scale from min to max
-        control_inputs[:,i] = ctrl
-
+        ctrl = (ctrl - ctrl.min()) / (ctrl.max() - ctrl.min())  # normalize from 0 to 1
+        ctrl = ctrl * (maxs[i] - mins[i]) + mins[i]  # scale from min to max
+        control_inputs[:, i] = ctrl
 
     # convert to df
     ids = np.arange(n_samples)
     ids = ids[:, np.newaxis]
     inputs = np.hstack((ids, control_inputs))
-    inputs_df = pd.DataFrame(inputs, columns = control_inputs_df.columns)
+    inputs_df = pd.DataFrame(inputs, columns=control_inputs_df.columns)
     control_inputs_df = pd.concat([control_inputs_df, inputs_df], ignore_index=True)
 
     # plot the control inputs
     fig, axes = plt.subplots(2, 3, figsize=(12, 6))  # 2 rows, 3 columns
 
     for i, ax in enumerate(axes.flat):
-        ax.plot(control_inputs[:,i]) 
+        ax.plot(control_inputs[:, i])
         ax.set_title(f"U_{i+1}") 
 
     plt.tight_layout()
@@ -169,11 +169,10 @@ def perlin_noise_sampling(control_variables, seed, tip_radius = 80, mid_radius =
     return control_inputs_df
 
 
-
 # for creating control inputs for a single constant equilibrium point for manual adiabatic data collection
 def adiabatic_manual_sampling(control_variables):
     # set constant offset
-    n_samples = 12000 # 120s * 100Hz = 12000 (2 min)
+    n_samples = 12000  # 120s * 100Hz = 12000 (2 min)
     const_input = set_adiabatic_control_offset(n_samples) 
 
     ids = np.arange(0, n_samples)
@@ -181,6 +180,7 @@ def adiabatic_manual_sampling(control_variables):
     control_inputs_df.insert(0, 'ID', ids)
 
     return control_inputs_df
+
 
 def sinusoidal_sampling(control_variables):
     num_controls = len(control_variables)

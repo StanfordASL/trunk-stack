@@ -9,6 +9,7 @@ from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
 import numpy as np
 
+
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
                        U=None, X=None, Xf=None, dU=None, init_node=False, **kwargs):
     """

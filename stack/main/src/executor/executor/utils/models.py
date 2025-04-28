@@ -146,7 +146,6 @@ class aug_SSMR(ReducedOrderModel):
         Performance mapping maps the state, x, to the performance output, z, through
         z = C @ y = C @ w(x).
         """
-
         return self.obs_perf_matrix @ self.decode(x)
 
     @property
