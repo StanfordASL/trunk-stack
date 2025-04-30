@@ -148,6 +148,12 @@ def perlin_noise_sampling(control_variables, seed, tip_radius = 80, mid_radius =
         ctrl = ctrl * (maxs[i] - mins[i]) + mins[i] # scale from min to max
         control_inputs[:,i] = ctrl
 
+    single_motor = True # true if you want all other motor inputs to be zero, default false
+    active_motor = 1
+    if single_motor:
+        mask = np.zeros(6)
+        mask[active_motor] = 1
+        control_inputs = control_inputs * mask # keep only column of active motor, rest set to 0
 
     # convert to df
     ids = np.arange(n_samples)
@@ -452,6 +458,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'adiabatic_global'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
-    seed = 1                            # choose integer seed number
+    sampling_type = 'controlled'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
+    seed = 101                            # choose integer seed number
     main(data_type, sampling_type, seed)
