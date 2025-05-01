@@ -121,7 +121,7 @@ class DataCollectionNode(Node):
         self.get_logger().info('Data collection node has been started.')
 
     def motor_angles_callback(self, msg):
-        if self.data_type == 'dynamic' and self.data_subtype == 'controlled':   
+        if self.data_type == 'dynamic' and (self.data_subtype == 'controlled' or self.data_subtype == 'adiabatic_global'):   
             self.last_motor_angles = self.extract_angles(msg)
 
             if not self.angle_callback_received:
@@ -405,13 +405,14 @@ class DataCollectionNode(Node):
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
 
-        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_global': # TODO add orientation recording
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_global': 
             # Store all positions in a CSV file
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
                     angle_list = self.stored_angles[id]
-                    row = [self.current_control_id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [angle for angle in angle_list]
+                    ornt_list = self.stored_orientations[id]
+                    row = [self.current_control_id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [coord for ornt in ornt_list for coord in [ornt.x, ornt.y, ornt.z, ornt.w]] + [angle for angle in angle_list]
                     writer.writerow(row)
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')

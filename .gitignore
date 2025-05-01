@@ -9,6 +9,9 @@
 **/install/
 **/log/
 
+# Large files
+**/large_files/
+
 # External packages
 **/mocap_msgs/
 **/mocap4r2/
