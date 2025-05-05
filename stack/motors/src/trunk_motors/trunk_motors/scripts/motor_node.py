@@ -50,11 +50,17 @@ class MotorNode(Node):
             '/all_motors_status', 
             10
         )
-        self.timer = self.create_timer(1.0/20, self.read_status) # publish at 20Hz 
+        self.step_input_start_time = None
+        self.measured_inputs_times = []
+        self.measured_inputs_values = []
+
+        self.timer = self.create_timer(1.0/100, self.read_status) # publish at 100Hz
 
         # read out initial positions
         self.get_logger().info('Initial motor status: ')
         positions = self.read_status()
+        self.measured_inputs_values.append(positions.tolist())
+        self.measured_inputs_times.append(-1)
         positions_raw = positions + self.rest_positions
 
         for idx, id in enumerate(self.motor_ids):
@@ -63,7 +69,19 @@ class MotorNode(Node):
             self.get_logger().info(f"Motor {id} raw position: {positions_raw[idx]:.2f} degrees") # display in degrees
 
         self.get_logger().info('Motor control node initialized!')
+        self.send_step_command_input()
+    
+    def send_step_command_input(self):
+        time.sleep(5)
+        msg = AllMotorsControl()
+        msg.motors_control = [30.,0.,0.,0.,0.,0.]
+        print("Sending step command input!")
+        self.step_input_start_time = time.time()
+        self.command_positions(
+            msg
+        )
         
+
 
     def command_positions(self, msg):
         # commands new positions to the motors
@@ -106,10 +124,29 @@ class MotorNode(Node):
 
         msg = AllMotorsStatus()
         msg.positions = positions.tolist()
+        print(positions.tolist())
         msg.velocities = velocities.tolist() # TODO: determine if in rpm (should be)
         msg.currents = currents.tolist() # TODO: determine if in mA (should be)
 
-        self.status_publisher.publish(msg)
+        if self.step_input_start_time is not None:
+            self.measured_inputs_times.append(time.time() - self.step_input_start_time)
+            self.measured_inputs_values.append(positions.tolist())
+
+            if self.measured_inputs_times[-1] > 10:
+                print("times",  self.measured_inputs_times)
+                print("values", self.measured_inputs_values)
+
+                import csv
+                with open('times.csv', 'w', newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(self.measured_inputs_times)
+                
+                with open('values.csv', 'w', newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerows(self.measured_inputs_values)
+
+                raise Exception
+
         return positions
         
 
