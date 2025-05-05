@@ -49,7 +49,8 @@ class DataCollectionNode(Node):
             ('control_type', 'output'),         # 'output' or 'position'
             ('results_name', 'observations'),
             ('input_num', 1),                    # number of the input file type i.e. control_inputs_controlled_1
-            ('collect_angles', True)            # to collect motor angle measurements
+            ('collect_angles', True),            # to collect motor angle measurements
+            ('collect_orientations', True)       # to collect mocap rigid body orientation data
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -63,6 +64,7 @@ class DataCollectionNode(Node):
         self.results_name = self.get_parameter('results_name').value
         self.input_num = str(self.get_parameter('input_num').value)
         self.collect_angles = self.get_parameter('collect_angles').value
+        self.collect_orientations = self.get_parameter('collect_orientations').value
 
         self.angle_callback_received = False #flag
         self.angle_update_count = 0
@@ -71,6 +73,7 @@ class DataCollectionNode(Node):
         self.previous_time = time.time()
         self.current_control_id = -1
         self.stored_positions = []
+        self.stored_orientations = []
         self.stored_angles = []
         self.last_motor_angles = None
         self.control_inputs = None
@@ -118,7 +121,7 @@ class DataCollectionNode(Node):
         self.get_logger().info('Data collection node has been started.')
 
     def motor_angles_callback(self, msg):
-        if self.data_type == 'dynamic' and self.data_subtype == 'controlled':   
+        if self.data_type == 'dynamic' and (self.data_subtype == 'controlled' or self.data_subtype == 'adiabatic_global'):   
             self.last_motor_angles = self.extract_angles(msg)
 
             if not self.angle_callback_received:
@@ -133,7 +136,7 @@ class DataCollectionNode(Node):
             return
         
         if self.data_type == 'dynamic' and self.data_subtype == 'controlled':
-            # Store current positions
+            # Store current positions + orientations
             self.store_positions(msg)
             
             # Publish new motor control inputs
@@ -155,6 +158,8 @@ class DataCollectionNode(Node):
             if not self.is_collecting:
                 # Reset and start collecting new mocap data
                 self.stored_positions = []
+                if self.collect_orientations:
+                    self.stored_orientations = []
                 self.check_settled_positions = []
                 self.is_collecting = True
 
@@ -173,8 +178,9 @@ class DataCollectionNode(Node):
             if self.is_collecting and (time.time() - self.previous_time) >= self.update_period:
                 self.previous_time = time.time()
                 if self.check_settled():
-                    # Store positions
+                    # Store positions + orientations
                     self.store_positions(msg)
+
                     if len(self.stored_positions) >= self.sample_size:
                         # Data collection is complete and ready to be processed
                         self.is_collecting = False
@@ -196,6 +202,7 @@ class DataCollectionNode(Node):
                         self.check_settled_positions.append(self.extract_positions(msg))
                 else:
                     self.store_positions(msg)
+
                     # Check settled because then the dynamic trajectory is done and we can continue
                     if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
                     (time.time() - self.previous_time) >= self.update_period:
@@ -208,7 +215,7 @@ class DataCollectionNode(Node):
                         self.check_settled_positions.append(self.extract_positions(msg))
 
         elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual':
-            # Store current positions
+            # Store current positions + orientations
             self.store_positions(msg)
             
             # Publish new motor control inputs
@@ -228,7 +235,7 @@ class DataCollectionNode(Node):
 
         # TODO: finish this code block
         elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_automatic':
-            # Store current positions
+            # Store current positions + orientations
             self.store_positions(msg)
             
             # Publish new motor control inputs
@@ -252,6 +259,7 @@ class DataCollectionNode(Node):
             # have IDs correspond
             if self.is_collecting: 
                 self.store_positions(msg)
+
                 if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
                     (time.time() - self.previous_time) >= self.update_period: # if dynamic traj is done or we've exceeded max traj length
                     self.previous_time = time.time()
@@ -290,6 +298,13 @@ class DataCollectionNode(Node):
         elif self.mocap_type == 'rigid_bodies':
             return msg.positions
         
+    def extract_orientations(self, msg):
+        if self.mocap_type == 'rigid_bodies':
+            return msg.orientations
+        elif self.mocap_type == 'markers':
+            raise ValueError('Invalid request: orientations cannot be extracted with ' + self.mocap_type + ' mocap type')
+
+        
     def extract_names(self, msg):
         if self.mocap_type == 'markers':
             raise NotImplementedError('Extracting names from markers is not implemented.')
@@ -298,6 +313,8 @@ class DataCollectionNode(Node):
 
     def store_positions(self, msg):
         self.stored_positions.append(self.extract_positions(msg))
+        if self.collect_orientations:
+            self.stored_orientations.append(self.extract_orientations(msg))
         self.stored_angles.append(self.last_motor_angles) #store last motor angles when position is available
         if self.debug:
             self.get_logger().info("Stored angles: "+ str(self.last_motor_angles))
@@ -338,12 +355,12 @@ class DataCollectionNode(Node):
         # Populate the header row of the CSV file with states if it does not exist
         trajectory_csv_file = os.path.join(self.data_dir, f'trajectories/{self.data_type}/{self.results_name}.csv')
         if not os.path.exists(trajectory_csv_file):
-            header = ['ID'] + [f'{axis}{name}' for name in names for axis in ['x', 'y', 'z']] + [f'phi{num+1}' for num in range(6)]
+            header = ['ID'] + [f'{axis}{name}' for name in names for axis in ['x', 'y', 'z']] + [f'{axis}{name}' for name in names for axis in ['qx', 'qy', 'qz', 'w']] + [f'phi{num+1}' for num in range(6)] 
             with open(trajectory_csv_file, 'w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(header)
         
-        if self.data_type == 'steady_state':
+        if self.data_type == 'steady_state': # TODO add angle and orientation recording
             # Take average positions over all stored samples
             average_positions = [
                 sum(coords) / len(self.stored_positions)
@@ -357,7 +374,7 @@ class DataCollectionNode(Node):
             if self.debug:
                 self.get_logger().info('Stored new sample with positions: ' + str(average_positions) + ' [m].')
         
-        elif self.data_type == 'dynamic' and self.data_subtype == 'decay':
+        elif self.data_type == 'dynamic' and self.data_subtype == 'decay': # TODO add angle and orientation recording
             # Store all positions in a CSV file
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)
@@ -371,13 +388,14 @@ class DataCollectionNode(Node):
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
                     angle_list = self.stored_angles[id]
-                    row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [angle for angle in angle_list]
+                    ornt_list = self.stored_orientations[id]
+                    row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [coord for ornt in ornt_list for coord in [ornt.x, ornt.y, ornt.z, ornt.w]] + [angle for angle in angle_list]
                     writer.writerow(row)
                     
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
 
-        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual':
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual': # TODO add angle and orientation recording
             # Store all positions in a CSV file
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)
@@ -387,12 +405,14 @@ class DataCollectionNode(Node):
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
 
-        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_global':
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_global': 
             # Store all positions in a CSV file
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
-                    row = [self.current_control_id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]]
+                    angle_list = self.stored_angles[id]
+                    ornt_list = self.stored_orientations[id]
+                    row = [self.current_control_id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [coord for ornt in ornt_list for coord in [ornt.x, ornt.y, ornt.z, ornt.w]] + [angle for angle in angle_list]
                     writer.writerow(row)
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')

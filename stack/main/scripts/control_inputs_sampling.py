@@ -4,6 +4,12 @@ import pandas as pd  # type: ignore
 import matplotlib.pyplot as plt
 from itertools import product
 from perlin_noise import PerlinNoise
+from sklearn.decomposition import PCA
+import matplotlib.colors as mcolors
+import matplotlib.cm as cmx
+from scipy.spatial.distance import cdist
+from scipy.stats import qmc
+from collections import Counter
 
 
 def save_to_csv(df, control_inputs_file):
@@ -34,6 +40,69 @@ def set_adiabatic_control_offset(n_samples):
     const_input = np.array([u1, u2, u3, u4, u5, u6])
 
     return const_input
+
+def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=10, visits_per_point=3, excluded_neighbors=2):
+    np.random.seed(random_seed)
+
+    # Define bounds
+    tip_radius = 80
+    mid_radius = 50
+    base_radius = 30
+    maxs = np.array([mid_radius, tip_radius, base_radius, tip_radius, base_radius, mid_radius])
+    mins = -maxs
+
+    # Latin Hypercube Sampling
+    sampler = qmc.LatinHypercube(d=6, seed=random_seed)
+    sample = sampler.random(n=num_points)
+    scaled_sample = qmc.scale(sample, mins, maxs)
+    control_inputs = pd.DataFrame(scaled_sample, columns=control_variables)
+
+    # Precompute neighbor sets and distance matrix
+    distances = cdist(scaled_sample, scaled_sample)
+    np.fill_diagonal(distances, np.inf)
+    neighbor_indices = np.argsort(distances, axis=1)
+    near_neighbors = [set(neighbor_indices[i, :excluded_neighbors]) for i in range(num_points)]
+
+    # Build visit pool
+    visit_pool = list(np.tile(np.arange(num_points), visits_per_point))
+    visit_counts = Counter(visit_pool)
+
+    # Start sequence
+    current = np.random.choice(visit_pool)
+    sequence = [current]
+    visit_counts[current] -= 1
+    if visit_counts[current] == 0:
+        visit_pool.remove(current)
+
+    for _ in range(num_points * visits_per_point - 1):
+        # Valid candidates are not in the near-neighbor list and have remaining visits
+        candidates = [p for p in set(visit_pool) if p not in near_neighbors[current]]
+
+        if not candidates:
+            print(f"Relaxation fallback triggered at step {_ + 1}, current node index = {current}")
+            remaining = list(set(visit_pool))
+            distances_to_current = distances[current, remaining]
+            next_point = remaining[np.argmax(distances_to_current)]
+        else:
+            next_point = np.random.choice(candidates)
+
+        sequence.append(next_point)
+        visit_counts[next_point] -= 1
+        if visit_counts[next_point] == 0:
+            visit_pool = [p for p in visit_pool if p != next_point]
+        current = next_point
+
+    # Build control_inputs_df
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    for i, idx in enumerate(sequence):
+        row = control_inputs.iloc[idx].copy()
+        row["ID"] = i
+        control_inputs_df = pd.concat([control_inputs_df, pd.DataFrame([row])], ignore_index=True)
+
+    # plot trajectory graphs
+    plot_trajectory_graphs(control_inputs_df, control_variables, focus_node_idx=0)
+
+    return control_inputs_df
 
 def adiabatic_global_sampling(control_variables, random_seed):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
@@ -148,6 +217,12 @@ def perlin_noise_sampling(control_variables, seed, tip_radius = 80, mid_radius =
         ctrl = ctrl * (maxs[i] - mins[i]) + mins[i] # scale from min to max
         control_inputs[:,i] = ctrl
 
+    single_motor = True # true if you want all other motor inputs to be zero, default false
+    active_motor = 6
+    if single_motor:
+        mask = np.zeros(6)
+        mask[active_motor - 1] = 1
+        control_inputs = control_inputs * mask # keep only column of active motor, rest set to 0
 
     # convert to df
     ids = np.arange(n_samples)
@@ -414,12 +489,81 @@ def visualize_samples(control_inputs_df):
     plt.tight_layout()
     plt.show()
 
+def plot_trajectory_graphs(control_inputs_df, control_variables, focus_node_idx=None):
+    controls = control_inputs_df[control_variables].values
+    n_steps = controls.shape[0]
+
+    # Color map setup
+    cmap = plt.get_cmap('plasma')
+    c_norm = mcolors.Normalize(vmin=0, vmax=n_steps)
+    scalar_map = cmx.ScalarMappable(norm=c_norm, cmap=cmap)
+    colors = [scalar_map.to_rgba(i) for i in range(n_steps)]
+
+    # PCA
+    pca = PCA(n_components=2)
+    controls_pca = pca.fit_transform(controls)
+
+    # Extract key dimensions
+    idx_u1 = control_variables.index('u1')
+    idx_u2 = control_variables.index('u2')
+    idx_u3 = control_variables.index('u3')
+    idx_u4 = control_variables.index('u4')
+    idx_u5 = control_variables.index('u5')
+    idx_u6 = control_variables.index('u6')
+
+    u1, u2, u3, u4, u5, u6 = controls[:, idx_u1], controls[:, idx_u2], controls[:, idx_u3], controls[:, idx_u4], controls[:, idx_u5], controls[:, idx_u6]
+
+    fig, axs = plt.subplots(2, 2, figsize=(16, 12))
+
+    def plot_path(ax, x, y, title, xlabel, ylabel):
+        ax.scatter(x, y, s=10, color='gray', alpha=0.6)
+        for i in range(n_steps - 1):
+            ax.plot([x[i], x[i+1]], [y[i], y[i+1]], color=colors[i], linewidth=1)
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.axis('equal')
+
+    plot_path(axs[0, 0], controls_pca[:, 0], controls_pca[:, 1], "Trajectory in PCA Space", "PC1", "PC2")
+    plot_path(axs[0, 1], u2, u4, "Trajectory in U2, U4 (Tip) Space", "U2", "U4")
+    plot_path(axs[1, 0], u1, u6, "Trajectory in U1, U6 (Mid) Space", "U1", "U6")
+    plot_path(axs[1, 1], u3, u5, "Trajectory in U3, U5 (Base) Space", "U3", "U5")
+    plt.tight_layout()
+    plt.show()
+
+    if focus_node_idx is not None:
+        # Find the 20 transitions that end at the first appearance of that node
+        target_node = control_inputs_df.loc[focus_node_idx, control_variables].values
+        matches = (controls == target_node).all(axis=1)
+        target_indices = np.where(matches)[0][:20]
+
+        fig2, axs2 = plt.subplots(2, 2, figsize=(16, 12))
+
+        def plot_focus(ax, x, y, title, xlabel, ylabel):
+            ax.scatter(x, y, s=10, color='gray', alpha=0.3)
+            for idx in target_indices:
+                if idx == 0:
+                    continue  # skip if no prior step
+                ax.plot([x[idx - 1], x[idx]], [y[idx - 1], y[idx]], color='red', linewidth=2)
+            ax.set_title(title)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.axis('equal')
+
+        plot_focus(axs2[0, 0], controls_pca[:, 0], controls_pca[:, 1], "Focus Transitions in PCA Space", "PC1", "PC2")
+        plot_focus(axs2[0, 1], u2, u4, "Focus Transitions in U2, U4 (Tip) Space", "U2", "U4")
+        plot_focus(axs2[1, 0], u1, u6, "Focus Transitions in U1, U6 (Mid) Space", "U1", "U6")
+        plot_focus(axs2[1, 1], u3, u5, "Focus Transitions in U3, U5 (Base) Space", "U3", "U5")
+
+        plt.tight_layout()
+        plt.show()
+
 
 def main(data_type, sampling_type, seed=None):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
     # data_dir for mark's mac starts with '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data'
     # data_dir for workstation is '/home/trunk/Documents/trunk-stack/stack/main/data'
-    data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+    data_dir = os.getenv('TRUNK_DATA', '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data')
     if seed is not None:
         control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}_{seed}.csv')
     else:
@@ -443,6 +587,8 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = adiabatic_global_sampling(control_variables, seed)
     elif sampling_type == 'random_smooth':
         control_inputs_df = perlin_noise_sampling(control_variables, seed)
+    elif sampling_type == 'latin_hypercube':
+        control_inputs_df = latin_hypercube_adiabatic_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -452,6 +598,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'adiabatic_global'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', or 'random_smooth'
-    seed = 1                            # choose integer seed number
+    sampling_type = 'latin_hypercube'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
+    seed = 2                            # choose integer seed number
     main(data_type, sampling_type, seed)
