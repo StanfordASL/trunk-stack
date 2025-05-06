@@ -1,137 +1,47 @@
 #!/usr/bin/env python3
-
 import rclpy
 from rclpy.node import Node
-import numpy as np
+from std_msgs.msg import Float64
 import time
-from std_msgs.msg import Float64MultiArray
-from motor_utils.dynamixel_client_motor import DynamixelClient
-from interfaces.msg import AllMotorsControl
-from interfaces.msg import AllMotorsStatus
 
-
-class MotorNode(Node):
+class SenderNode(Node):
     def __init__(self):
-        super().__init__('motor_node')
-        self.control_augmented = False # True if running Paul's control augmented data collected, False else
-
-        if self.control_augmented:
-            self.rest_positions = np.array([201.0, 210.0])
-            self.motor_ids = [2,4]
-        else:
-            self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-            self.motor_ids = [1, 2, 3, 4, 5, 6] # all 6 trunk motors
-
-        # initialize motors client
-        self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB0')
-
-        # connect to motors
-        self.dxl_client.connect()
-        self.get_logger().info('Connected to motors!')
-
-        # enable torque
-        self.dxl_client.set_torque_enabled(self.motor_ids, True)
-        self.get_logger().info('Torque enabled!')
-
-        # subscriber to receive control commands
-        self.controls_subscriber = self.create_subscription(
-            AllMotorsControl,
-            '/all_motors_control',
-            self.command_positions, # callback function
+        super().__init__('sender_node')
+        self.publisher = self.create_publisher(Float64, '/ping', 10)
+        self.subscription = self.create_subscription(
+            Float64,  # Acknowledge message (Float64)
+            '/ack',  # Acknowledgment topic
+            self.acknowledgment_callback,
             10
         )
+        self.timer = self.create_timer(0.1, self.publish_message)  # Publish at 10 Hz
+        self.get_logger().info("Sender Node started, sending messages...")
 
-        # create status publisher and publish at 10Hz
-        self.status_publisher = self.create_publisher(
-            AllMotorsStatus, 
-            '/all_motors_status', 
-            10
-        )
-        self.timer = self.create_timer(1.0/20, self.read_status) # publish at 20Hz 
+        # To track latency
+        self.send_time = None
+        self.average_latency = 0
+        self.counter= 0
 
-        # read out initial positions
-        self.get_logger().info('Initial motor status: ')
-        positions = self.read_status()
-        positions_raw = positions + self.rest_positions
+    def publish_message(self):
+        msg = Float64()
+        msg.data = time.time()
 
-        for idx, id in enumerate(self.motor_ids):
-            self.get_logger().info(f"Motor {id} position: {positions[idx]:.2f} degrees") # display in degrees
-        for idx, id in enumerate(self.motor_ids):
-            self.get_logger().info(f"Motor {id} raw position: {positions_raw[idx]:.2f} degrees") # display in degrees
+        # Publish the message with header
+        self.publisher.publish(msg)
 
-        self.get_logger().info('Motor control node initialized!')
-        
+    def acknowledgment_callback(self, msg):
+        # Calculate round-trip latency
+        latency = time.time() - msg.data
+        self.average_latency += latency
+        self.counter +=1
+        self.get_logger().info(f"Received acknowledgment. Round-trip latency: {self.average_latency/self.counter} seconds")
 
-    def command_positions(self, msg):
-        # commands new positions to the motors
-        positions = msg.motors_control
-        positions = np.array(positions)
-
-        if self.control_augmented:
-            positions = [positions[1], positions[3]]
-            
-        positions += self.rest_positions # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
-
-        positions *= np.pi/180 # receives a position in degrees, convert to radians for dynamixel sdk
-        self.dxl_client.write_desired_pos(self.motor_ids, positions)
-
-        # for idx, id in enumerate(self.motor_ids):
-        #     self.get_logger().info(f"commanded motor {id} to {positions[idx]*180/np.pi:.2f} degrees")
-        
-
-    def read_status(self):
-        # reads and publishes the motor position, velocity, and current
-        positions, velocities, currents = self.dxl_client.read_pos_vel_cur()
-
-        positions *= 180/np.pi # dynamixel position in rad, convert to degrees
-        positions -= self.rest_positions # motor sends real positions, we want to read zero centered positions
-
-        msg = AllMotorsStatus()
-        msg.positions = positions.tolist()
-        msg.velocities = velocities.tolist() # TODO: determine if in rpm (should be)
-        msg.currents = currents.tolist() # TODO: determine if in mA (should be)
-
-        self.status_publisher.publish(msg)
-        return positions
-        
-
-    def shutdown(self):
-        # cleanup before shutdown
-        self.get_logger().info("Disabling torque and disconnecting motors")
-        self.dxl_client.set_torque_enabled(self.motor_ids, False)
-        self.dxl_client.disconnect()
-
-def main():
-    rclpy.init()
-    node = MotorNode()
-    try:
-        # checks to see maximum read and write rate of the dynamixels ~20Hz read, ~124Hz write
-        # # READ rate check
-        # dxl = node.dxl_client
-        # dxl.motor_ids = [1, 2, 3, 4, 5, 6]
-        # N = 100
-        # start = time.time()
-        # for _ in range(N):
-        #     dxl.read_pos_vel_cur()
-        # end = time.time()
-        # node.get_logger().info(f"READ avg rate: {N / (end - start):.2f} Hz")
-
-        # # WRITE rate check
-        # positions = [198.0, 204.0, 189.0, 211.0, 200.0, 192.0]
-        # positions = [np.pi/180 * pos for pos in positions] # receives a position in degrees, convert to radians for dynamixel sdk
-        # start = time.time()
-        # for _ in range(N):
-        #     dxl.write_desired_pos(dxl.motor_ids, np.array(positions))
-
-        # end = time.time()
-        # node.get_logger().info(f"WRITE avg rate: {N / (end - start):.2f} Hz")
-
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.shutdown()
-        rclpy.shutdown()
+def main(args=None):
+    rclpy.init(args=args)
+    node = SenderNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
