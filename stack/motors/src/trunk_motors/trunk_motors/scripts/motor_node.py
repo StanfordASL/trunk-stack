@@ -16,11 +16,14 @@ class MotorNode(Node):
         self.control_augmented = False # True if running Paul's control augmented data collected, False else
 
         if self.control_augmented:
-            self.rest_positions = np.array([201.0, 210.0])
-            self.motor_ids = [2,4]
+            # self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197]) update these
+            self.motor_ids = [1, 2, 3, 4, 5, 6]
         else:
-            self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
+            self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
             self.motor_ids = [1, 2, 3, 4, 5, 6] # all 6 trunk motors
+
+        # Define a safe region to operate the motors in:
+        self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
 
         # initialize motors client
         self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB0')
@@ -67,8 +70,23 @@ class MotorNode(Node):
         positions = msg.motors_control
         positions = np.array(positions)
 
-        if self.control_augmented:
-            positions = [positions[1], positions[3]]
+        # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
+        mask_low = positions < -self.limits_safe
+        mask_high = positions > self.limits_safe
+        if np.any(mask_low | mask_high):
+            bad_idxs = np.where(mask_low | mask_high)[0]
+            bad_vals = positions[bad_idxs]
+            self.get_logger().error(
+                f"Unsafe motor commands at indices {bad_idxs.tolist()}: {bad_vals.tolist()}. "
+                "Shutting down without sending to motors."
+            )
+
+            # clean up torque + disconnect
+            self.shutdown()
+
+            # signal ROS to exit
+            rclpy.shutdown()
+            return
             
         positions += self.rest_positions # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
 
