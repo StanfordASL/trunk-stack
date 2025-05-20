@@ -41,6 +41,20 @@ def set_adiabatic_control_offset(n_samples):
 
     return const_input
 
+def hypercube_controlled_sampling(control_variables, random_seed, num_points=1000):
+    points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=1, excluded_neighbors=1)
+    len_traj = 100 #100 = 1s
+
+    # Repeat each row len_traj times
+    control_inputs_df = points_df.loc[points_df.index.repeat(len_traj)].reset_index(drop=True)
+
+    # Replace ID with sequential numbers
+    control_inputs_df['ID'] = np.arange(len(control_inputs_df))
+
+    return control_inputs_df
+
+
+
 def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=10, visits_per_point=3, excluded_neighbors=2):
     np.random.seed(random_seed)
 
@@ -589,6 +603,8 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = perlin_noise_sampling(control_variables, seed)
     elif sampling_type == 'latin_hypercube':
         control_inputs_df = latin_hypercube_adiabatic_sampling(control_variables, seed)
+    elif sampling_type == 'latin_hypercube_controlled':
+        control_inputs_df = hypercube_controlled_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -598,6 +614,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'latin_hypercube'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
-    seed = 2                            # choose integer seed number
+    sampling_type = 'latin_hypercube_controlled'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
+    seed = 1                            # choose integer seed number
     main(data_type, sampling_type, seed)
