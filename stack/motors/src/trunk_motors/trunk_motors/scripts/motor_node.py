@@ -44,13 +44,13 @@ class MotorNode(Node):
             10
         )
 
-        # create status publisher and publish at 10Hz
+        # create status publisher
         self.status_publisher = self.create_publisher(
             AllMotorsStatus, 
             '/all_motors_status', 
             10
         )
-        self.timer = self.create_timer(1.0/20, self.read_status) # publish at 20Hz 
+        self.timer = self.create_timer(1.0/100, self.read_status) # publish at 100Hz 
 
         # read out initial positions
         self.get_logger().info('Initial motor status: ')
