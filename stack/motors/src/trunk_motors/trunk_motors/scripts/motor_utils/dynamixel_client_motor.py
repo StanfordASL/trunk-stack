@@ -71,7 +71,7 @@ class DynamixelClient:
     def __init__(self,
                  motor_ids: Sequence[int],
                  port: str = '/dev/ttyUSB0',
-                 baudrate: int = 57600,
+                 baudrate: int = 3000000, #57600
                  lazy_connect: bool = False,
                  pos_scale: Optional[float] = None,
                  vel_scale: Optional[float] = None,
@@ -302,7 +302,11 @@ class DynamixelClient:
         if errored_ids:
             logging.error('Sync write failed for: %s', str(errored_ids))
 
+        start = time.time()
         comm_result = sync_writer.txPacket()
+        end = time.time()
+        dif = end - start
+        print(f'Python Sync write took {dif:.4f} seconds')
         self.handle_packet_result(comm_result, context='sync_write')
 
         sync_writer.clearParam()
@@ -627,7 +631,7 @@ if __name__ == '__main__':
         default='/dev/ttyUSB0',
         help='The Dynamixel device to connect to.')
     parser.add_argument(
-        '-b', '--baud', default=57600, help='The baudrate to connect with.') # was 1000000
+        '-b', '--baud', default=3000000, help='The baudrate to connect with.') # was 1000000
     parsed_args = parser.parse_args()
 
     motors = [int(motor) for motor in parsed_args.motors.split(',')]

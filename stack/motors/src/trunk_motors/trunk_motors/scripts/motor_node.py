@@ -109,7 +109,11 @@ class MotorNode(Node):
         positions += self.rest_positions # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
 
         positions *= np.pi/180 # receives a position in degrees, convert to radians for dynamixel sdk
+        start = time.time()
         self.dxl_client.write_desired_pos(self.motor_ids, positions)
+        end = time.time()
+        dif = end - start
+        self.get_logger().info(f"Python Commanded motors to positions in {dif:.4f} seconds")
 
         # for idx, id in enumerate(self.motor_ids):
         #     self.get_logger().info(f"commanded motor {id} to {positions[idx]*180/np.pi:.2f} degrees")
