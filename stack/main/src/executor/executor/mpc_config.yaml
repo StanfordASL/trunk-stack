@@ -1,0 +1,21 @@
+mpc:
+  # Weighting matrices for performance (6x6, if including velocities) and control (2x2)
+  Q_rows: [0, 1]
+  Qz: 200.0      # Hardware config & EE: 20 # Full obs.: 50
+  Qzf: 640.0     # Hardware config & EE : 320  # Full obs.: 320
+  R: 0.0        #0.0
+  Rdu: 8.0 #0.4      # Hardware config: 16.0 # EE: 0.4 # Full obs.: 2.0
+
+  U_constraint: 0.15
+  dU_constraint: 0.01 #None
+  # Characteristic values for scaling the delay-embedded state.
+  # If also_embedd_u is true, the state dimension is: num_delay_embeddings*(state_dim+u_dim).
+
+  N: 12
+  dt: 0.01
+
+delay_embedding:
+  perf_var_dim: 3       # Number of variables being read out as part of the performance variable (will be mult. 2 if speed included)
+  also_embedd_u: true    # If true, each delay block is [state, u]; else, only state is delay embedded and u is appended
+
+model: sim_origin_best.pkl

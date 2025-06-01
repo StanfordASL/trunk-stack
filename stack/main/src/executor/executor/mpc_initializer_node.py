@@ -1,18 +1,20 @@
 import os
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
+import yaml
 
 import jax
 import jax.numpy as jnp
 import logging
-logging.getLogger('jax').setLevel(logging.ERROR)
-jax.config.update('jax_platform_name', 'cpu')
-jax.config.update("jax_enable_x64", True)
 
 from controller.mpc.gusto import GuSTOConfig                # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
-from .utils.models import SSMR
+from .utils.models import control_SSMR
 from .utils.misc import HyperRectangle
+
+logging.getLogger('jax').setLevel(logging.ERROR)
+jax.config.update('jax_platform_name', 'cpu')
+jax.config.update("jax_enable_x64", True)
 
 
 class MPCInitializerNode(Node):
@@ -23,10 +25,16 @@ class MPCInitializerNode(Node):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g_slow'),         # 'ssmr_200g' (what model to use)
         ])
+
+        config_path = os.path.join(os.path.dirname(__file__), "mpc_config.yaml")
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        mpc_config, delay_config = config["mpc"], config["delay_embedding"]
+
         self.debug = self.get_parameter('debug').value
-        self.model_name = self.get_parameter('model_name').value
+        self.model_name = config["model"]
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Load the model
@@ -34,42 +42,69 @@ class MPCInitializerNode(Node):
 
         # Generate reference trajectory
         dt = 0.02
-        z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.08)
+        z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.03)
 
-        # MPC configuration
-        # U = HyperRectangle([0.45]*6, [-0.45]*6)
-        U = None
-        dU = None
-        Qz = 100.0 * jnp.eye(self.model.n_z)
-        Qz = Qz.at[1, 1].set(0)
-        Qzf = 0.0 * jnp.eye(self.model.n_z)
-        Qzf = Qzf.at[1, 1].set(0)
-        R_tip, R_mid, R_top = 0.001, 0.005, 0.01
-        R = 0.0 * jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
-        R_du = 0.1 * jnp.eye(self.model.n_u)
+        # 6) build warm-start arrays
+        x0_red = self.model.encode(jnp.array(self.delay_emb_state.get_current_state()))
+        shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
+        num_delay = self.embedding_up_to
+        pad_length = self.model.n_u * ((1 + shift) * num_delay - shift)
+        u_ref_init = jnp.zeros((pad_length,))
+        x0_red_u_init = jnp.concatenate([x0_red, u_ref_init], axis=0)
 
+        # 7) Build the cost matrices for the MPC controller
+        qz = jnp.zeros((self.model.n_z, self.model.n_z))
+        qzf = jnp.zeros((self.model.n_z, self.model.n_z))
+
+        for row in mpc_config["Q_rows"]:
+            qz = qz.at[row, row].set(mpc_config["Qz"])
+            qzf = qzf.at[row, row].set(mpc_config["Qzf"])
+
+        # 8) build the gusto configuration object
         gusto_config = GuSTOConfig(
-            Qz=Qz,
-            Qzf=Qzf,
-            R=R,
-            R_du=R_du,
-            x_char=jnp.ones(self.model.n_x),
-            f_char=jnp.ones(self.model.n_x),
-            N=6,
-            dt=dt
+            Qz=qz,
+            Qzf=qzf,
+            R=mpc_config["R"] * jnp.eye(self.model.n_u),
+            R_du=mpc_config["Rdu"] * jnp.eye(self.model.n_u),
+            x_char=jnp.ones(x0_red_u_init.shape[0]),
+            f_char=jnp.ones(x0_red_u_init.shape[0]),
+            N=mpc_config["N"],
+            dt=mpc_config["dt"],
+            U_constraint=mpc_config["U_constraint"],
+            dU_constraint=mpc_config["dU_constraint"]
         )
 
+        # 9) input constraints
+        uc = self.config["U_constraint"]
+        if uc is None or str(uc).lower() == 'none':
+            u = None
+        else:
+            u = HyperRectangle([float(uc)] * self.model.n_u, [-float(uc)] * self.model.n_u)
+
+        duc = self.config["dU_constraint"]
+        if duc is None or str(duc).lower() == 'none':
+            du = None
+        else:
+            du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
+
         x0 = jnp.zeros(self.model.n_x)
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, dt=dt, z=z_ref, U=U, dU=dU, solver="GUROBI")
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, dt=dt, z=z_ref, U=u, dU=du,
+                                                   solver="GUROBI")
 
     def _load_model(self):
         """
         Load the learned (non-autonomous) dynamics model of the system.
         """
-        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
+
+        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.pkl')
+
+        delay_config = {
+            "perf_var_dim": 3,
+            "also_embedd_u": True
+        }
 
         # Load the model
-        self.model = SSMR(model_path=model_path)
+        self.model = control_SSMR(delay_config, model_path)
         print(f'---- Model loaded: {self.model_name}')
         print('Dimensions:')
         print('     n_x:', self.model.n_x)

@@ -37,8 +37,7 @@ def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=N
     assert t is not None or dt is not None, "Either t array or dt must be provided."
     if init_node:
         rclpy.init()
-    node = MPCSolverNode(model, config, x0, t=t, dt=dt, z=z, u=u, zf=zf,
-                           U=U, X=X, Xf=Xf, dU=dU, **kwargs)
+    node = MPCSolverNode(model, config, x0, t=t, dt=dt, z=z, u=u, zf=zf, U=U, X=X, Xf=Xf, dU=dU, **kwargs)
     rclpy.spin(node)
     rclpy.shutdown()
 
