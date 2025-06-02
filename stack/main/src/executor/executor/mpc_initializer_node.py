@@ -11,6 +11,7 @@ from controller.mpc.gusto import GuSTOConfig                # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
 from .utils.models import control_SSMR
 from .utils.misc import HyperRectangle
+from .delay_embedded_state import DelayEmbeddedState
 
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
@@ -40,14 +41,30 @@ class MPCInitializerNode(Node):
         # Load the model
         self._load_model()
 
+        # 3) figure out measurement dims for delay embedding
+        meas_var_dim = len([x - 1 for x in self.model.ssm.specified_params["measured_rows"] if x <= 18])
+        meas_var_dim = meas_var_dim
+        num_u = self.model.ssm.specified_params["num_u"]
+        embedding_up_to = self.model.ssm.specified_params["embedding_up_to"]
+        include_velocity = bool(self.model.ssm.specified_params["include_velocity"])
+
+        # 4) initial DelayEmbeddedState
+        delay_emb_state = DelayEmbeddedState(
+            meas_var_dim * (1 + int(include_velocity)),
+            num_u,
+            embedding_up_to,
+            delay_config["also_embedd_u"],
+            initial_state=None
+        )
+
         # Generate reference trajectory
         dt = 0.02
         z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.03)
 
         # 6) build warm-start arrays
-        x0_red = self.model.encode(jnp.array(self.delay_emb_state.get_current_state()))
+        x0_red = self.model.encode(jnp.array(delay_emb_state.get_current_state()))
         shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
-        num_delay = self.embedding_up_to
+        num_delay = embedding_up_to
         pad_length = self.model.n_u * ((1 + shift) * num_delay - shift)
         u_ref_init = jnp.zeros((pad_length,))
         x0_red_u_init = jnp.concatenate([x0_red, u_ref_init], axis=0)
@@ -87,9 +104,8 @@ class MPCInitializerNode(Node):
         else:
             du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
 
-        x0 = jnp.zeros(self.model.n_x)
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, dt=dt, z=z_ref, U=u, dU=du,
-                                                   solver="GUROBI")
+        self.mpc_solver_node = run_mpc_solver_node(self.model, delay_emb_state, gusto_config, x0_red_u_init, t=t, dt=dt,
+                                                   z=z_ref, U=u, dU=du, solver="GUROBI")
 
     def _load_model(self):
         """

@@ -10,7 +10,7 @@ from .mpc.gusto import GuSTO
 import numpy as np
 
 
-def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
+def run_mpc_solver_node(model, delay_emb_state, config, x0, t=None, dt=None, z=None, u=None, zf=None,
                        U=None, X=None, Xf=None, dU=None, init_node=False, **kwargs):
     """
     Function that builds a ROS node to run MPC and runs it continuously. This node
@@ -37,7 +37,8 @@ def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=N
     assert t is not None or dt is not None, "Either t array or dt must be provided."
     if init_node:
         rclpy.init()
-    node = MPCSolverNode(model, config, x0, t=t, dt=dt, z=z, u=u, zf=zf, U=U, X=X, Xf=Xf, dU=dU, **kwargs)
+    node = MPCSolverNode(model, delay_emb_state, config, x0, t=t, dt=dt, z=z, u=u, zf=zf, U=U, X=X, Xf=Xf, dU=dU,
+                         **kwargs)
     rclpy.spin(node)
     rclpy.shutdown()
 
@@ -64,9 +65,16 @@ class MPCSolverNode(Node):
     Defines a service provider node that will run the GuSTO MPC implementation.
     """
 
-    def __init__(self, model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
+    def __init__(self, model, delay_emb_state, config, x0, t=None, dt=None, z=None, u=None, zf=None,
                  U=None, X=None, Xf=None, dU=None, **kwargs):
         self.model = model
+        self.delay_emb_state = delay_emb_state
+
+        shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
+        num_delay = self.model.ssm.specified_params["embedding_up_to"]
+        pad_length = self.ssmr.ssm.specified_params["num_u"] * ((1 + shift) * num_delay - shift)
+        self.u_ref_init = jnp.zeros((pad_length,))
+
         if dt is not None:
             self.dt = dt
         elif dt is None and t is not None:
@@ -78,12 +86,10 @@ class MPCSolverNode(Node):
         self.z = z
         self.u = u
         if z is not None and z.ndim == 2:
-            self.z_interp = interp1d(t, z, axis=0,
-                                     bounds_error=False, fill_value=(z[0, :], z[-1, :]))
+            self.z_interp = interp1d(t, z, axis=0, bounds_error=False, fill_value=(z[0, :], z[-1, :]))
 
         if u is not None and u.ndim == 2:
-            self.u_interp = interp1d(t, u, axis=0,
-                                     bounds_error=False, fill_value=(u[0, :], u[-1, :]))
+            self.u_interp = interp1d(t, u, axis=0, bounds_error=False, fill_value=(u[0, :], u[-1, :]))
 
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
@@ -114,6 +120,7 @@ class MPCSolverNode(Node):
 
         t, xopt, uopt, zopt
         """
+        # TODO: Make sure that y0 truly contains the correct state vector
         t0 = request.t0
         if t0 > self.t[-1]:
             response.done = True
@@ -121,7 +128,24 @@ class MPCSolverNode(Node):
             response.done = False
         
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
-        x0 = self.model.encode(y0)
+
+        # 2) Update compounded state
+        x_state, u_state = y0[:-self.n_u], y0[-self.n_u:]
+
+        self.delay_emb_state.update_state(x_state, u_state)
+
+        x0 = self.model.encode(self.delay_emb_state.get_current_state())
+
+        # TODO: In contrast to my previous script request.u0 might not be a list -> debug this
+        if len(request.u0) == 0:
+            u_prev0 = jnp.zeros((self.n_u,))
+        else:
+            u_prev0 = request.u0
+
+        if self.u_ref_init.shape[0] >= self.n_u:
+            self.u_ref_init = jnp.concatenate([u_prev0, self.u_ref_init[:-self.n_u]], axis=0)
+
+        x0 = jnp.concatenate([x0, self.u_ref_init], axis=0)
 
         # Get target values at proper times by interpolating
         z, zf, u = self.get_target(t0)
@@ -155,6 +179,7 @@ class MPCSolverNode(Node):
         # Solve GuSTO and get solution
         self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
+        self.xopt = self.xopt[:, :self.model.n_x]  # Extract the non augmented part
 
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
