@@ -2,31 +2,39 @@
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile
+from rclpy.callback_groups import ReentrantCallbackGroup
 import numpy as np
-import time
-from std_msgs.msg import Float64MultiArray
+# import time
+# from std_msgs.msg import Float64MultiArray
 from motor_utils.dynamixel_client_motor import DynamixelClient
-from interfaces.msg import AllMotorsControl
+from interfaces.msg import AllMotorsControl, TrunkRigidBodies
 from interfaces.msg import AllMotorsStatus
 
 
 class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
-        self.control_augmented = False # True if running Paul's control augmented data collected, False else
+        self.control_augmented = False  # True if running Paul's control augmented data collected, False else
+
+        # Execution occurs in multiple threads
+        self.callback_group = ReentrantCallbackGroup()
 
         if self.control_augmented:
             # self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197]) update these
             self.motor_ids = [1, 2, 3, 4, 5, 6]
         else:
-            self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-            self.motor_ids = [1, 2, 3, 4, 5, 6] # all 6 trunk motors
+            # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
+            self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204])
+            self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
 
-        # Define a safe region to operate the motors in:
+        # Define a safe region to operate the motors in (position and velocity):
         self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
+        self.delta_limits_safe = np.array([0, 0, 0, 0, 0, 0])  # TODO: discuss values with Mark
+
+        self.last_motor_positions = None
 
         # initialize motors client
-
         self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB0')
 
         # connect to motors
@@ -42,7 +50,17 @@ class MotorNode(Node):
             AllMotorsControl,
             '/all_motors_control',
             self.command_positions,  # callback function
-            10
+            10,
+            callback_group=self.callback_group
+        )
+
+        # Subscribe to current positions
+        self.mocap_subscription = self.create_subscription(
+            TrunkRigidBodies,
+            '/trunk_rigid_bodies',
+            self.mocap_listener_callback,
+            QoSProfile(depth=3),
+            callback_group=self.callback_group
         )
 
         # create status publisher
@@ -52,7 +70,11 @@ class MotorNode(Node):
             10
         )
 
-        self.timer = self.create_timer(1.0/100, self.read_status) # publish at 100Hz 
+        self.rest_position_trunk = np.array([0.1018, -0.1075, 0.1062,
+                                            0.1037, -0.2055, 0.1148,
+                                            0.1025, -0.3254, 0.1129])
+
+        self.timer = self.create_timer(1.0/100, self.read_status)  # publish at 100Hz
 
         # read out initial positions
         self.get_logger().info('Initial motor status: ')
@@ -71,11 +93,20 @@ class MotorNode(Node):
         positions = msg.motors_control
         positions = np.array(positions)
 
+        if self.last_motor_positions is None:
+            delta_positions = np.zeros_like(positions)
+        else:
+            delta_positions = positions - self.last_motor_positions
+
+        # calculate relative position change
+        mask_delta_low = delta_positions < -self.delta_limits_safe
+        mask_delta_high = delta_positions > self.delta_limits_safe
+
         # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
         mask_low = positions < -self.limits_safe
         mask_high = positions > self.limits_safe
 
-        if np.any(mask_low | mask_high):
+        if np.any(mask_low | mask_high) or np.any(mask_delta_low | mask_delta_high):
             bad_idxs = np.where(mask_low | mask_high)[0]
             bad_vals = positions[bad_idxs]
             self.get_logger().error(
@@ -89,12 +120,45 @@ class MotorNode(Node):
             # signal ROS to exit
             rclpy.shutdown()
             return
-            
-        positions += self.rest_positions # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
 
-        positions *= np.pi/180 # receives a position in degrees, convert to radians for dynamixel sdk
+        self.last_motor_positions = positions
+        # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
+        positions += self.rest_positions
+
+        positions *= np.pi/180  # receives a position in degrees, convert to radians for dynamixel sdk
 
         self.dxl_client.write_desired_pos(self.motor_ids, positions)
+
+    def mocap_listener_callback(self, msg):
+        """
+        Callback to process mocap data, updating the latest observation.
+        """
+        if self.debug:
+            self.get_logger().info(f'Received mocap data: {msg.positions}.')
+
+        # Unpack the message into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
+        y_new = np.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
+        y_centered = y_new - self.rest_position_trunk
+
+        # Subselect tip
+        y_centered_tip = y_centered[-3:]
+
+        # TODO: discuss value with Mark
+
+        if np.linalg.norm(y_centered_tip) > 0.0:
+            self.get_logger().error(
+                f"Unsafe trunk position at value commands at indices {np.linalg.norm(y_centered_tip)}. "
+                "Shutting down the motor node."
+            )
+
+            # clean up torque + disconnect
+            self.shutdown()
+
+            # signal ROS to exit
+            rclpy.shutdown()
+            return
+
+        return
 
     def read_status(self):
         # reads and publishes the motor position, velocity, and current
