@@ -15,18 +15,22 @@ from interfaces.msg import AllMotorsStatus
 class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
-        self.MPC_SECURITY_MODE = True  # True if MPC is running
+        self.declare_parameters(namespace='', parameters=[
+            ('secure_mode', True)
+        ])
+
+        self.MPC_SECURITY_MODE = self.get_parameter('secure_mode').value  # True if MPC is running
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
         # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-        self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204])
+        self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204.0])
         self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
 
         # Define a safe region to operate the motors in (position and velocity):
         self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
-        self.delta_limits_safe = np.array([0, 0, 0, 0, 0, 0])  # TODO: discuss values with Mark
+        self.delta_limits_safe = np.array([3.2, 3.2, 3.2, 3.2, 3.2, 3.2])
 
         self.last_motor_positions = None
 
@@ -67,9 +71,7 @@ class MotorNode(Node):
             10
         )
 
-        self.rest_position_trunk = np.array([0.1018, -0.1075, 0.1062,
-                                            0.1037, -0.2055, 0.1148,
-                                            0.1025, -0.3254, 0.1129])
+        self.rest_position_trunk = np.array([0.09369193017482758,-0.1086554080247879,0.09297813475131989,0.09677113592624664,-0.20255360007286072,0.08466289937496185,0.08620507270097733,-0.3149890899658203,0.08313531428575516])
 
         self.timer = self.create_timer(1.0/100, self.read_status)  # publish at 100Hz
 
@@ -142,7 +144,7 @@ class MotorNode(Node):
 
         # TODO: discuss value with Mark
 
-        if np.linalg.norm(y_centered_tip) > 0.0:
+        if np.linalg.norm(y_centered_tip) > 0.1:
             self.get_logger().error(
                 f"Unsafe trunk position at value commands at indices {np.linalg.norm(y_centered_tip)}. "
                 "Shutting down the motor node."
