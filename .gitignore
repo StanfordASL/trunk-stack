@@ -12,6 +12,9 @@
 # Large files
 **/large_files/
 
+# Mark's data visualization script
+**/scripts/hysteresis_check.ipynb
+
 # External packages
 **/mocap_msgs/
 **/mocap4r2/

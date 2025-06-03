@@ -17,6 +17,88 @@ def save_to_csv(df, control_inputs_file):
     df.to_csv(control_inputs_file, index=False)
     print(f'Control inputs have been saved to {control_inputs_file}')
 
+# generate open loop test trajectories with high actuation magnitude points.
+def OL_test_high_z_sampling(control_variables, random_seed, N=10):
+    # Define bounds
+    tip_radius = 80
+    mid_radius = 50
+    base_radius = 30
+    maxs = np.array([mid_radius, tip_radius, base_radius, tip_radius, base_radius, mid_radius])
+    mins = -maxs
+
+    # Latin Hypercube Sampling
+    np.random.seed(random_seed)
+    sampler = qmc.LatinHypercube(d=6, seed=random_seed)
+    sample = sampler.random(n=1000)
+    scaled_sample = qmc.scale(sample, mins, maxs)
+
+    # Create distance matrix and find point pairs
+    remaining_indices = list(range(1000))
+    pairs = []
+
+    for _ in range(N): # N is number of trajectories (pairs of points)
+        subset = scaled_sample[remaining_indices]
+        magnitudes = np.linalg.norm(subset, axis=1)
+        idx1_local = np.argmax(magnitudes)
+        point1_idx = remaining_indices[idx1_local]
+        point1 = scaled_sample[point1_idx]
+
+        distances = cdist([point1], subset)[0]
+        idx2_local = np.argmax(distances)
+        point2_idx = remaining_indices[idx2_local]
+        point2 = scaled_sample[point2_idx]
+
+        pairs.append((point1, point2))
+        remaining_indices.remove(point1_idx)
+        remaining_indices.remove(point2_idx)
+
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    ID_counter = 0
+
+    for point1, point2 in pairs:
+        control_inputs_df, ID_counter = add_trajectory(control_inputs_df, ID_counter, point1, point2)
+
+    control_inputs = control_inputs_df[control_variables].values
+
+    fig, axes = plt.subplots(2, 3, figsize=(12, 6))  # 2 rows, 3 columns
+
+    for i, ax in enumerate(axes.flat):
+        ax.plot(control_inputs[:, i])
+        ax.set_title(f"U_{i+1}")
+        ax.set_xlabel("Timestep")
+        ax.set_ylabel("Actuation")
+
+    plt.tight_layout()
+    plt.show()
+
+    return control_inputs_df
+
+# helper function for OL_test_high_z_sampling. Makes a smooth trajectory between two points
+def add_trajectory(df, ID_counter, point1, point2):
+        zero = np.zeros(6)
+
+        def append_rows(pts):
+            nonlocal df, ID_counter
+            for pt in pts:
+                df.loc[len(df)] = [ID_counter] + pt.tolist()
+                ID_counter += 1
+
+        append_rows([zero] * 200)  # 2s of zero input to start each traj
+        append_rows(smooth_cosine_interp(zero, point1, 100)) # Smooth up to point1
+        append_rows(smooth_cosine_interp(point1, zero, 100)) # Smooth down to zero
+        append_rows(smooth_cosine_interp(zero, point2, 100)) # Smooth up to point2
+        append_rows(smooth_cosine_interp(point2, zero, 100)) # Smooth back down to zero
+
+        return df, ID_counter
+
+# helper function for add_trajectory - smoothly interpolates between two points with cosine ramp
+def smooth_cosine_interp(start, end, num_steps):
+    return [
+        start + 0.5 * (1 - np.cos(np.pi * t)) * (end - start)
+        for t in np.linspace(0, 1, num_steps)
+    ]
+
+
 # sets the DC offset for an equilibrium of adiabatic data collection
 def set_adiabatic_control_offset(n_samples):
     # tip
@@ -605,6 +687,8 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = latin_hypercube_adiabatic_sampling(control_variables, seed)
     elif sampling_type == 'latin_hypercube_controlled':
         control_inputs_df = hypercube_controlled_sampling(control_variables, seed)
+    elif sampling_type == 'ol_test_high_z':
+        control_inputs_df = OL_test_high_z_sampling(control_variables, seed)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -614,6 +698,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'latin_hypercube_controlled'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
-    seed = 1                            # choose integer seed number
+    sampling_type = 'ol_test_high_z'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', 'latin_hypercube', or 'ol_test_high_z'
+    seed = 9                            # choose integer seed number
     main(data_type, sampling_type, seed)
