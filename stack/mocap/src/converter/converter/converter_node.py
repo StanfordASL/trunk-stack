@@ -3,6 +3,7 @@ from rclpy.node import Node  # type: ignore
 from interfaces.msg import TrunkMarkers, TrunkRigidBodies
 from mocap4r2_msgs.msg import Markers, RigidBodies  # type: ignore
 
+
 class ConverterNode(Node):
     def __init__(self):
         super().__init__('converter_node')
@@ -54,6 +55,7 @@ def main(args=None):
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

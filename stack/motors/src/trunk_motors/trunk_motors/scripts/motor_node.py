@@ -15,18 +15,14 @@ from interfaces.msg import AllMotorsStatus
 class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
-        self.control_augmented = False  # True if running Paul's control augmented data collected, False else
+        self.MPC_SECURITY_MODE = True  # True if MPC is running
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
-        if self.control_augmented:
-            # self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197]) update these
-            self.motor_ids = [1, 2, 3, 4, 5, 6]
-        else:
-            # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-            self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204])
-            self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
+        # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
+        self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204])
+        self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
 
         # Define a safe region to operate the motors in (position and velocity):
         self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
@@ -54,14 +50,15 @@ class MotorNode(Node):
             callback_group=self.callback_group
         )
 
-        # Subscribe to current positions
-        self.mocap_subscription = self.create_subscription(
-            TrunkRigidBodies,
-            '/trunk_rigid_bodies',
-            self.mocap_listener_callback,
-            QoSProfile(depth=3),
-            callback_group=self.callback_group
-        )
+        if self.MPC_security_mode:
+            # Subscribe to current positions
+            self.mocap_subscription = self.create_subscription(
+                TrunkRigidBodies,
+                '/trunk_rigid_bodies',
+                self.mocap_listener_callback,
+                QoSProfile(depth=3),
+                callback_group=self.callback_group
+            )
 
         # create status publisher
         self.status_publisher = self.create_publisher(
@@ -106,7 +103,7 @@ class MotorNode(Node):
         mask_low = positions < -self.limits_safe
         mask_high = positions > self.limits_safe
 
-        if np.any(mask_low | mask_high) or np.any(mask_delta_low | mask_delta_high):
+        if np.any(mask_low | mask_high) or self.MPC_SECURITY_MODE and np.any(mask_delta_low | mask_delta_high):
             bad_idxs = np.where(mask_low | mask_high)[0]
             bad_vals = positions[bad_idxs]
             self.get_logger().error(
