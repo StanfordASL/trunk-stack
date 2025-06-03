@@ -125,13 +125,19 @@ def set_adiabatic_control_offset(n_samples):
 
 def hypercube_controlled_sampling(control_variables, random_seed, num_points=1000):
     points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=1, excluded_neighbors=1)
-    len_traj = 100 #100 = 1s
+    len_traj = 100  # 100 = 1s
 
-    # Repeat each row len_traj times
+    # repeat each row len_traj times
     control_inputs_df = points_df.loc[points_df.index.repeat(len_traj)].reset_index(drop=True)
 
-    # Replace ID with sequential numbers
-    control_inputs_df['ID'] = np.arange(len(control_inputs_df))
+    # 2 sec of zero control inputs
+    num_zeros = 200
+    zero_data = pd.DataFrame(np.zeros((num_zeros, len(control_variables))), columns=control_variables)
+    zero_data.insert(0, 'ID', np.arange(num_zeros)) 
+
+    # shift ids of the remaining trajectories and concatenate
+    control_inputs_df['ID'] = np.arange(num_zeros, num_zeros + len(control_inputs_df))
+    control_inputs_df = pd.concat([zero_data, control_inputs_df], ignore_index=True)
 
     return control_inputs_df
 
@@ -698,6 +704,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'ol_test_high_z'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', 'latin_hypercube', or 'ol_test_high_z'
-    seed = 9                            # choose integer seed number
+    sampling_type = 'latin_hypercube_controlled'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', 'latin_hypercube', or 'ol_test_high_z'
+    seed = 1                            # choose integer seed number
     main(data_type, sampling_type, seed)
