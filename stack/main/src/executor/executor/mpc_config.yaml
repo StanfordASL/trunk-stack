@@ -18,4 +18,4 @@ delay_embedding:
   perf_var_dim: 3       # Number of variables being read out as part of the performance variable (will be mult. 2 if speed included)
   also_embedd_u: true    # If true, each delay block is [state, u]; else, only state is delay embedded and u is appended
 
-model: sim_origin_best.pkl
+model: first_mpc_model_real_trunk.pkl

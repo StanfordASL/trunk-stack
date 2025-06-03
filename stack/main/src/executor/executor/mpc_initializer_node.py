@@ -32,7 +32,7 @@ class MPCInitializerNode(Node):
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
-        mpc_config, delay_config = config["mpc"], config["delay_embedding"]
+        mpc_config, self.delay_config = config["mpc"], config["delay_embedding"]
 
         self.debug = self.get_parameter('debug').value
         self.model_name = config["model"]
@@ -53,7 +53,7 @@ class MPCInitializerNode(Node):
             meas_var_dim * (1 + int(include_velocity)),
             num_u,
             embedding_up_to,
-            delay_config["also_embedd_u"],
+            self.delay_config["also_embedd_u"],
             initial_state=None
         )
 
@@ -112,15 +112,10 @@ class MPCInitializerNode(Node):
         Load the learned (non-autonomous) dynamics model of the system.
         """
 
-        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.pkl')
-
-        delay_config = {
-            "perf_var_dim": 3,
-            "also_embedd_u": True
-        }
+        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}')
 
         # Load the model
-        self.model = control_SSMR(delay_config, model_path)
+        self.model = control_SSMR(self.delay_config, model_path)
         print(f'---- Model loaded: {self.model_name}')
         print('Dimensions:')
         print('     n_x:', self.model.n_x)
