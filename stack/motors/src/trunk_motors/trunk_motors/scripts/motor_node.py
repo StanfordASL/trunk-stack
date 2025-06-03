@@ -13,16 +13,19 @@ from interfaces.msg import AllMotorsStatus
 class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
+        self.control_augmented = False # True if running Paul's control augmented data collected, False else
 
-        # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-        self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197])
+        if self.control_augmented:
+            # self.rest_positions = np.array([196.0, 201.0, 193.0, 210.0, 202.0, 197]) update these
+            self.motor_ids = [1, 2, 3, 4, 5, 6]
+        else:
+            self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204]) # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
+            self.motor_ids = [1, 2, 3, 4, 5, 6] # all 6 trunk motors
+
+        # Define a safe region to operate the motors in:
+        self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
 
         # initialize motors client
-        self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
-
-        # Define as safe region to operate the motors in: # TODO: discuss these values with Mark
-        self.min_safe = np.array([180, 180, 180, 180, 180, 180])
-        self.max_safe = np.array([220, 220, 220, 220, 220, 220])
 
         self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB0')
 
@@ -42,13 +45,14 @@ class MotorNode(Node):
             10
         )
 
-        # create status publisher and publish at 10Hz
+        # create status publisher
         self.status_publisher = self.create_publisher(
             AllMotorsStatus, 
             '/all_motors_status', 
             10
         )
-        self.timer = self.create_timer(1.0/20, self.read_status)  # publish at 20Hz
+
+        self.timer = self.create_timer(1.0/100, self.read_status) # publish at 100Hz 
 
         # read out initial positions
         self.get_logger().info('Initial motor status: ')
@@ -64,11 +68,13 @@ class MotorNode(Node):
 
     def command_positions(self, msg):
         # commands new positions to the motors
-        positions = np.array(msg.motors_control) + self.rest_positions
-        # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
+        positions = msg.motors_control
+        positions = np.array(positions)
 
-        mask_low = positions < self.min_safe
-        mask_high = positions > self.max_safe
+        # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
+        mask_low = positions < -self.limits_safe
+        mask_high = positions > self.limits_safe
+
         if np.any(mask_low | mask_high):
             bad_idxs = np.where(mask_low | mask_high)[0]
             bad_vals = positions[bad_idxs]
@@ -77,14 +83,17 @@ class MotorNode(Node):
                 "Shutting down without sending to motors."
             )
 
-            # 3) clean up torque + disconnect
+            # clean up torque + disconnect
             self.shutdown()
 
-            # 4) signal ROS to exit
+            # signal ROS to exit
             rclpy.shutdown()
             return
+            
+        positions += self.rest_positions # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
 
-        positions *= np.pi/180  # receives a position in degrees, convert to radians for dynamixel sdk
+        positions *= np.pi/180 # receives a position in degrees, convert to radians for dynamixel sdk
+
         self.dxl_client.write_desired_pos(self.motor_ids, positions)
 
     def read_status(self):

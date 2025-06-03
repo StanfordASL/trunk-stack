@@ -44,6 +44,7 @@ class ConverterNode(Node):
         trunk_msg.frame_number = msg.frame_number
         trunk_msg.rigid_body_names = [rigid_body.rigid_body_name for rigid_body in msg.rigidbodies]
         trunk_msg.positions = [rigid_body.pose.position for rigid_body in msg.rigidbodies]
+        trunk_msg.orientations = [rigid_body.pose.orientation for rigid_body in msg.rigidbodies]
         self.publisher.publish(trunk_msg)
 
 
