@@ -5,9 +5,6 @@ from threading import Lock
 import jax
 import jax.numpy as jnp
 import logging
-logging.getLogger('jax').setLevel(logging.ERROR)
-jax.config.update('jax_platform_name', 'cpu')
-jax.config.update("jax_enable_x64", True)
 
 import rclpy                                                # type: ignore
 from rclpy.node import Node                                 # type: ignore
@@ -18,6 +15,10 @@ from rclpy.qos import QoSProfile                            # type: ignore
 from controller.mpc_solver_node import jnp2arr              # type: ignore
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
+
+logging.getLogger('jax').setLevel(logging.ERROR)
+jax.config.update('jax_platform_name', 'cpu')
+jax.config.update("jax_enable_x64", True)
 
 
 @jax.jit
@@ -71,7 +72,7 @@ class MPCNode(Node):
             ('n_u', 6),                                     # number of control inputs
             ('n_obs', 3),                                   # 2D, 3D or 6D observations
             ('n_delay', 3),                                 # number of delays applied to observations
-            ('n_exec', 1),                                  # number of control inputs to execute from MPC solution
+            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -101,9 +102,9 @@ class MPCNode(Node):
         self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.1018, -0.1075, 0.1062,
-                                        0.1037, -0.2055, 0.1148,
-                                        0.1025, -0.3254, 0.1129])
+        self.rest_position = jnp.array([0.09369193017482758, -0.1086554080247879, 0.09297813475131989,
+                                        0.09677113592624664, -0.20255360007286072, 0.08466289937496185,
+                                        0.08620507270097733, -0.3149890899658203, 0.08313531428575516])
         
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()

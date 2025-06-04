@@ -25,7 +25,7 @@ class MPCInitializerNode(Node):
     def __init__(self):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
-            ('debug', False),                               # False or True (print debug messages)
+            ('debug', False)                               # False or True (print debug messages)
         ])
 
         config_path = os.path.join(os.path.dirname(__file__), "mpc_config.yaml")

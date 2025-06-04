@@ -132,6 +132,8 @@ class MPCSolverNode(Node):
         # 2) Update compounded state
         x_state, u_state = y0[:-self.n_u], y0[-self.n_u:]
 
+        u_state /= 80  # The model was using data /80
+
         self.delay_emb_state.update_state(x_state, u_state)
 
         x0 = self.model.encode(self.delay_emb_state.get_current_state())
@@ -140,7 +142,7 @@ class MPCSolverNode(Node):
         if len(request.u0) == 0:
             u_prev0 = jnp.zeros((self.n_u,))
         else:
-            u_prev0 = request.u0
+            u_prev0 = request.u0 / 80
 
         if self.u_ref_init.shape[0] >= self.n_u:
             self.u_ref_init = jnp.concatenate([u_prev0, self.u_ref_init[:-self.n_u]], axis=0)
@@ -174,7 +176,7 @@ class MPCSolverNode(Node):
         self.x_init = x_init_temp
 
         # Update LOCP parameter with the previously applied control
-        self.gusto.locp.u0_prev.value = np.asarray(request.u0)
+        self.gusto.locp.u0_prev.value = np.asarray(request.u0 / 80)
 
         # Solve GuSTO and get solution
         self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
@@ -184,7 +186,7 @@ class MPCSolverNode(Node):
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
         response.xopt = jnp2arr(self.xopt)
-        response.uopt = jnp2arr(self.uopt)
+        response.uopt = jnp2arr(self.uopt * 80)
         response.zopt = jnp2arr(zopt)
         response.solve_time = t_solve
 

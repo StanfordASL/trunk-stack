@@ -3,6 +3,7 @@ import csv
 import jax
 import jax.numpy as jnp
 import logging
+import yaml
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
@@ -10,7 +11,7 @@ import rclpy                                             # type: ignore
 from rclpy.node import Node                              # type: ignore
 from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
-from .utils.models import SSMR
+from .utils.models import control_SSMR
 
 
 @jax.jit
@@ -42,12 +43,18 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g_slow'),         # 'ssmr_200g' (what model to use)
-            ('results_name', 'test_experiment')             # name of the results file
+            ('results_name', 'pauls_first_test')            # name of the results file
         ])
 
+        config_path = os.path.join(os.path.dirname(__file__), "mpc_config.yaml")
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        mpc_config, self.delay_config = config["mpc"], config["delay_embedding"]
+
         self.debug = self.get_parameter('debug').value
-        self.model_name = self.get_parameter('model_name').value
+        self.model_name = config["model"]
+
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
@@ -109,10 +116,10 @@ class TestMPCNode(Node):
         """
         Load the learned (non-autonomous) dynamics model of the system.
         """
-        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
+        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}')
 
         # Load the model
-        self.model = SSMR(model_path=model_path)
+        self.model = control_SSMR(self.delay_config, model_path)
         print(f'---- Model loaded: {self.model_name}')
         print('Dimensions:')
         print('     n_x:', self.model.n_x)
