@@ -15,11 +15,14 @@ class GuSTOConfig:
     """
     GuSTOConfig class for storing GuSTO parameters.
     """
+    x_char: jnp.ndarray  # characteristic quantities for x, for scaling
+    f_char: jnp.ndarray  # characteristic quantities for f, for scaling
     Qz: jnp.ndarray                     # positive semi-definite performance variable weighting matrix
     Qzf: jnp.ndarray                    # positive semi-definite terminal performance variable weighting matrix
     R: jnp.ndarray                      # positive definite control weighting matrix
-    x_char: jnp.ndarray                 # characteristic quantities for x, for scaling
-    f_char: jnp.ndarray                 # characteristic quantities for f, for scaling
+    R_du: jnp.ndarray                   # control rate weighting matrix
+    U_constraint: float                 # Maximal control
+    dU_constraint: float                # Maximal change in control from one step to another
     N: int = 8                          # integer optimization horizon
     dt: float = 0.01                    # time step
     slew_rate_max: float = 0.5          # slew rate constraint
@@ -35,7 +38,6 @@ class GuSTOConfig:
     convg_thresh: float = 0.01          # convergence threshold
     verbose: int = 0                    # verbosity level (0, 1, 2)
     warm_start: bool = True             # warm start the solver
-    R_du: jnp.ndarray = None            # control rate weighting matrix
 
 
 class GuSTO_base:
