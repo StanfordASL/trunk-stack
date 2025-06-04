@@ -477,4 +477,4 @@ class GuSTO(GuSTO_base):
         error, approx = jax.lax.fori_loop(0, x.shape[0] - 1, body_fn, (0.0, 0.0))
         rho_k = error / (J + approx)
         return rho_k
-
+    
