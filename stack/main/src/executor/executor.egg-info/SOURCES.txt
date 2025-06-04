@@ -8,9 +8,11 @@ executor/delay_embedded_state.py
 executor/experiment_node.py
 executor/ffpid_node.py
 executor/manual_decay_node.py
+executor/mpc_config.yaml
 executor/mpc_initializer_node.py
 executor/mpc_node.py
 executor/openloop_mpc_node.py
+executor/slider_config.yaml
 executor/slider_node.py
 executor/store_observations_node.py
 executor/teleop_ik_node.py
@@ -31,4 +33,5 @@ executor/utils/nn.py
 executor/utils/residual.py
 executor/utils/ssm.py
 executor/utils/model_classes/__init__.py
+executor/utils/model_classes/control_origin_ssm.py
 resource/executor

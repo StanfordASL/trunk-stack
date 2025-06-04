@@ -1,4 +1,7 @@
 from typing import Optional, List
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__)))
 
 import numpy as np
 import jax.numpy as jnp
@@ -7,7 +10,7 @@ from jax import Array
 from scipy.linalg import orth
 from findiff import FinDiff
 
-from model_classes.mappings.pipeline_mapping_base import FittedMapping
+from .mappings.pipeline_mapping_base import FittedMapping
 
 
 class Control_origin_ssm:
