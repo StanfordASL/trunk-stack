@@ -46,9 +46,24 @@ class TestMPCNode(Node):
             ('results_name', 'pauls_first_test')            # name of the results file
         ])
 
-        config_path = os.path.join(os.path.dirname(__file__), "mpc_config.yaml")
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
+        config = {
+            "mpc": {
+                "Q_rows": [0, 1],
+                "Qz": 200.0,
+                "Qzf": 640.0,
+                "R": 0.0,
+                "Rdu": 8.0,
+                "U_constraint": 0.15,
+                "dU_constraint": 0.01,
+                "N": 12,
+                "dt": 0.01
+            },
+            "delay_embedding": {
+                "perf_var_dim": 3,
+                "also_embedd_u": True
+            },
+            "model": "first_mpc_model_real_trunk.pkl"
+        }
 
         mpc_config, self.delay_config = config["mpc"], config["delay_embedding"]
 
