@@ -15,7 +15,7 @@ from findiff import FinDiff
 import numpy as np
 import sympy as sp
 from .misc import trajectories_delay_embedding
-from .mappings.pipeline_mapping_base import FittedMapping
+from .model_classes.mappings.pipeline_mapping_base import FittedMapping
 
 
 class Control_origin_ssm:

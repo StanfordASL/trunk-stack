@@ -6,6 +6,7 @@ setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(exclude=['test']),
+    package_dir={'model_classes': 'executor/utils/model_classes'},
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -17,6 +18,8 @@ setup(
     maintainer='asl',
     maintainer_email='asl@todo.todo',
     description='TODO: Package description',
+    include_package_data=True,
+    package_data={'executor': ['*.yaml']},
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={

@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 from typing import Any, Dict
-from model_classes.mappings.mapping_modules import RBFFittedMapping, PolynomialFittedMapping, NeuralNetFittedMapping
+from .mapping_modules import RBFFittedMapping, PolynomialFittedMapping, NeuralNetFittedMapping
 
 
 class FittedMapping:

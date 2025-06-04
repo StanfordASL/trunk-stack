@@ -1,0 +1,15 @@
+[console_scripts]
+adiabatic_manual_decay_node = executor.adiabatic_manual_decay_node:main
+data_collection_node = executor.data_collection_node:main
+experiment_node = executor.experiment_node:main
+ffpid_node = executor.ffpid_node:main
+manual_decay_node = executor.manual_decay_node:main
+mpc_initializer_node = executor.mpc_initializer_node:main
+mpc_node = executor.mpc_node:main
+openloop_mpc_node = executor.openloop_mpc_node:main
+slider_node = executor.slider_node:main
+store_observations_node = executor.store_observations_node:main
+teleop_ik_node = executor.teleop_ik_node:main
+test_mpc_node = executor.test_mpc_node:main
+visuomotor_node = executor.visuomotor_node:main
+
