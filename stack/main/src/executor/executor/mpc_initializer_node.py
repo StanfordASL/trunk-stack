@@ -63,7 +63,7 @@ class MPCInitializerNode(Node):
         embedding_up_to = self.model.ssm.specified_params["embedding_up_to"]
         include_velocity = bool(self.model.ssm.specified_params["include_velocity"])
 
-        # 4) initial DelayEmbeddedState
+        # 4) initial DelayEmbeddedState -> not used downstream...only to now initialize
         delay_emb_state = DelayEmbeddedState(
             meas_var_dim * (1 + int(include_velocity)),
             num_u,
@@ -119,7 +119,7 @@ class MPCInitializerNode(Node):
         else:
             du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
 
-        self.mpc_solver_node = run_mpc_solver_node(self.model, delay_emb_state, gusto_config, x0_red_u_init, t=t, dt=dt,
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red_u_init, t=t, dt=dt,
                                                    z=z_ref, U=u, dU=du, solver="GUROBI")
 
     def _load_model(self):

@@ -207,9 +207,10 @@ class TestMPCNode(Node):
         y_centered_tip = y_predicted[:idx0+1, :self.model.n_z]
         N_new_obs = y_centered_tip.shape[0]
 
-        # Add noise to simulate real experiment
+        # Add noise to simulate real experiment TODO: give it the full state vector
         y_tip_noisy = y_centered_tip + eps_noise * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
 
+        # Todo: Include this observations without delay embedding
         # Update tracked observation
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
@@ -222,7 +223,8 @@ class TestMPCNode(Node):
                 self.latest_y = jnp.flip(y_tip_noisy[-(self.n_delay+1):].T, 1).T.flatten()
             else:
                 # Otherwise we concatenate the new observations with the old ones
-                self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(), self.latest_y[:(self.n_delay+1-N_new_obs)*self.model.n_z]])
+                self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(),
+                                                 self.latest_y[:(self.n_delay + 1 - N_new_obs) * self.model.n_z]])
 
     def initialize_csv(self):
         """

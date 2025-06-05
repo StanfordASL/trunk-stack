@@ -65,10 +65,9 @@ class MPCSolverNode(Node):
     Defines a service provider node that will run the GuSTO MPC implementation.
     """
 
-    def __init__(self, model, delay_emb_state, config, x0, t=None, dt=None, z=None, u=None, zf=None,
+    def __init__(self, model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
                  U=None, X=None, Xf=None, dU=None, **kwargs):
         self.model = model
-        self.delay_emb_state = delay_emb_state
 
         shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
         num_delay = self.model.ssm.specified_params["embedding_up_to"]
@@ -101,6 +100,7 @@ class MPCSolverNode(Node):
         self.xopt, self.uopt, _, _ = self.gusto.get_solution()
         self.topt = self.dt * jnp.arange(self.N + 1)
 
+        self.u_prev0 = None
         # Also force JIT-compilation of encoder mapping and conversions
         model.encode(jnp.zeros(self.model.n_y))
 
@@ -129,23 +129,27 @@ class MPCSolverNode(Node):
         
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
 
-        # 2) Update compounded state
-        x_state, u_state = y0[:-self.n_u], y0[-self.n_u:]
+        num_blocks = self.model.ssm.specified_params["embedding_up_to"] + 1
+        block_size = self.model.n_y // num_blocks
+        y0_blocks = y0.reshape((num_blocks, block_size))
 
-        u_state /= 80  # The model was using data /80
+        state_part = y0_blocks[:, : (block_size - self.n_u)]
+        u_part = y0_blocks[:, (block_size - self.n_u):]
+        u_part_scaled = u_part / 80.0
 
-        self.delay_emb_state.update_state(x_state, u_state)
+        y0_scaled = jnp.concatenate([state_part, u_part_scaled], axis=1)
+        y0 = y0_scaled.reshape((self.model.n_y,))
 
-        x0 = self.model.encode(self.delay_emb_state.get_current_state())
+        x0 = self.model.encode(y0)
 
         # TODO: In contrast to my previous script request.u0 might not be a list -> debug this
-        if len(request.u0) == 0:
-            u_prev0 = jnp.zeros((self.n_u,))
+        if self.u_prev0 is None:
+            self.u_prev0 = jnp.zeros((self.n_u,))
         else:
-            u_prev0 = request.u0 / 80
+            self.u_prev0 = request.u0 / 80
 
         if self.u_ref_init.shape[0] >= self.n_u:
-            self.u_ref_init = jnp.concatenate([u_prev0, self.u_ref_init[:-self.n_u]], axis=0)
+            self.u_ref_init = jnp.concatenate([self.u_prev0, self.u_ref_init[:-self.n_u]], axis=0)
 
         x0 = jnp.concatenate([x0, self.u_ref_init], axis=0)
 
