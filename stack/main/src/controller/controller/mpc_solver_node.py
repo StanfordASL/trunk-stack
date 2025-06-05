@@ -10,7 +10,7 @@ from .mpc.gusto import GuSTO
 import numpy as np
 
 
-def run_mpc_solver_node(model, delay_emb_state, config, x0, t=None, dt=None, z=None, u=None, zf=None,
+def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
                        U=None, X=None, Xf=None, dU=None, init_node=False, **kwargs):
     """
     Function that builds a ROS node to run MPC and runs it continuously. This node
@@ -37,7 +37,7 @@ def run_mpc_solver_node(model, delay_emb_state, config, x0, t=None, dt=None, z=N
     assert t is not None or dt is not None, "Either t array or dt must be provided."
     if init_node:
         rclpy.init()
-    node = MPCSolverNode(model, delay_emb_state, config, x0, t=t, dt=dt, z=z, u=u, zf=zf, U=U, X=X, Xf=Xf, dU=dU,
+    node = MPCSolverNode(model, config, x0, t=t, dt=dt, z=z, u=u, zf=zf, U=U, X=X, Xf=Xf, dU=dU,
                          **kwargs)
     rclpy.spin(node)
     rclpy.shutdown()
@@ -120,7 +120,7 @@ class MPCSolverNode(Node):
 
         t, xopt, uopt, zopt
         """
-        # TODO: Make sure that y0 truly contains the correct state vector
+        # TODO: y0 contains the delay embedded state vector as an array
         t0 = request.t0
         if t0 > self.t[-1]:
             response.done = True
