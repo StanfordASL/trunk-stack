@@ -1,7 +1,6 @@
 import os
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
-import yaml
 
 import jax
 import jax.numpy as jnp
@@ -12,11 +11,13 @@ from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
 from .utils.models import control_SSMR
 from .utils.misc import HyperRectangle
 from .delay_embedded_state import DelayEmbeddedState
+from .reference_generator import ReferenceTrajectoryGenerator
 
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
 
+run_on_pauls_computer = True
 
 class MPCInitializerNode(Node):
     """
@@ -38,7 +39,20 @@ class MPCInitializerNode(Node):
                 "U_constraint": 0.15,
                 "dU_constraint": 0.01,
                 "N": 12,
-                "dt": 0.01
+                "dt": 0.02
+            },
+            "trajectory": {
+                "type": "eight",  # Options: "circle", "eight", "pacman", "flower"
+                "duration": 10.0,  # Duration of the simulation in seconds
+                "speed": 0.5,  # Angular speed (rad/s)
+                "include_velocity": False,
+                "parameters": {
+                    "center": [0.0, 0.0],  # Center of the (x,y) trajectory
+                    "radius": 0.04,  # [m]  For "circle" and "pacman"
+                    "amplitude": 0.10,  # [m]  For "eight"
+                    "z_level": 0.025,  # [m]  Constant z-coordinate
+                    "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
+                }
             },
             "delay_embedding": {
                 "perf_var_dim": 3,
@@ -47,21 +61,26 @@ class MPCInitializerNode(Node):
             "model": "first_mpc_model_real_trunk.pkl"
         }
 
-        mpc_config, self.delay_config = config["mpc"], config["delay_embedding"]
+        mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
 
         self.debug = self.get_parameter('debug').value
         self.model_name = config["model"]
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+
+        if run_on_pauls_computer:
+            self.data_dir = os.getenv('TRUNK_DATA', '/Users/paulleonardwolff/Desktop/trunk-stack/stack/main/data')
+        else:
+            self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Load the model
         self._load_model()
 
         # 3) figure out measurement dims for delay embedding
         meas_var_dim = len([x - 1 for x in self.model.ssm.specified_params["measured_rows"] if x <= 18])
-        meas_var_dim = meas_var_dim
         num_u = self.model.ssm.specified_params["num_u"]
         embedding_up_to = self.model.ssm.specified_params["embedding_up_to"]
         include_velocity = bool(self.model.ssm.specified_params["include_velocity"])
+        shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
+        pad_length = self.model.n_u * ((1 + shift) * embedding_up_to - shift)
 
         # 4) initial DelayEmbeddedState -> not used downstream...only to now initialize
         delay_emb_state = DelayEmbeddedState(
@@ -73,15 +92,15 @@ class MPCInitializerNode(Node):
         )
 
         # Generate reference trajectory
-        dt = 0.02
-        z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.03)
+        dt = mpc_config["dt"]
+        # z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.03)
+
+        self.ref_traj = ReferenceTrajectoryGenerator(traj_config, mpc_config["dt"])
+        self.ref_traj.sample_trajectory(traj_config["duration"])
 
         # 6) build warm-start arrays
-        x0_red = self.model.encode(jnp.array(delay_emb_state.get_current_state()))
-        shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
-        num_delay = embedding_up_to
-        pad_length = self.model.n_u * ((1 + shift) * num_delay - shift)
         u_ref_init = jnp.zeros((pad_length,))
+        x0_red = self.model.encode(jnp.array(delay_emb_state.get_current_state()))
         x0_red_u_init = jnp.concatenate([x0_red, u_ref_init], axis=0)
 
         # 7) Build the cost matrices for the MPC controller
@@ -107,20 +126,20 @@ class MPCInitializerNode(Node):
         )
 
         # 9) input constraints
-        uc = self.config["U_constraint"]
+        uc = mpc_config["U_constraint"]
         if uc is None or str(uc).lower() == 'none':
             u = None
         else:
             u = HyperRectangle([float(uc)] * self.model.n_u, [-float(uc)] * self.model.n_u)
 
-        duc = self.config["dU_constraint"]
+        duc = mpc_config["dU_constraint"]
         if duc is None or str(duc).lower() == 'none':
             du = None
         else:
             du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
 
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red_u_init, t=t, dt=dt,
-                                                   z=z_ref, U=u, dU=du, solver="GUROBI")
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red_u_init, dt=dt,
+                                                   ref_traj=self.ref_traj, U=u, dU=du, solver="GUROBI")
 
     def _load_model(self):
         """
