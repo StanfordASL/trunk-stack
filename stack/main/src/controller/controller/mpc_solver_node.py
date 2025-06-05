@@ -182,7 +182,7 @@ class MPCSolverNode(Node):
         self.x_init = x_init_temp
 
         # Update LOCP parameter with the previously applied control
-        self.gusto.locp.u0_prev.value = np.asarray(request.u0 / 80)
+        self.gusto.locp.u0_prev.value = np.asarray(request.u0) / 80
 
         # Solve GuSTO and get solution
         # self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
