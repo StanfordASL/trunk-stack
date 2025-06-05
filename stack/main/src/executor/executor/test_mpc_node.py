@@ -81,7 +81,7 @@ class TestMPCNode(Node):
 
         # Load the model
         self._load_model()
-        self.n_delay = self.model.n_y // self.model.n_z - 1 
+        self.n_delay = self.model.ssm.specified_params["embedding_up_to"]  # self.model.n_y // self.model.n_z - 1
 
         # Initialize the CSV file
         self.results_file = os.path.join(self.data_dir, f"trajectories/test_mpc/{self.results_name}.csv")
@@ -167,6 +167,7 @@ class TestMPCNode(Node):
         else:
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations(eps_noise=0)
+            # self.latest_y should be the delay embedded state vector
             self.send_request(self.t0, self.latest_y, self.uopt_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
