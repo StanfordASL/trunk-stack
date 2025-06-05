@@ -73,6 +73,7 @@ class MPCSolverNode(Node):
         num_delay = self.model.ssm.specified_params["embedding_up_to"]
         pad_length = self.model.ssm.specified_params["num_u"] * ((1 + shift) * num_delay - shift)
         self.u_ref_init = jnp.zeros((pad_length,))
+        print("dt is: ", dt)
 
         if dt is not None:
             self.dt = dt

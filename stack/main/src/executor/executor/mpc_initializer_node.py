@@ -17,7 +17,7 @@ logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
 
-run_on_pauls_computer = False
+run_on_pauls_computer = True
 
 
 class MPCInitializerNode(Node):
@@ -94,11 +94,11 @@ class MPCInitializerNode(Node):
         )
 
         # Generate reference trajectory
-        dt = mpc_config["dt"]
         # z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.03)
 
         self.ref_traj = ReferenceTrajectoryGenerator(traj_config, mpc_config["dt"])
         self.ref_traj.sample_trajectory(traj_config["duration"])
+        self.times = self.ref_traj.times
 
         # 6) build warm-start arrays
         u_ref_init = jnp.zeros((pad_length,))
@@ -140,7 +140,7 @@ class MPCInitializerNode(Node):
         else:
             du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
 
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red_u_init, dt=dt,
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red_u_init, t=self.times, dt=mpc_config["dt"],
                                                    ref_traj=self.ref_traj, U=u, dU=du, solver="OSQP")  # Was GUROBI
 
     def _load_model(self):

@@ -14,6 +14,7 @@ class ReferenceTrajectoryGenerator:
         self.include_velocity = traj_config.get("include_velocity", True)
         self.trajectory = None  # Will hold the pre-sampled trajectory if requested.
         self.dt = dt
+        self.times = None
 
     def _init_flower_resampling(self):
         """Precompute equidistant star points & velocities for one full cycle."""
@@ -204,8 +205,8 @@ class ReferenceTrajectoryGenerator:
         Returns:
             np.ndarray: Array of shape (num_samples, d) where d is 3 or 6.
         """
-        times = np.arange(0, total_duration + self.dt, self.dt)
-        traj = [self.compute_point(t) for t in times]
+        self.times = np.arange(0, total_duration + self.dt, self.dt)
+        traj = [self.compute_point(t) for t in self.times]
         self.trajectory = np.array(traj)
         return self.trajectory
 

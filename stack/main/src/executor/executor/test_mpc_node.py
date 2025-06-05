@@ -13,6 +13,7 @@ from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
 from .utils.models import control_SSMR
 
+run_on_pauls_computer = True
 
 @jax.jit
 def check_control_inputs(u_opt, u_opt_previous):
@@ -71,7 +72,12 @@ class TestMPCNode(Node):
         self.model_name = config["model"]
 
         self.results_name = self.get_parameter('results_name').value
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        # self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+
+        if run_on_pauls_computer:
+            self.data_dir = os.getenv('TRUNK_DATA', '/Users/paulleonardwolff/Desktop/trunk-stack/stack/main/data')
+        else:
+            self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Load the model
         self._load_model()
