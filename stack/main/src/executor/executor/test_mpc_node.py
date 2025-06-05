@@ -3,7 +3,7 @@ import csv
 import jax
 import jax.numpy as jnp
 import logging
-import yaml
+
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
@@ -252,6 +252,7 @@ def main(args=None):
     rclpy.spin(test_mpc_node)
     test_mpc_node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
