@@ -15,8 +15,8 @@ class GuSTOConfig:
     """
     GuSTOConfig class for storing GuSTO parameters.
     """
-    x_char: jnp.ndarray  # characteristic quantities for x, for scaling
-    f_char: jnp.ndarray  # characteristic quantities for f, for scaling
+    x_char: jnp.ndarray                 # characteristic quantities for x, for scaling
+    f_char: jnp.ndarray                 # characteristic quantities for f, for scaling
     Qz: jnp.ndarray                     # positive semi-definite performance variable weighting matrix
     Qzf: jnp.ndarray                    # positive semi-definite terminal performance variable weighting matrix
     R: jnp.ndarray                      # positive definite control weighting matrix
@@ -40,7 +40,7 @@ class GuSTOConfig:
     warm_start: bool = True             # warm start the solver
 
 
-class GuSTO_base:
+class GuSTO:
     """
     GuSTO class for solving trajectory optimization problems via SQP.
 
@@ -59,7 +59,6 @@ class GuSTO_base:
     :kwargs: Keyword arguments for the solver
     (https://osqp.org/docs/interfaces/solver_settings.html)
     """
-
     def __init__(self, model, config, x0, u_init, x_init,
                  z=None, u=None, zf=None, U=None, X=None, Xf=None, dU=None,
                  **kwargs):
@@ -276,7 +275,7 @@ class GuSTO_base:
         t_gusto = time.time() - t0
         if omega > self.omega_max:
             print('omega > omega_max, solution did not converge')
-        if not self._is_valid_iteration(itr - 1):
+        if not self._is_valid_iteration(itr-1):
             print('Max iterations, solution did not converge')
         else:
             print('Solved in {} iterations/{:.3f} seconds, with {:.3f} s from LOCP solve'.format(itr, t_gusto, t_locp))
@@ -328,7 +327,6 @@ class GuSTO_base:
 
         def inside_region(_):
             return 0.0, True
-
         return jax.lax.cond(max_diff - delta > self.epsilon, outside_region, inside_region, operand=None)
 
     @partial(jax.jit, static_argnums=(0,))
@@ -337,7 +335,6 @@ class GuSTO_base:
         For GuSTO, state constraints get enforced as penalties, not as strict constraints. Computes whether the state
         constraints are within a user-chosen tolerance epsilon.
         """
-
         def compute_violation(x_row):
             return self.X.get_constraint_violation(x_row)
 
@@ -362,14 +359,48 @@ class GuSTO_base:
         Compute the model accuracy for the given state and control inputs.
         """
 
+        def rewrite_augmented(x_tilde, u_current):
+            """
+            Rewrites the augmented state and control quantities.
+            """
+            if self.model.ssm.specified_params["embedding_up_to"] == 0:
+                u_ref_ext = jnp.vstack([jnp.zeros((self.model.n_y - u_current.shape[0], 1)),
+                                        -self.model.ssm.lam @ u_current.reshape(-1, 1)]).flatten()
+                return x_tilde, u_ref_ext
+            else:
+                x_part = x_tilde[:self.model.n_x]
+                u_past = x_tilde[self.model.n_x:]
+                u_past_shifted = u_past.reshape(-1, self.model.n_u)
+
+                # Recreate an extended control signal u_ref_ext in the same way as in discrete_dynamics:
+                u_ref_ext = jnp.vstack(
+                    [jnp.vstack([jnp.zeros((len(self.model.ssm.specified_params["measured_rows"]), 1)),
+                                 -self.model.ssm.lam @ u_current.reshape(-1, 1)])] +
+                    [jnp.vstack([jnp.zeros((len(self.model.ssm.specified_params["measured_rows"]), 1)),
+                                 -self.model.ssm.lam @ u_past_shifted[i].reshape(-1, 1)])
+                     for i in range(0, u_past_shifted.shape[0],
+                                    (1 + self.model.ssm.specified_params["shift_steps"]))]).flatten()
+
+                return x_part, u_ref_ext
+
         def body_fn(i, state):
             error, approx = state
-            fk = self.model.continuous_dynamics(x_k[i, :], u_k[i, :])
-            Ak, Bk = jax.jacfwd(self.model.continuous_dynamics, argnums=(0, 1))(x_k[i, :], u_k[i, :])
-            f = self.model.continuous_dynamics(x[i, :], u[i, :])
-            f_approx = fk + Ak @ (x[i, :] - x_k[i, :]) + Bk @ (u[i, :] - u_k[i, :])
-            error += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale, f - f_approx), 2)
-            approx += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale, f_approx), 2)
+            # Compute the dynamics of the nominal trajectory using the rewritten quantities:
+            x_k_part, u_k_ref_ext = rewrite_augmented(x_k[i, :], u_k[i, :])
+            # Compute the Jacobians at the nominal point (with respect to the original augmented inputs).
+            Ak, Bk = jax.jacfwd(self.model.continuous_dynamics, argnums=(0, 1))(
+                x_k_part, u_k_ref_ext
+            )
+            x_part, u_ref_ext = rewrite_augmented(x[i, :], u[i, :])
+
+            # Compute the true dynamics and the approximated ones:
+            f = self.model.continuous_dynamics(x_part, u_ref_ext)
+            fk = self.model.continuous_dynamics(x_k_part, u_k_ref_ext)
+
+            f_approx = fk + Ak @ (x_part - x_k_part) + Bk @ (u_ref_ext - u_k_ref_ext)
+
+            error += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale[:self.model.n_x], f - f_approx), 2)
+            approx += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale[:self.model.n_x], f_approx), 2)
             return error, approx
 
         error, approx = jax.lax.fori_loop(0, x.shape[0] - 1, body_fn, (0.0, 0.0))
@@ -403,8 +434,7 @@ class GuSTO_base:
         Wrapper method that calls self.model.get_dynamics_linearizations if it exists,
         otherwise it calls the local method _perform_dynamics_linearization.
         """
-        if hasattr(self.model, 'get_dynamics_linearizations') and callable(
-                getattr(self.model, 'get_dynamics_linearizations')):
+        if hasattr(self.model, 'get_dynamics_linearizations') and callable(getattr(self.model, 'get_dynamics_linearizations')):
             return self.model.get_dynamics_linearizations(x, u)
         else:
             return self._perform_dynamics_linearization(x, u)
@@ -414,68 +444,7 @@ class GuSTO_base:
         Wrapper method that calls self.model.get_perf_mapping_linearizations if it exists,
         otherwise it calls the local method _perform_perf_mapping_linearization.
         """
-        if hasattr(self.model, 'get_perf_mapping_linearizations') and callable(
-                getattr(self.model, 'get_perf_mapping_linearizations')):
+        if hasattr(self.model, 'get_perf_mapping_linearizations') and callable(getattr(self.model, 'get_perf_mapping_linearizations')):
             return self.model.get_perf_mapping_linearizations(x)
         else:
             return self._perform_perf_mapping_linearization(x)
-
-
-class GuSTO(GuSTO_base):
-    @partial(jax.jit, static_argnums=(0,))
-    def _compute_accuracy(self, x_k, u_k, x, u, J):
-        """
-        Compute the model accuracy for the given state and control inputs.
-        """
-
-        def rewrite_augmented(x_tilde, u_current):
-            """
-            Rewrites the augmented state and control quantities.
-            """
-            if self.model.ssm.specified_params["embedding_up_to"] == 0:
-                u_ref_ext = jnp.vstack([jnp.zeros((self.model.n_y - u_current.shape[0], 1)),
-                                        -self.model.ssm.lam @ u_current.reshape(-1, 1)]).flatten()
-                return x_tilde, u_ref_ext
-            else:
-                x_part = x_tilde[:self.model.n_x]
-                u_past = x_tilde[self.model.n_x:]
-                u_past_shifted = u_past.reshape(-1, self.model.n_u)
-
-                # Recreate an extended control signal u_ref_ext in the same way as in discrete_dynamics:
-                u_ref_ext = jnp.vstack(
-                    [jnp.vstack([jnp.zeros((len(self.model.ssm.specified_params["measured_rows"]), 1)),
-                                 -self.model.ssm.lam @ u_current.reshape(-1, 1)])] +
-                    [jnp.vstack([jnp.zeros((len(self.model.ssm.specified_params["measured_rows"]), 1)),
-                                 -self.model.ssm.lam @ u_past_shifted[i].reshape(-1, 1)])
-                     for i in
-                     range(0, u_past_shifted.shape[0], (1 + self.model.ssm.specified_params["shift_steps"]))]
-                ).flatten()
-
-                # u_flat = u_current.flatten()
-                # u_past_flat = u_past[:-self.model.n_u].flatten()
-                # u_stacked = jnp.concatenate([u_flat, u_past_flat])
-                return x_part, u_ref_ext
-
-        def body_fn(i, state):
-            error, approx = state
-            # Compute the dynamics of the nominal trajectory using the rewritten quantities:
-            x_k_part, u_k_ref_ext = rewrite_augmented(x_k[i, :], u_k[i, :])
-            # Compute the Jacobians at the nominal point (with respect to the original augmented inputs).
-            Ak, Bk = jax.jacfwd(self.model.continuous_dynamics, argnums=(0, 1))(
-                x_k_part, u_k_ref_ext
-            )
-            x_part, u_ref_ext = rewrite_augmented(x[i, :], u[i, :])
-
-            # Compute the true dynamics and the approximated ones:
-            f = self.model.continuous_dynamics(x_part, u_ref_ext)
-            fk = self.model.continuous_dynamics(x_k_part, u_k_ref_ext)
-
-            f_approx = fk + Ak @ (x_part - x_k_part) + Bk @ (u_ref_ext - u_k_ref_ext)
-
-            error += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale[:self.model.n_x], f - f_approx), 2)
-            approx += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale[:self.model.n_x], f_approx), 2)
-            return error, approx
-
-        error, approx = jax.lax.fori_loop(0, x.shape[0] - 1, body_fn, (0.0, 0.0))
-        rho_k = error / (J + approx)
-        return rho_k

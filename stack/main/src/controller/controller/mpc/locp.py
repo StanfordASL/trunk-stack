@@ -2,19 +2,18 @@
 LOCP (Linear Optimal Control Problem) implementation, adopted from original GuSTO code.
 """
 
+import time
+import scipy.sparse as sp
+import jax.numpy as jnp
 import cvxpy as cp
 import numpy as np
 from scipy.linalg import block_diag
 from functools import partial
 from cvxpy.atoms.affine.reshape import reshape as cvxpy_reshape
 reshape = partial(cvxpy_reshape, order='F')  # future proof
-import time
-import scipy.sparse as sp
-import jax
-import jax.numpy as jnp
 
 
-class LOCP_base:
+class LOCP:
     """
     Linear Optimal Control Problem (LOCP) class for MPC.
 
@@ -64,14 +63,14 @@ class LOCP_base:
         # Build CVX problem
         self.x = cp.Variable((self.N + 1) * self.n_x)
         self.u = cp.Variable(self.N * self.n_u)
-        
+
         # Trust region slack variable
-        self.tr_active = kwargs.pop('is_tr_active', True) 
+        self.tr_active = kwargs.pop('is_tr_active', True)
         if self.tr_active:
             self.st = cp.Variable(self.N + 1)
         else:
             self.st = None
-        
+
         # Solver arguments
         self.solver_args = kwargs
         if not 'solver' in self.solver_args:
@@ -105,7 +104,7 @@ class LOCP_base:
                 self.zf = cp.Parameter(self.n_z)
 
             # Extra parameter for the previously applied input, will be updated each time
-            self.u0_prev = cp.Parameter(self.n_u, value=np.zeros(self.n_u))  
+            self.u0_prev = cp.Parameter(self.n_u, value=np.zeros(self.n_u))
 
             self._problem_setup()
             print('First solve may take a while due to factorization and caching.')
@@ -286,88 +285,6 @@ class LOCP_base:
                 J += cp.quad_form(u_diff, R_du_full)
 
         return J
-
-    def _set_constraints(self):
-        constr = []
-
-        # Dynamics constraints
-        if self.warm_start:
-            Adfull = []
-            for j in range(self.N):
-                cur = [np.zeros((self.n_x, self.n_x))] * self.N
-                cur[j] = self.Ad[j]
-                Adfull.append(cur)
-            Adfull = cp.bmat(Adfull)
-
-            Bdfull = []
-            for j in range(self.N):
-                cur = [np.zeros((self.n_x, self.n_u))] * self.N
-                cur[j] = self.Bd[j]
-                Bdfull.append(cur)
-            Bdfull = cp.bmat(Bdfull)
-        else:
-            Adfull = block_diag(*self.Ad)
-            Bdfull = block_diag(*self.Bd)
-
-        constr += [self.x[self.n_x:] == Adfull @ self.x[:-self.n_x] + Bdfull @ self.u + self.dd]
-
-        # Trust region constraints
-        if self.tr_active:
-            X_scale = self.x_scale.reshape(-1, 1).repeat(self.N + 1, axis=1)
-            dx = reshape(self.x, (self.n_x, self.N + 1)) - self.xk.T
-            dx_scaled = cp.multiply(X_scale, dx)
-            constr += [cp.norm(dx_scaled, 'inf', axis=0) <= self.delta + self.st]
-
-            # Slack variable positivity
-            constr += [self.st >= 0]
-
-        # Control constraints
-        if self.U is not None:
-            UAfull = block_diag(*[self.U.A for j in range(self.N)])
-            Ubfull = np.tile(self.U.b, self.N)
-            constr += [UAfull @ self.u <= Ubfull]
-
-        if self.dU is not None:
-            dUAfull = block_diag(*[self.dU.A for j in range(self.N - 1)])
-            dUbfull = np.tile(self.dU.b, self.N - 1)
-            constr += [dUAfull @ (self.u[self.n_u:] - self.u[:-self.n_u]) <= dUbfull]
-
-        # State constraints
-        if self.X is not None:
-            if self.nonlinear_perf_mapping:
-                cdfull = np.reshape(self.cd, ((self.N + 1) * self.n_z,)) if isinstance(self.cd, list) else \
-                    reshape(self.cd, ((self.N + 1) * self.n_z,))
-                if self.warm_start:
-                    Hfull = []
-                    for j in range(self.N):
-                        cur = [np.zeros((self.n_z, self.n_x))] * self.N
-                        cur[j] = self.Hd[j + 1]
-                        Hfull.append(cur)
-                    Hfull = cp.bmat(Hfull)
-                else:
-                    Hfull = block_diag(*[self.Hd[j + 1] for j in range(self.N)])
-
-                # Take only last N of cdfull
-                cdfull = cdfull[self.n_z:]
-                XAfull = block_diag(*[self.X.A for j in range(self.N)]) @ Hfull
-                Xbfull = np.tile(self.X.b, self.N) - block_diag(*[self.X.A for j in range(self.N)]) @ cdfull
-                constr += [XAfull @ self.x[self.n_z:] <= Xbfull]
-            else:
-                XAfull = block_diag(*[self.X.A for j in range(self.N)])
-                Xbfull = np.tile(self.X.b, self.N)
-                constr += [XAfull @ self.x[self.n_x:] <= Xbfull]
-
-        # Terminal constraints
-        if self.Xf is not None:
-            constr += [self.Xf.A @ self.x[-self.n_x:] <= self.Xf.b]
-
-        # Initial condition
-        constr += [self.x[:self.n_x] == self.x0]
-
-        return constr
-
-
-class LOCP(LOCP_base):
 
     def _set_constraints(self):
         constr = []

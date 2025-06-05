@@ -65,8 +65,8 @@ class MPCSolverNode(Node):
     Defines a service provider node that will run the GuSTO MPC implementation.
     """
 
-    def __init__(self, model, config, x0, t=None, dt=None, ref_traj=None, u=None, zf=None,
-                 U=None, X=None, Xf=None, dU=None, **kwargs):
+    def __init__(self, model, config, x0, t=None, dt=None, ref_traj=None, u=None,
+                 U=None, dU=None, **kwargs):
         self.model = model
 
         shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
@@ -96,14 +96,28 @@ class MPCSolverNode(Node):
         self.u_init = jnp.zeros((config.N, self.model.n_u))
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
-        self.gusto = GuSTO(model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N + 1],
-                           zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, X=X, Xf=Xf, dU=dU, **kwargs)
+        # DEBUGGING:
+
+        # print("self.model: ", self.model)
+        # print("config ", config)
+        # print("x0 ", x0)
+        # print("self.u_init: ", self.u_init)
+        # print("self.x_init: ", self.x_init)
+        # print("U: ", U)
+        # print("X: ", X)
+        # print("Xf: ", Xf)
+        # print("dU: ", dU)
+        # print(kwargs)
+
+        self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1],
+                           zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)
+
         self.xopt, self.uopt, _, _ = self.gusto.get_solution()
         self.topt = self.dt * jnp.arange(self.N + 1)
 
         self.u_prev0 = None
         # Also force JIT-compilation of encoder mapping and conversions
-        model.encode(jnp.zeros(self.model.n_y))
+        self.model.encode(jnp.zeros(self.model.n_y))
 
         # Initialize the ROS node
         super().__init__('mpc_solver_node')
@@ -152,7 +166,7 @@ class MPCSolverNode(Node):
         if self.u_ref_init.shape[0] >= self.model.n_u:
             self.u_ref_init = jnp.concatenate([self.u_prev0, self.u_ref_init[:-self.model.n_u]], axis=0)
 
-        x0 = jnp.concatenate([x0, self.u_ref_init], axis=0)
+        x0_aug = jnp.concatenate([x0, self.u_ref_init], axis=0)
 
         # Get target values at proper times by interpolating
         # z, zf, u = self.get_target(t0)
@@ -186,7 +200,7 @@ class MPCSolverNode(Node):
 
         # Solve GuSTO and get solution
         # self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
-        self.gusto.solve(x0, self.u_init, self.x_init, z=ref_window, zf=ref_window[-1])
+        self.gusto.solve(x0_aug, self.u_init, self.x_init, z=ref_window, zf=ref_window[-1])
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
         self.xopt = self.xopt[:, :self.model.n_x]  # Extract the non augmented part
 

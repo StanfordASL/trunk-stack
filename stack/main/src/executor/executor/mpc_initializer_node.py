@@ -19,6 +19,7 @@ jax.config.update("jax_enable_x64", True)
 
 run_on_pauls_computer = True
 
+
 class MPCInitializerNode(Node):
     """
     This node initializes all that is needed for MPC.
@@ -58,6 +59,7 @@ class MPCInitializerNode(Node):
                 "perf_var_dim": 3,
                 "also_embedd_u": True
             },
+            # "model": "sim_origin_best.pkl"
             "model": "first_mpc_model_real_trunk.pkl"
         }
 
@@ -139,7 +141,7 @@ class MPCInitializerNode(Node):
             du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
 
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red_u_init, dt=dt,
-                                                   ref_traj=self.ref_traj, U=u, dU=du, solver="GUROBI")
+                                                   ref_traj=self.ref_traj, U=u, dU=du, solver="OSQP")  # Was gurobi
 
     def _load_model(self):
         """
