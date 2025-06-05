@@ -13,7 +13,7 @@ from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
 from .utils.models import control_SSMR
 
-run_on_pauls_computer = True
+run_on_pauls_computer = False
 
 @jax.jit
 def check_control_inputs(u_opt, u_opt_previous):
@@ -116,9 +116,18 @@ class TestMPCNode(Node):
         # Initialize by calling mpc callback function
         self.mpc_executor_callback()
 
+
+        embedding_up_to = self.model.ssm.specified_params["embedding_up_to"]
+        shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
+        pad_length = self.model.n_u * ((1 + shift) * embedding_up_to - shift)
+        u_ref_init = jnp.zeros((pad_length,))
+
+        x0_red_u_init = jnp.concatenate([jnp.zeros(self.model.n_x), u_ref_init], axis=0)
         # JIT compile couple of functions
         check_control_inputs(jnp.zeros(self.model.n_u), self.uopt_previous)
-        self.model.rollout(jnp.zeros(self.model.n_x), jnp.zeros((1, self.model.n_u)))
+        
+        self.model.rollout(x0_red_u_init, jnp.zeros((1, self.model.n_u)))
+
         self.model.decode(jnp.zeros(self.model.n_x))
 
         # Create timer to execute MPC at fixed frequency
@@ -208,6 +217,9 @@ class TestMPCNode(Node):
         """
         # Figure out what predictions to use for observations update
         idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
+
+        print("Shape of uopt:", self.uopt.shape)  # Shape is correct
+        print("Shape of x0:", self.x0.shape)
         x_predicted = self.model.rollout(self.x0, self.uopt)
         y_predicted = self.model.decode(x_predicted.T).T
         y_centered_tip = y_predicted[:idx0+1, :self.model.n_z]

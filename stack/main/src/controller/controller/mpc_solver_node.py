@@ -95,10 +95,10 @@ class MPCSolverNode(Node):
         """
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
+        print("Shape of x0: ", x0.shape)
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
         # DEBUGGING:
-
         # print("self.model: ", self.model)
         # print("config ", config)
         # print("x0 ", x0)

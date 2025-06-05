@@ -3,7 +3,11 @@ Reduced order models of controlled systems.
 """
 import os
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+import executor.utils.model_classes.control_origin_ssm as patched_module
+import executor.utils.model_classes.mappings as patched_module2
+sys.modules['model_classes.control_origin_ssm'] = patched_module
+sys.modules['model_classes.mappings'] = patched_module2
+sys.path.append(os.path.join(os.path.dirname(__file__)))
 
 import pickle
 import jax
@@ -135,6 +139,9 @@ class control_SSMR(ReducedOrderModel):
                 [jnp.vstack([jnp.zeros((len(self.ssm.specified_params["measured_rows"]), 1)), -self.ssm.lam @ u_past_shifted[i].reshape(-1, 1)])
                  for i in range(0, u_past_shifted.shape[0], (1 + self.ssm.specified_params["shift_steps"]))]
             ).flatten()
+            # DEBUGGUING
+            print("Shape of u_ref_ext: ", u_ref_ext.shape)
+            print("Shape of u_past_shifted: ", u_past_shifted.shape)
             u_flat = u.flatten()  # Shape (2,)
             u_past_flat = u_past[:-self.n_u].flatten()  # Shape (8,)
             u_stacked = jnp.concatenate([u_flat, u_past_flat])
