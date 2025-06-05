@@ -11,7 +11,7 @@ import numpy as np
 
 
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=None, zf=None,
-                       U=None, X=None, Xf=None, dU=None, init_node=False, solver="GUROBI"):
+                       U=None, X=None, Xf=None, dU=None, init_node=False, **kwargs):
     """
     Function that builds a ROS node to run MPC and runs it continuously. This node
     provides a service that at each query will run MPC once.
@@ -38,7 +38,7 @@ def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=Non
     if init_node:
         rclpy.init()
     node = MPCSolverNode(model, config, x0, t=t, dt=dt, ref_traj=ref_traj, u=u, zf=zf, U=U, X=X, Xf=Xf, dU=dU,
-                         solver="GUROBI")
+                         **kwargs)
     rclpy.spin(node)
     rclpy.shutdown()
 
@@ -65,7 +65,7 @@ class MPCSolverNode(Node):
     Defines a service provider node that will run the GuSTO MPC implementation.
     """
 
-    def __init__(self, model, config, x0, t=None, dt=None, ref_traj=None, u=None,
+    def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None,
                  U=None, dU=None, **kwargs):
         self.model = model
 

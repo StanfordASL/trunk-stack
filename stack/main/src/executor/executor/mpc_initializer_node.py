@@ -141,7 +141,7 @@ class MPCInitializerNode(Node):
             du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
 
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red_u_init, dt=dt,
-                                                   ref_traj=self.ref_traj, U=u, dU=du, solver="OSQP")  # Was gurobi
+                                                   ref_traj=self.ref_traj, U=u, dU=du, solver="OSQP")  # Was GUROBI
 
     def _load_model(self):
         """
