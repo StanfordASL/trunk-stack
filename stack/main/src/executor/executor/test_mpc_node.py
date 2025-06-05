@@ -116,13 +116,12 @@ class TestMPCNode(Node):
         # Initialize by calling mpc callback function
         self.mpc_executor_callback()
 
-
         embedding_up_to = self.model.ssm.specified_params["embedding_up_to"]
         shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
         pad_length = self.model.n_u * ((1 + shift) * embedding_up_to - shift)
-        u_ref_init = jnp.zeros((pad_length,))
+        self.u_ref_init = jnp.zeros((pad_length,))
 
-        x0_red_u_init = jnp.concatenate([jnp.zeros(self.model.n_x), u_ref_init], axis=0)
+        x0_red_u_init = jnp.concatenate([jnp.zeros(self.model.n_x), self.u_ref_init], axis=0)
         # JIT compile couple of functions
         check_control_inputs(jnp.zeros(self.model.n_u), self.uopt_previous)
         
@@ -218,17 +217,21 @@ class TestMPCNode(Node):
         # Figure out what predictions to use for observations update
         idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
 
+        if self.u_ref_init.shape[0] >= self.model.n_u:
+            self.u_ref_init = jnp.concatenate([self.uopt[0], self.u_ref_init[:-self.model.n_u]], axis=0)
+
         print("Shape of uopt:", self.uopt.shape)  # Shape is correct
         print("Shape of x0:", self.x0.shape)
-        x_predicted = self.model.rollout(self.x0, self.uopt)
+        x0_aug = jnp.concatenate([self.x0, self.u_ref_init], axis=0)
+        # x_predicted = self.model.rollout(self.x0, self.uopt)
+        x_predicted = self.model.rollout(x0_aug, self.uopt)
         y_predicted = self.model.decode(x_predicted.T).T
-        y_centered_tip = y_predicted[:idx0+1, :self.model.n_z]
+        y_centered_tip = y_predicted[:idx0+1, :6]  # 6 is hardcoded for the measured state dimension
         N_new_obs = y_centered_tip.shape[0]
 
-        # Add noise to simulate real experiment TODO: give it the full state vector
+        # Add noise to simulate real experiment
         y_tip_noisy = y_centered_tip + eps_noise * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
 
-        # Todo: Include this observations without delay embedding
         # Update tracked observation
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
