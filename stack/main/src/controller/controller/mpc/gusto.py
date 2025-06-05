@@ -432,9 +432,9 @@ class GuSTO(GuSTO_base):
             """
             Rewrites the augmented state and control quantities.
             """
-            if self.model.aug_ssm.specified_params["embedding_up_to"] == 0:
+            if self.model.ssm.specified_params["embedding_up_to"] == 0:
                 u_ref_ext = jnp.vstack([jnp.zeros((self.model.n_y - u_current.shape[0], 1)),
-                                        -self.model.aug_ssm._lambda @ u_current.reshape(-1, 1)]).flatten()
+                                        -self.model.ssm.lam @ u_current.reshape(-1, 1)]).flatten()
                 return x_tilde, u_ref_ext
             else:
                 x_part = x_tilde[:self.model.n_x]
@@ -443,12 +443,12 @@ class GuSTO(GuSTO_base):
 
                 # Recreate an extended control signal u_ref_ext in the same way as in discrete_dynamics:
                 u_ref_ext = jnp.vstack(
-                    [jnp.vstack([jnp.zeros((len(self.model.aug_ssm.specified_params["measured_rows"]), 1)),
-                                 -self.model.aug_ssm._lambda @ u_current.reshape(-1, 1)])] +
-                    [jnp.vstack([jnp.zeros((len(self.model.aug_ssm.specified_params["measured_rows"]), 1)),
-                                 -self.model.aug_ssm._lambda @ u_past_shifted[i].reshape(-1, 1)])
+                    [jnp.vstack([jnp.zeros((len(self.model.ssm.specified_params["measured_rows"]), 1)),
+                                 -self.model.ssm.lam @ u_current.reshape(-1, 1)])] +
+                    [jnp.vstack([jnp.zeros((len(self.model.ssm.specified_params["measured_rows"]), 1)),
+                                 -self.model.ssm.lam @ u_past_shifted[i].reshape(-1, 1)])
                      for i in
-                     range(0, u_past_shifted.shape[0], (1 + self.model.aug_ssm.specified_params["shift_steps"]))]
+                     range(0, u_past_shifted.shape[0], (1 + self.model.ssm.specified_params["shift_steps"]))]
                 ).flatten()
 
                 # u_flat = u_current.flatten()
@@ -479,4 +479,3 @@ class GuSTO(GuSTO_base):
         error, approx = jax.lax.fori_loop(0, x.shape[0] - 1, body_fn, (0.0, 0.0))
         rho_k = error / (J + approx)
         return rho_k
-    
