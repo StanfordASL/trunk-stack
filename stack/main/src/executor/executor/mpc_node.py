@@ -96,9 +96,9 @@ class MPCNode(Node):
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # print debug messages
             ('n_z', 3),                                     # number of performance vars
-            ('n_u', 6),                                     # number of control inputs
-            ('n_obs', 3),                                   # 2D, 3D or 6D observations
-            ('n_delay', 3),                                 # number of delays applied to observations
+            ('n_u', 2),                                     # number of control inputs
+            ('n_obs', 6),                                   # 2D, 3D or 6D observations
+            ('n_delay', 4),                                 # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
@@ -132,7 +132,8 @@ class MPCNode(Node):
         self.block_size = self.n_obs + self.n_u
         self.n_y = self.block_size * (self.n_delay + 1)
 
-        assert self.n_y.shape == 40, "wrong n_y calculated"
+        print(f"n_y: {self.n_y}, n_obs: {self.n_obs}, n_delay: {self.n_delay}, block_size: {self.block_size}")
+        assert self.n_y == 40, "wrong n_y calculated"
 
         # Settled positions of the rigid bodies
         self.rest_position = jnp.array([0.09369193017482758, -0.1086554080247879, 0.09297813475131989,
