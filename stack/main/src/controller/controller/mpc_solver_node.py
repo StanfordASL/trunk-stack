@@ -95,10 +95,10 @@ class MPCSolverNode(Node):
         """
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
-        print("Shape of x0: ", x0.shape)
+        # print("Shape of x0: ", x0.shape)
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
-        print("Shape of x_init: ", self.x_init.shape)
+        # print("Shape of x_init: ", self.x_init.shape)
 
         # DEBUGGING:
         # print("self.model: ", self.model)
@@ -225,7 +225,7 @@ class MPCSolverNode(Node):
         self.x_init = x_init_temp
 
         # 8) Update the LOCP parameter for previous input
-        print("Shape of self.u_prev0:", self.u_prev0.shape)
+        # print("Shape of self.u_prev0:", self.u_prev0.shape)
         self.gusto.locp.u0_prev.value = self.u_prev0
 
         # 9) Solve GuSTO with the (possibly padded) reference

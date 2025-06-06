@@ -30,9 +30,9 @@ def check_control_inputs(u_opt, u_opt_previous):
     u2, u4 = u_opt[0], u_opt[1]
     # u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
-    # First we clip to max and min values
-    u2 = jnp.clip(u2, -tip_range, tip_range)
-    u4 = jnp.clip(u4, -tip_range, tip_range)
+    # First we clip to max and min values FOR SAVETY ONLY SEND 0 RIGHT NOW
+    u2 = 0  # jnp.clip(u2, -tip_range, tip_range)
+    u4 = 0  # jnp.clip(u4, -tip_range, tip_range)
 
     # Check the constraint: if the constraint is met, then keep previous control command
     u_opt = jnp.array([u2, u4])  # jnp.array([u1, u2, u3, u4, u5, u6]))
