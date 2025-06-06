@@ -138,14 +138,22 @@ class MPCSolverNode(Node):
 
         t, xopt, uopt, zopt
         """
-        # TODO: y0 contains the delay embedded state vector as an array
         t0 = request.t0
-        if t0 > self.t[-1]:
+
+        # 1) Compute the reference’s final time based on its length and dt
+        full_ref = np.array(self.ref_traj.eval())  # shape = (M, n_z)
+        M = full_ref.shape[0]
+        T_final = (M - 1) * self.dt
+
+        # 2) If t0 is beyond the last valid reference time, return done=True immediately
+        if t0 > T_final:
             response.done = True
+            return response
         else:
             response.done = False
-        
-        y0_np = np.array(request.y0)  # or jnp.array(request.y0)
+
+        # 3) Reconstruct y0 from the delayed embedding
+        y0_np = np.array(request.y0)  # purely for debugging or sanity checks
         print("Received request.y0 of shape:", y0_np.shape)
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
 
@@ -162,29 +170,45 @@ class MPCSolverNode(Node):
 
         x0 = self.model.encode(y0)
 
-        # TODO: In contrast to my previous script request.u0 might not be a list -> debug this
+        # 4) Recover previous control
         if self.u_prev0 is None:
             self.u_prev0 = np.zeros((self.model.n_u,))
         else:
-            self.u_prev0 = np.array(request.u0) / 80
+            self.u_prev0 = np.array(request.u0) / 80.0
 
+        # 5) Update u_ref_init by shifting in the previous input
         if self.u_ref_init.shape[0] >= self.model.n_u:
-            self.u_ref_init = jnp.concatenate([self.u_prev0, self.u_ref_init[:-self.model.n_u]], axis=0)
-
+            self.u_ref_init = jnp.concatenate(
+                [self.u_prev0, self.u_ref_init[:-self.model.n_u]],
+                axis=0
+            )
         x0_aug = jnp.concatenate([x0, self.u_ref_init], axis=0)
 
-        # Get target values at proper times by interpolating
-        # z, zf, u = self.get_target(t0)
-        ref_window = jnp.array(self.ref_traj.eval()[int(t0 * (1 / self.dt)):int(t0 * (1 / self.dt))+self.N+1])
+        # 6) Build ref_window of length (N+1) rows, padding with the last row if we run out
+        start_idx = int(t0 / self.dt)
+        end_idx = start_idx + (self.N + 1)
 
-        # Get initial guess
-        idx0 = jnp.searchsorted(self.topt, t0, side='right')
-        
-        # NOTE: time spent on getting initial condition is still out of proportion
+        if end_idx <= M:
+            # We still have at least (N+1) points remaining
+            slice_np = full_ref[start_idx:end_idx, :]  # shape = (N+1, n_z)
+        else:
+            # We are near the end; slice what remains, then pad
+            available = full_ref[start_idx:M, :]  # shape = (M - start_idx, n_z)
+            n_missing = (self.N + 1) - (M - start_idx)  # how many rows we’re short
+            last_row = full_ref[M - 1, :].reshape(1, -1)  # shape = (1, n_z)
+            pad_rows = np.repeat(last_row, n_missing, axis=0)  # shape = (n_missing, n_z)
+            slice_np = np.vstack([available, pad_rows])  # shape = (N+1, n_z)
+
+        # Convert to JAX arrays for solver
+        ref_window = jnp.array(slice_np)  # (N+1, n_z)
+        ref_final = jnp.array(slice_np[-1, :])  # (n_z,)
+
+        # 7) Build the MPC initial guesses (rollout‐based warm start)
+        idx0 = int(jnp.searchsorted(self.topt, t0, side='right'))
         n_remaining_u = self.N - idx0
         n_remaining_x = self.N + 1 - idx0
 
-        u_init_temp = self.u_init.copy()  # Create a copy to modify
+        u_init_temp = self.u_init.copy()
         x_init_temp = self.x_init.copy()
 
         for i in range(n_remaining_u):
@@ -197,27 +221,25 @@ class MPCSolverNode(Node):
         for i in range(n_remaining_x, self.N + 1):
             x_init_temp = x_init_temp.at[i].set(self.xopt[-1, :])
 
-        self.u_init = u_init_temp  # Assign the modified copy back
+        self.u_init = u_init_temp
         self.x_init = x_init_temp
 
-        start_idx = int(t0 * (1 / self.dt))
-        end_idx = start_idx + self.N + 1
-        full_traj = jnp.array(self.ref_traj.eval())
-        # Update LOCP parameter with the previously applied control
-        print(f"(DEBUG) t0 = {t0:.4f}, dt = {self.dt:.4f}, so start_idx = {start_idx}, end_idx = {end_idx}")
-        print(f"(DEBUG) full_traj.shape = {full_traj.shape}")
-        print(f"(DEBUG) slicing full_traj[{start_idx}:{end_idx}] → shape = {full_traj[start_idx:end_idx].shape}")
-
-        # u0 = np.asarray(request.u0) / 80
+        # 8) Update the LOCP parameter for previous input
         print("Shape of self.u_prev0:", self.u_prev0.shape)
         self.gusto.locp.u0_prev.value = self.u_prev0
 
-        # Solve GuSTO and get solution
-        # self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
-        self.gusto.solve(x0_aug, self.u_init, self.x_init, z=ref_window, zf=ref_window[-1])
+        # 9) Solve GuSTO with the (possibly padded) reference
+        self.gusto.solve(
+            x0_aug,
+            self.u_init,
+            self.x_init,
+            z=ref_window,
+            zf=ref_final
+        )
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
-        xopt_extracted = self.xopt[:, :self.model.n_x]  # Extract the non augmented part
+        xopt_extracted = self.xopt[:, : self.model.n_x]
 
+        # 10) Package the response
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
         response.xopt = jnp2arr(xopt_extracted)
