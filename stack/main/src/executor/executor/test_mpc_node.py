@@ -231,9 +231,14 @@ class TestMPCNode(Node):
         # x_predicted = self.model.rollout(self.x0, self.uopt)
         x_predicted = self.model.rollout(x0_aug, self.uopt)
         y_predicted = self.model.decode(x_predicted.T).T
-        print("Shape of y_predicted:", y_predicted.shape)
+
+        print(f"(DEBUG) model.n_z = {self.model.n_z}, model.n_y = {self.model.n_y}")
+        print(f"(DEBUG) y_predicted.shape = {y_predicted.shape}")
+        print(f"(DEBUG) idx0 = {idx0}")
+
         y_centered_tip = y_predicted[:idx0+1, :8]  # 8 is hardcoded for the measured state dimension
         N_new_obs = y_centered_tip.shape[0]
+        print(f"(DEBUG) N_new_obs = {N_new_obs}")
 
         # Add noise to simulate real experiment
         y_tip_noisy = y_centered_tip + eps_noise * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
@@ -242,12 +247,14 @@ class TestMPCNode(Node):
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
             self.latest_y = jnp.tile(y_tip_noisy[-1:].squeeze(), (self.n_delay+1))
+            print(f"(DEBUG) First‐time latest_y length = {self.latest_y.shape[0]}")
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
             # Note the different ordering of MPC horizon and delay embeddings which requires the flipping
             if N_new_obs > self.n_delay + 1:
                 # If we have more than self.n_delay + 1 new observations, we only keep the last self.n_delay + 1
                 self.latest_y = jnp.flip(y_tip_noisy[-(self.n_delay+1):].T, 1).T.flatten()
+                print(f"(DEBUG) N_new_obs >= num_blocks, latest_y length = {self.latest_y.shape[0]}")
             else:
                 # Otherwise we concatenate the new observations with the old ones
                 self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(),
