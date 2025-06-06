@@ -258,9 +258,15 @@ class TestMPCNode(Node):
                 print(f"(DEBUG) N_new_obs >= num_blocks, latest_y length = {self.latest_y.shape[0]}")
             else:
                 print("shape of y_tip_noisy:", y_tip_noisy.shape)
+                num_blocks = self.n_delay + 1
+                block_size = self.model.n_y // num_blocks
                 # Otherwise we concatenate the new observations with the old ones
-                self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(),
-                                                 self.latest_y[:(self.n_delay + 1 - N_new_obs) * self.model.n_z]])
+                new_block = y_tip_noisy[-N_new_obs:, :].reshape(-1)
+                old_needed = num_blocks - N_new_obs
+                old_part = self.latest_y[: old_needed * block_size]
+                self.latest_y= jnp.concatenate([new_block, old_part])
+                #self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(),
+                #                                 self.latest_y[:(self.n_delay + 1 - N_new_obs) * self.model.n_z]])
                 print(f"(DEBUG) N_new_obs < num_blocks, latest_y length = {self.latest_y.shape}")
 
     def initialize_csv(self):
