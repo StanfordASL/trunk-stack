@@ -145,6 +145,8 @@ class MPCSolverNode(Node):
         else:
             response.done = False
         
+        y0_np = np.array(request.y0)  # or jnp.array(request.y0)
+        print("Received request.y0 of shape:", y0_np.shape)
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
 
         num_blocks = self.model.ssm.specified_params["embedding_up_to"] + 1

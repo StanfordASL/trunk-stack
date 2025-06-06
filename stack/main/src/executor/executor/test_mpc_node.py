@@ -169,6 +169,7 @@ class TestMPCNode(Node):
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations(eps_noise=0)
             # self.latest_y should be the delay embedded state vector
+            print(f"(DEBUG) latest_y shape = {self.latest_y.shape}")
             self.send_request(self.t0, self.latest_y, self.uopt_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
@@ -256,9 +257,11 @@ class TestMPCNode(Node):
                 self.latest_y = jnp.flip(y_tip_noisy[-(self.n_delay+1):].T, 1).T.flatten()
                 print(f"(DEBUG) N_new_obs >= num_blocks, latest_y length = {self.latest_y.shape[0]}")
             else:
+                print("shape of y_tip_noisy:", y_tip_noisy.shape)
                 # Otherwise we concatenate the new observations with the old ones
                 self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(),
                                                  self.latest_y[:(self.n_delay + 1 - N_new_obs) * self.model.n_z]])
+                print(f"(DEBUG) N_new_obs < num_blocks, latest_y length = {self.latest_y.shape}")
 
     def initialize_csv(self):
         """

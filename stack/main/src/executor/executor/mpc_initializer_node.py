@@ -34,12 +34,12 @@ class MPCInitializerNode(Node):
             "mpc": {
                 "Q_rows": [0, 1],
                 "Qz": 200.0,
-                "Qzf": 640.0,
+                "Qzf": 5000.0, # was 640
                 "R": 0.0,
                 "Rdu": 8.0,
                 "U_constraint": 0.15,
                 "dU_constraint": 0.01,
-                "N": 12,
+                "N": 10,
                 "dt": 0.02
             },
             "trajectory": {
