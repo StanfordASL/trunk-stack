@@ -60,6 +60,33 @@ def check_control_inputs(u_opt, u_opt_previous):
     return u_opt
 
 
+@jax.jit
+def u2_to6u_mapping(u2, u4):
+    # angle
+    teta = jnp.arctan2(u4, u2)
+    # radius scaling
+    r_scaling = jnp.hypot(u2, u4)
+
+    # reconstruct to check
+    u2_calc = r_scaling * jnp.cos(teta)
+    u4_calc = r_scaling * jnp.sin(teta)
+
+    # floating‐point tolerant checks
+    if not jnp.isclose(u2, u2_calc, atol=1e-6):
+        raise AssertionError(f"u2 mismatch: {u2_calc:.6f} != {u2:.6f}")
+    if not jnp.isclose(u4, u4_calc, atol=1e-6):
+        raise AssertionError(f"u4 mismatch: {u4_calc:.6f} != {u4:.6f}")
+
+    # the other four
+    u3 = r_scaling * jnp.cos(teta - jnp.pi/3)
+    u5 = r_scaling * jnp.sin(teta - jnp.pi/3)
+
+    u1 = -r_scaling * jnp.sin(teta - jnp.pi/6)
+    u6 = -r_scaling * jnp.cos(teta - jnp.pi/6)
+
+    return u1, u2, u3, u4, u5, u6
+
+
 class MPCNode(Node):
     """
     This node is responsible for running MPC.
@@ -305,16 +332,12 @@ class MPCNode(Node):
             self.get_logger().error(f'Service call failed: {e}.')
 
     def publish_control_inputs(self, control_inputs):
-        """
-        Publish the control inputs.
-        """
         control_message = AllMotorsControl()
-        control_message.motors_control = [
-            SingleMotorControl(mode=0, value=value) for value in control_inputs
-        ]
+
+        control_message.motors_control = control_inputs
         self.controls_publisher.publish(control_message)
         if self.debug:
-            self.get_logger().info(f'Published new motor control setting: {control_inputs}.')
+            self.get_logger().info('Published new motor control setting: ' + str(control_inputs))
 
     def extract_angles(self, msg):
         angles = msg.positions
