@@ -178,6 +178,7 @@ class TestMPCNode(Node):
         Send request to MPC solver.
         """
         self.req.t0 = t0
+        print("Sending request with y0 shape:", y0.shape)  # Debugging line
         self.req.y0 = jnp2arr(y0)
         print("Shape of u0:", u0.shape)  # Debugging line
         self.req.u0 = jnp2arr(u0)

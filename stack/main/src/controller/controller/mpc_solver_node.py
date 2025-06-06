@@ -200,8 +200,14 @@ class MPCSolverNode(Node):
         self.u_init = u_init_temp  # Assign the modified copy back
         self.x_init = x_init_temp
 
+        start_idx = int(t0 * (1 / self.dt))
+        end_idx = start_idx + self.N + 1
+        full_traj = jnp.array(self.ref_traj.eval())
         # Update LOCP parameter with the previously applied control
-        
+        print(f"(DEBUG) t0 = {t0:.4f}, dt = {self.dt:.4f}, so start_idx = {start_idx}, end_idx = {end_idx}")
+        print(f"(DEBUG) full_traj.shape = {full_traj.shape}")
+        print(f"(DEBUG) slicing full_traj[{start_idx}:{end_idx}] → shape = {full_traj[start_idx:end_idx].shape}")
+
         # u0 = np.asarray(request.u0) / 80
         print("Shape of self.u_prev0:", self.u_prev0.shape)
         self.gusto.locp.u0_prev.value = self.u_prev0
