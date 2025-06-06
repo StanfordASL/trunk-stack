@@ -66,7 +66,7 @@ class DataCollectionNode(Node):
         self.collect_angles = self.get_parameter('collect_angles').value
         self.collect_orientations = self.get_parameter('collect_orientations').value
 
-        self.angle_callback_received = False #flag
+        self.angle_callback_received = False  # flag
         self.angle_update_count = 0
         self.is_collecting = False
         self.ic_settled = False
@@ -127,7 +127,7 @@ class DataCollectionNode(Node):
             if not self.angle_callback_received:
                 self.get_logger().info('Motor angles callback received first message')
                 self.angle_callback_received = True
-        else: # allows you to get around angle callback if you are not doing a control trajectory (only one to record angles)
+        else:  # allows you to get around angle callback if you are not doing a control trajectory (only one to record angles)
             self.angle_callback_received = True
 
     def listener_callback(self, msg):
@@ -261,7 +261,7 @@ class DataCollectionNode(Node):
                 self.store_positions(msg)
 
                 if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
-                    (time.time() - self.previous_time) >= self.update_period: # if dynamic traj is done or we've exceeded max traj length
+                    (time.time() - self.previous_time) >= self.update_period:  # if dynamic traj is done or we've exceeded max traj length
                     self.previous_time = time.time()
                     self.is_collecting = False
                     self.ic_settled = False
@@ -302,7 +302,6 @@ class DataCollectionNode(Node):
             return msg.orientations
         elif self.mocap_type == 'markers':
             raise ValueError('Invalid request: orientations cannot be extracted with ' + self.mocap_type + ' mocap type')
-
         
     def extract_names(self, msg):
         if self.mocap_type == 'markers':
@@ -358,7 +357,7 @@ class DataCollectionNode(Node):
                 writer = csv.writer(file)
                 writer.writerow(header)
         
-        if self.data_type == 'steady_state': # TODO add angle and orientation recording
+        if self.data_type == 'steady_state':  # TODO add angle and orientation recording
             # Take average positions over all stored samples
             average_positions = [
                 sum(coords) / len(self.stored_positions)
@@ -372,7 +371,7 @@ class DataCollectionNode(Node):
             if self.debug:
                 self.get_logger().info('Stored new sample with positions: ' + str(average_positions) + ' [m].')
         
-        elif self.data_type == 'dynamic' and self.data_subtype == 'decay': # TODO add angle and orientation recording
+        elif self.data_type == 'dynamic' and self.data_subtype == 'decay':  # TODO add angle and orientation recording
             # Store all positions in a CSV file
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)
@@ -393,7 +392,8 @@ class DataCollectionNode(Node):
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
 
-        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual': # TODO add angle and orientation recording
+        # TODO add angle and orientation recording
+        elif self.data_type == 'dynamic' and self.data_subtype == 'adiabatic_manual':
             # Store all positions in a CSV file
             with open(trajectory_csv_file, 'a', newline='') as file:
                 writer = csv.writer(file)
@@ -422,6 +422,7 @@ def main(args=None):
     rclpy.spin(data_collection_node)
     data_collection_node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

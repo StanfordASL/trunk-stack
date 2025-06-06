@@ -13,7 +13,7 @@ from rclpy.executors import MultiThreadedExecutor           # type: ignore
 from rclpy.qos import QoSProfile                            # type: ignore
 
 from controller.mpc_solver_node import jnp2arr              # type: ignore
-from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
+from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies, AllMotorsStatus
 from interfaces.srv import ControlSolver
 
 logging.getLogger('jax').setLevel(logging.ERROR)
@@ -55,7 +55,7 @@ def check_control_inputs(u_opt, u_opt_previous):
     norm_value = jnp.linalg.norm(vector_sum)
 
     # Check the constraint: if the constraint is met, then keep previous control command
-    u_opt = jnp.where(norm_value > 0.8, u_opt_previous, jnp.array([u1, u2, u3, u4, u5, u6]))
+    u_opt = jnp.where(norm_value > 0.5, u_opt_previous, jnp.array([u1, u2, u3, u4, u5, u6]))
 
     return u_opt
 
@@ -97,9 +97,15 @@ class MPCNode(Node):
         # We perform smoothing to handle initial transients
         self.alpha_smooth = 0.3  # TODO: Change
         self.smooth_control_inputs = jnp.zeros(self.n_u)
+        self.collect_angles = True
+        self.last_motor_angles = None
 
         # Size of observations vector
-        self.n_y = self.n_obs * (self.n_delay + 1)
+        # self.n_y = self.n_obs * (self.n_delay + 1)
+        self.block_size = self.n_obs + self.n_u
+        self.n_y = self.block_size * (self.n_delay + 1)
+
+        assert self.n_y.shape == 40, "wrong n_y calculated"
 
         # Settled positions of the rigid bodies
         self.rest_position = jnp.array([0.09369193017482758, -0.1086554080247879, 0.09297813475131989,
@@ -117,6 +123,15 @@ class MPCNode(Node):
             QoSProfile(depth=3),
             callback_group=self.callback_group
         )
+
+        if self.collect_angles:
+            self.subscription_angles = self.create_subscription(
+                AllMotorsStatus,
+                '/all_motors_status',
+                self.motor_angles_callback,
+                QoSProfile(depth=3),
+                callback_group=self.callback_group
+            )
 
         # Create MPC solver service client
         self.mpc_client = self.create_client(
@@ -143,6 +158,9 @@ class MPCNode(Node):
 
         # Maintain previous control inputs
         self.u_previous = jnp.zeros(self.n_u)
+        self.angle_update_count = 0
+        self.angle_callback_received = False  # flag
+
 
         self.clock = self.get_clock()
 
@@ -186,18 +204,33 @@ class MPCNode(Node):
         y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
         y_centered = y_new - self.rest_position
 
-        # Subselect tip
-        y_centered_tip = y_centered[-3:]
+        # Subselect the relevant variables -> TODO: Check if correctly selected
+        y_observables = y_centered[-6:]
+        # u_current = jnp.array(self.last_motor_angles)
+        u_current = jnp.array(self.last_motor_angles)[jnp.array([1, 3])]
 
+        block = jnp.concatenate([y_observables, u_current], axis=0)
         # Update the current observations, including delay embeddings
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(y_centered_tip, self.n_delay + 1)
+            # self.latest_y = jnp.tile(y_centered_tip, self.n_delay + 1)
+            self.latest_y = jnp.tile(block, (self.n_delay + 1,))
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
-            self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-self.n_z]])
+            # self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-self.n_z]])
+            self.latest_y = jnp.concatenate([block, self.latest_y[:-self.block_size]])
         
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
+
+    def motor_angles_callback(self, msg):
+
+        self.last_motor_angles = self.extract_angles(msg)
+
+        if not self.angle_callback_received:
+            self.get_logger().info('Motor angles callback received first message')
+            self.angle_callback_received = True
+        else:
+            self.angle_callback_received = True
 
     def execute_buffer_callback(self):
         """
@@ -282,6 +315,13 @@ class MPCNode(Node):
         self.controls_publisher.publish(control_message)
         if self.debug:
             self.get_logger().info(f'Published new motor control setting: {control_inputs}.')
+
+    def extract_angles(self, msg):
+        angles = msg.positions
+        self.angle_update_count += 1
+        if self.debug:
+            self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
+        return angles
 
     def initialize_csv(self):
         """
