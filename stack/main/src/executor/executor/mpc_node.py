@@ -13,7 +13,7 @@ from rclpy.executors import MultiThreadedExecutor           # type: ignore
 from rclpy.qos import QoSProfile                            # type: ignore
 
 from controller.mpc_solver_node import jnp2arr              # type: ignore
-from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies, AllMotorsStatus
+from interfaces.msg import AllMotorsControl, TrunkRigidBodies, AllMotorsStatus
 from interfaces.srv import ControlSolver
 
 logging.getLogger('jax').setLevel(logging.ERROR)
