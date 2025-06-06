@@ -49,17 +49,6 @@ class TestMPCNode(Node):
         ])
 
         config = {
-            "mpc": {
-                "Q_rows": [0, 1],
-                "Qz": 200.0,
-                "Qzf": 640.0,
-                "R": 0.0,
-                "Rdu": 8.0,
-                "U_constraint": 0.15,
-                "dU_constraint": 0.01,
-                "N": 12,
-                "dt": 0.01
-            },
             "delay_embedding": {
                 "perf_var_dim": 3,
                 "also_embedd_u": True
@@ -67,7 +56,7 @@ class TestMPCNode(Node):
             "model": "first_mpc_model_real_trunk.pkl"
         }
 
-        mpc_config, self.delay_config = config["mpc"], config["delay_embedding"]
+        self.delay_config = config["delay_embedding"]
 
         self.debug = self.get_parameter('debug').value
         self.model_name = config["model"]
