@@ -295,7 +295,7 @@ def main(args=None):
     test_mpc_node = TestMPCNode()
     rclpy.spin(test_mpc_node)
     test_mpc_node.destroy_node()
-    rclpy.shutdown()
+    # rclpy.shutdown() <- shutdown is called in service_callback when the trajectory is finished
 
 
 if __name__ == '__main__':
