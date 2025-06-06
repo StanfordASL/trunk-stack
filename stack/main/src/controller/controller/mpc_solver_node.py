@@ -98,6 +98,8 @@ class MPCSolverNode(Node):
         print("Shape of x0: ", x0.shape)
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
+        print("Shape of x_init: ", self.x_init.shape)
+
         # DEBUGGING:
         # print("self.model: ", self.model)
         # print("config ", config)
@@ -160,9 +162,9 @@ class MPCSolverNode(Node):
 
         # TODO: In contrast to my previous script request.u0 might not be a list -> debug this
         if self.u_prev0 is None:
-            self.u_prev0 = jnp.zeros((self.model.n_u,))
+            self.u_prev0 = np.zeros((self.model.n_u,))
         else:
-            self.u_prev0 = request.u0 / 80
+            self.u_prev0 = np.array(request.u0) / 80
 
         if self.u_ref_init.shape[0] >= self.model.n_u:
             self.u_ref_init = jnp.concatenate([self.u_prev0, self.u_ref_init[:-self.model.n_u]], axis=0)
@@ -197,17 +199,20 @@ class MPCSolverNode(Node):
         self.x_init = x_init_temp
 
         # Update LOCP parameter with the previously applied control
-        self.gusto.locp.u0_prev.value = np.asarray(request.u0) / 80
+        
+        # u0 = np.asarray(request.u0) / 80
+        print("Shape of self.u_prev0:", self.u_prev0.shape)
+        self.gusto.locp.u0_prev.value = self.u_prev0
 
         # Solve GuSTO and get solution
         # self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
         self.gusto.solve(x0_aug, self.u_init, self.x_init, z=ref_window, zf=ref_window[-1])
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
-        self.xopt = self.xopt[:, :self.model.n_x]  # Extract the non augmented part
+        xopt_extracted = self.xopt[:, :self.model.n_x]  # Extract the non augmented part
 
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
-        response.xopt = jnp2arr(self.xopt)
+        response.xopt = jnp2arr(xopt_extracted)
         response.uopt = jnp2arr(self.uopt * 80)
         response.zopt = jnp2arr(zopt)
         response.solve_time = t_solve

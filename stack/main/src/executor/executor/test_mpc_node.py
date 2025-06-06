@@ -3,6 +3,7 @@ import csv
 import jax
 import jax.numpy as jnp
 import logging
+import numpy as np
 
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
@@ -177,6 +178,7 @@ class TestMPCNode(Node):
         """
         self.req.t0 = t0
         self.req.y0 = jnp2arr(y0)
+        print("Shape of u0:", u0.shape)  # Debugging line
         self.req.u0 = jnp2arr(u0)
         self.future = self.mpc_client.call_async(self.req)
 
@@ -199,7 +201,9 @@ class TestMPCNode(Node):
                 
                 # We do not execute the control inputs here but it's still being checked
                 safe_control_inputs = check_control_inputs(jnp.array(uopt[:self.model.n_u]), self.uopt_previous)
-                self.uopt_previous = safe_control_inputs
+                print("Shape of safe_control_inputs:", safe_control_inputs.shape)  # Debugging line
+                self.uopt_previous = safe_control_inputs[np.array([2, 4])]  # HERE
+                print("Shape of self.uopt_previous:", self.uopt_previous.shape)
 
                 # Save the predicted observations and control inputs
                 if self.latest_y is not None:
@@ -227,7 +231,8 @@ class TestMPCNode(Node):
         # x_predicted = self.model.rollout(self.x0, self.uopt)
         x_predicted = self.model.rollout(x0_aug, self.uopt)
         y_predicted = self.model.decode(x_predicted.T).T
-        y_centered_tip = y_predicted[:idx0+1, :6]  # 6 is hardcoded for the measured state dimension
+        print("Shape of y_predicted:", y_predicted.shape)
+        y_centered_tip = y_predicted[:idx0+1, :8]  # 8 is hardcoded for the measured state dimension
         N_new_obs = y_centered_tip.shape[0]
 
         # Add noise to simulate real experiment
