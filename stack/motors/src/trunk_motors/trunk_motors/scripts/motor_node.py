@@ -12,6 +12,83 @@ from interfaces.msg import AllMotorsControl, TrunkRigidBodies
 from interfaces.msg import AllMotorsStatus
 
 
+class DummyMotorNode(Node):
+    def __init__(self):
+        super().__init__('motor_node')
+        # match original parameter name
+        self.declare_parameter('secure_mode', True)
+        self.MPC_SECURITY_MODE = self.get_parameter('secure_mode').value
+
+        # allow callbacks in parallel
+        self.callback_group = ReentrantCallbackGroup()
+
+        # subscribe to control commands
+        self.create_subscription(
+            AllMotorsControl,
+            '/all_motors_control',
+            self.command_positions,
+            10,
+            callback_group=self.callback_group
+        )
+
+        # subscribe to mocap if in secure mode
+        if self.MPC_SECURITY_MODE:
+            self.create_subscription(
+                TrunkRigidBodies,
+                '/trunk_rigid_bodies',
+                self.mocap_listener_callback,
+                QoSProfile(depth=3),
+                callback_group=self.callback_group
+            )
+
+        # publisher for motor status
+        self.status_publisher = self.create_publisher(
+            AllMotorsStatus,
+            '/all_motors_status',
+            10
+        )
+
+        # keep track of last commanded positions
+        self.last_motor_positions = np.zeros(6)
+
+        # publish dummy status at 100 Hz
+        self.timer = self.create_timer(1.0/100.0, self.read_status)
+
+        self.get_logger().info(
+            'Dummy motor node initialized: publishing zeroed states at 100 Hz'
+        )
+
+    def command_positions(self, msg: AllMotorsControl):
+        # record last commanded positions, but do not send to hardware
+        positions = np.array(msg.motors_control, dtype=float)
+        if positions.shape[0] == 6:
+            self.last_motor_positions = positions
+        else:
+            self.get_logger().warn(
+                f"Expected 6 motor commands, got {positions.shape[0]}; ignoring extras."
+            )
+
+    def mocap_listener_callback(self, msg: TrunkRigidBodies):
+        # mimic original interface; no-op for dummy
+        # msg.positions is a list of geometry_msgs/Point
+        # you could log or perform checks here if desired
+        return
+
+    def read_status(self):
+        # always publish zeros for 6 motors
+        zeros = np.zeros(6, dtype=float)
+        status = AllMotorsStatus()
+        status.positions = zeros.tolist()
+        status.velocities = zeros.tolist()
+        status.currents = zeros.tolist()
+        self.status_publisher.publish(status)
+        return zeros
+
+    def shutdown(self):
+        # no hardware to clean up in dummy
+        self.get_logger().info('Shutting down dummy motor node.')
+
+
 class MotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
@@ -71,7 +148,9 @@ class MotorNode(Node):
             10
         )
 
-        self.rest_position_trunk = np.array([0.09369193017482758,-0.1086554080247879,0.09297813475131989,0.09677113592624664,-0.20255360007286072,0.08466289937496185,0.08620507270097733,-0.3149890899658203,0.08313531428575516])
+        self.rest_position_trunk = np.array([0.09369193017482758, -0.1086554080247879, 0.09297813475131989,
+                                             0.09677113592624664, -0.20255360007286072, 0.08466289937496185,
+                                             0.08620507270097733, -0.3149890899658203, 0.08313531428575516])
 
         self.timer = self.create_timer(1.0/100, self.read_status)  # publish at 100Hz
 
@@ -142,8 +221,6 @@ class MotorNode(Node):
         # Subselect tip
         y_centered_tip = y_centered[-3:]
 
-        # TODO: discuss value with Mark
-
         if np.linalg.norm(y_centered_tip) > 0.1:
             self.get_logger().error(
                 f"Unsafe trunk position at value commands at indices {np.linalg.norm(y_centered_tip)}. "
@@ -183,29 +260,9 @@ class MotorNode(Node):
 
 def main():
     rclpy.init()
-    node = MotorNode()
+    node = DummyMotorNode()
+    # node = MotorNode()
     try:
-        # checks to see maximum read and write rate of the dynamixels ~20Hz read, ~124Hz write
-        # # READ rate check
-        # dxl = node.dxl_client
-        # dxl.motor_ids = [1, 2, 3, 4, 5, 6]
-        # N = 100
-        # start = time.time()
-        # for _ in range(N):
-        #     dxl.read_pos_vel_cur()
-        # end = time.time()
-        # node.get_logger().info(f"READ avg rate: {N / (end - start):.2f} Hz")
-
-        # # WRITE rate check
-        # positions = [198.0, 204.0, 189.0, 211.0, 200.0, 192.0]
-        # positions = [np.pi/180 * pos for pos in positions] # receives a position in degrees, convert to radians for dynamixel sdk
-        # start = time.time()
-        # for _ in range(N):
-        #     dxl.write_desired_pos(dxl.motor_ids, np.array(positions))
-
-        # end = time.time()
-        # node.get_logger().info(f"WRITE avg rate: {N / (end - start):.2f} Hz")
-
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
