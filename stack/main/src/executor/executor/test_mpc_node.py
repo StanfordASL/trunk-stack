@@ -14,7 +14,7 @@ from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
 from .utils.models import control_SSMR
 
-run_on_pauls_computer = False
+run_on_pauls_computer = True
 
 @jax.jit
 def check_control_inputs(u_opt, u_opt_previous):
