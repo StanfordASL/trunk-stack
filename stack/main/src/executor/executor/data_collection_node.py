@@ -127,7 +127,7 @@ class DataCollectionNode(Node):
             if not self.angle_callback_received:
                 self.get_logger().info('Motor angles callback received first message')
                 self.angle_callback_received = True
-        else:  # allows you to get around angle callback if you are not doing a control trajectory (only one to record angles)
+        else:  # allows you to get around angle callback if you are not doing a control trajectory
             self.angle_callback_received = True
 
     def listener_callback(self, msg):
@@ -205,7 +205,7 @@ class DataCollectionNode(Node):
 
                     # Check settled because then the dynamic trajectory is done and we can continue
                     if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
-                    (time.time() - self.previous_time) >= self.update_period:
+                            (time.time() - self.previous_time) >= self.update_period:
                         self.previous_time = time.time()
                         self.is_collecting = False
                         self.ic_settled = False
@@ -261,7 +261,8 @@ class DataCollectionNode(Node):
                 self.store_positions(msg)
 
                 if (self.check_settled(window=30) or len(self.stored_positions) >= self.max_traj_length) and \
-                    (time.time() - self.previous_time) >= self.update_period:  # if dynamic traj is done or we've exceeded max traj length
+                        (time.time() - self.previous_time) >= self.update_period:
+                    # if dynamic traj is done or we've exceeded max traj length
                     self.previous_time = time.time()
                     self.is_collecting = False
                     self.ic_settled = False
@@ -313,9 +314,9 @@ class DataCollectionNode(Node):
         self.stored_positions.append(self.extract_positions(msg))
         if self.collect_orientations:
             self.stored_orientations.append(self.extract_orientations(msg))
-        self.stored_angles.append(self.last_motor_angles) #store last motor angles when position is available
+        self.stored_angles.append(self.last_motor_angles)  # store last motor angles when position is available
         if self.debug:
-            self.get_logger().info("Stored angles: "+ str(self.last_motor_angles))
+            self.get_logger().info("Stored angles: " + str(self.last_motor_angles))
 
     def check_settled(self, tolerance=0.00025, window=5):
         if len(self.check_settled_positions) < window:

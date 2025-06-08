@@ -42,29 +42,30 @@ def check_control_inputs(u_opt, u_opt_previous):
 
 @jax.jit
 def u2_to6u_mapping(u2, u4):
-    # angle
+    # angle and radius
     teta = jnp.arctan2(u4, u2)
-    # radius scaling
     r_scaling = jnp.hypot(u2, u4)
 
-    # reconstruct to check
+    # reconstruct sanity checks
     u2_calc = r_scaling * jnp.cos(teta)
     u4_calc = r_scaling * jnp.sin(teta)
-
-    # floating‐point tolerant checks
     if not jnp.isclose(u2, u2_calc, atol=1e-6):
         raise AssertionError(f"u2 mismatch: {u2_calc:.6f} != {u2:.6f}")
     if not jnp.isclose(u4, u4_calc, atol=1e-6):
         raise AssertionError(f"u4 mismatch: {u4_calc:.6f} != {u4:.6f}")
 
-    # the other four
-    u3 = r_scaling * jnp.cos(teta - jnp.pi/3)
-    u5 = r_scaling * jnp.sin(teta - jnp.pi/3)
+    # compute the six raw legs
+    u3 = r_scaling * jnp.cos(teta - jnp.pi / 3)
+    u5 = r_scaling * jnp.sin(teta - jnp.pi / 3)
+    u1 = -r_scaling * jnp.sin(teta - jnp.pi / 6)
+    u6 = -r_scaling * jnp.cos(teta - jnp.pi / 6)
 
-    u1 = -r_scaling * jnp.sin(teta - jnp.pi/6)
-    u6 = -r_scaling * jnp.cos(teta - jnp.pi/6)
+    # stack into a vector and apply your per‐leg weights
+    raw = jnp.stack([u1, u2, u3, u4, u5, u6])
+    weights = jnp.array([50, 80, 30, 80, 30, 50], dtype=raw.dtype)
+    scaled = raw * weights
 
-    return u1, u2, u3, u4, u5, u6
+    return tuple(scaled.tolist())
 
 
 class MPCNode(Node):
@@ -208,20 +209,25 @@ class MPCNode(Node):
         if self.debug:
             self.get_logger().info(f'Received mocap data: {msg.positions}.')
 
-        # Unpack the message into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
-        y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
+        # 1) flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
+        y_new = jnp.array([coord for pos in msg.positions for coord in (pos.x, pos.y, pos.z)])
         y_centered = y_new - self.rest_position
 
-        # Subselect the relevant variables -> TODO: Check if correctly selected
-        y_observables = y_centered[-6:]
-        # u_current = jnp.array(self.last_motor_angles)
-        u_current = jnp.array(self.last_motor_angles)[jnp.array([1, 3])]
+        # 2) Reorder from [x1,y1,z1, x2,y2,z2, x3,y3,z3] → [x3,z3,y3, x2,z2,y2, x1,z1,y1]
+        perm_idx = jnp.array([6, 8, 7, 3, 5, 4, 0, 2, 1])
+        y_reordered = y_centered[perm_idx]
+        # then take only the first 6 entries (body 3 then 2)
+        y_observables = y_reordered[:6]
 
+        # 3) pick your two motor‐angles as before
+        u_current = jnp.array(self.last_motor_angles)[jnp.array([1, 3])] / 80.0
+
+        # 4) form your block the same way
         block = jnp.concatenate([y_observables, u_current], axis=0)
+
         # Update the current observations, including delay embeddings
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
-            # self.latest_y = jnp.tile(y_centered_tip, self.n_delay + 1)
             self.latest_y = jnp.tile(block, (self.n_delay + 1,))
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:

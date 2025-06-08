@@ -17,7 +17,7 @@ logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
 
-run_on_pauls_computer = False
+run_on_pauls_computer = True
 
 
 class MPCInitializerNode(Node):
@@ -34,7 +34,7 @@ class MPCInitializerNode(Node):
             "mpc": {
                 "Q_rows": [0, 1],
                 "Qz": 200.0,
-                "Qzf": 5000.0, # was 640
+                "Qzf": 5000.0,  # was 640
                 "R": 0.0,
                 "Rdu": 8.0,
                 "U_constraint": 0.15,

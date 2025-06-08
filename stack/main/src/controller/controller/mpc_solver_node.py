@@ -163,9 +163,8 @@ class MPCSolverNode(Node):
 
         state_part = y0_blocks[:, : (block_size - self.model.n_u)]
         u_part = y0_blocks[:, (block_size - self.model.n_u):]
-        u_part_scaled = u_part / 80.0
 
-        y0_scaled = jnp.concatenate([state_part, u_part_scaled], axis=1)
+        y0_scaled = jnp.concatenate([state_part, u_part], axis=1)
         y0 = y0_scaled.reshape((self.model.n_y,))
 
         x0 = self.model.encode(y0)
@@ -174,7 +173,7 @@ class MPCSolverNode(Node):
         if self.u_prev0 is None:
             self.u_prev0 = np.zeros((self.model.n_u,))
         else:
-            self.u_prev0 = np.array(request.u0) / 80.0
+            self.u_prev0 = np.array(request.u0)
 
         # 5) Update u_ref_init by shifting in the previous input
         if self.u_ref_init.shape[0] >= self.model.n_u:
@@ -243,7 +242,7 @@ class MPCSolverNode(Node):
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
         response.xopt = jnp2arr(xopt_extracted)
-        response.uopt = jnp2arr(self.uopt * 80)
+        response.uopt = jnp2arr(self.uopt)
         response.zopt = jnp2arr(zopt)
         response.solve_time = t_solve
 
