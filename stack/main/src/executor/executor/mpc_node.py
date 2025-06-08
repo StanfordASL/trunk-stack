@@ -49,10 +49,12 @@ def u2_to6u_mapping(u2, u4):
     # reconstruct sanity checks
     u2_calc = r_scaling * jnp.cos(teta)
     u4_calc = r_scaling * jnp.sin(teta)
-    if not jnp.isclose(u2, u2_calc, atol=1e-6):
-        raise AssertionError(f"u2 mismatch: {u2_calc:.6f} != {u2:.6f}")
-    if not jnp.isclose(u4, u4_calc, atol=1e-6):
-        raise AssertionError(f"u4 mismatch: {u4_calc:.6f} != {u4:.6f}")
+
+    # Check for debugging outside of JIT
+    #if not jnp.isclose(u2, u2_calc, atol=1e-6):
+    #    raise AssertionError(f"u2 mismatch: {u2_calc:.6f} != {u2:.6f}")
+    #if not jnp.isclose(u4, u4_calc, atol=1e-6):
+    #    raise AssertionError(f"u4 mismatch: {u4_calc:.6f} != {u4:.6f}")
 
     # compute the six raw legs
     u3 = r_scaling * jnp.cos(teta - jnp.pi / 3)
@@ -65,7 +67,7 @@ def u2_to6u_mapping(u2, u4):
     weights = jnp.array([50, 80, 30, 80, 30, 50], dtype=raw.dtype)
     scaled = raw * weights
 
-    return tuple(scaled.tolist())
+    return scaled  # tuple(scaled.tolist())
 
 
 class MPCNode(Node):
@@ -220,7 +222,11 @@ class MPCNode(Node):
         y_observables = y_reordered[:6]
 
         # 3) pick your two motor‐angles as before
-        u_current = jnp.array(self.last_motor_angles)[jnp.array([1, 3])] / 80.0
+        if self.angle_callback_received:
+            u_current = jnp.array(self.last_motor_angles)[jnp.array([1, 3])] / 80.0
+        else:
+            # If angles are not received yet, use zeros
+            u_current = jnp.zeros(self.n_u)
 
         # 4) form your block the same way
         block = jnp.concatenate([y_observables, u_current], axis=0)
@@ -320,10 +326,12 @@ class MPCNode(Node):
 
     def publish_control_inputs(self, control_inputs):
 
-        control_inputs_6 = u2_to6u_mapping(control_inputs)
+        print(f"Publishing control inputs: {control_inputs}")
+        control_inputs_6 = u2_to6u_mapping(*control_inputs)
         control_message = AllMotorsControl()
 
-        control_message.motors_control = control_inputs_6
+        # control_message.motors_control = control_inputs_6
+        control_message.motors_control = tuple(control_inputs_6.tolist())
         self.controls_publisher.publish(control_message)
         if self.debug:
             self.get_logger().info('Published new motor control setting: ' + str(control_inputs))
