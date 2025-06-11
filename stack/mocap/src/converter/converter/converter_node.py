@@ -4,6 +4,8 @@ from interfaces.msg import TrunkMarkers, TrunkRigidBodies
 from mocap4r2_msgs.msg import Markers, RigidBodies  # type: ignore
 from geometry_msgs.msg import Point, Quaternion, Vector3
 
+from rclpy.time import Time
+
 
 class DummyConverterNode(Node):
     def __init__(self):
@@ -102,6 +104,9 @@ class ConverterNode(Node):
     def rigid_body_callback(self, msg):
         trunk_msg = TrunkRigidBodies()
         trunk_msg.header = msg.header
+        stamp_ros_time = Time.from_msg(msg.header.stamp)
+        # latency = self.get_clock().now() - stamp_ros_time
+        # self.get_logger().info(f"OptiTrack rigid body latency: {latency.nanoseconds / 1e6:.2f} ms")
         trunk_msg.frame_number = msg.frame_number
         trunk_msg.rigid_body_names = [rigid_body.rigid_body_name for rigid_body in msg.rigidbodies]
         trunk_msg.positions = [rigid_body.pose.position for rigid_body in msg.rigidbodies]
@@ -112,8 +117,8 @@ class ConverterNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     # TODO: Change that back when using the real MOCAB system again
-    # node = ConverterNode()
-    node = DummyConverterNode()
+    node = ConverterNode()
+    # node = DummyConverterNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
