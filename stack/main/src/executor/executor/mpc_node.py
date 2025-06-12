@@ -16,7 +16,7 @@ from controller.mpc_solver_node import jnp2arr              # type: ignore
 from interfaces.msg import AllMotorsControl, TrunkRigidBodies, AllMotorsStatus
 from interfaces.srv import ControlSolver
 
-from actuator import Actuator
+from .actuator import Actuator
 
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
@@ -29,20 +29,27 @@ config = {
 
 
 @jax.jit
-def check_control_inputs(u_opt, u_opt_previous):
+def check_control_inputs(u_opt, u_previous=None):
     """
     Check control inputs for safety constraints, rejecting vector norms that are too large.
     """
-    tip_range = 1
-    u2, u4 = u_opt[0], u_opt[1]
-    # u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
+    tip_range, mid_range, base_range = 80, 50, 30
+
+    # u2, u4 = u_opt[0], u_opt[1]
+    u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
     # First we clip to max and min values FOR SAVETY ONLY SEND 0 RIGHT NOW
     u2 = jnp.clip(u2, -tip_range, tip_range)
     u4 = jnp.clip(u4, -tip_range, tip_range)
 
+    u1 = jnp.clip(u1, -mid_range, mid_range)
+    u6 = jnp.clip(u6, -mid_range, mid_range)
+
+    u3 = jnp.clip(u3, -base_range, base_range)
+    u5 = jnp.clip(u5, -base_range, base_range)
+
     # Check the constraint: if the constraint is met, then keep previous control command
-    u_opt = jnp.array([u2, u4])  # jnp.array([u1, u2, u3, u4, u5, u6]))
+    u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
 
     return u_opt
 
@@ -126,9 +133,6 @@ class MPCNode(Node):
         assert self.n_y == 40, "wrong n_y calculated"
 
         # Settled positions of the rigid bodies
-        self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"], current_time=XX)
-
-
         self.rest_position = jnp.array([0.10753094404935837, -0.11212190985679626, 0.10474388301372528,
                                         0.10156622529029846, -0.20444495975971222, 0.11144950985908508,
                                         0.10224875807762146, -0.3151078522205353, 0.10935673117637634])
@@ -184,6 +188,7 @@ class MPCNode(Node):
 
 
         self.clock = self.get_clock()
+        self.actuator_dynamics = None
 
         # Need some initialization
         self.initialized = False
@@ -271,8 +276,8 @@ class MPCNode(Node):
                 return
 
             control_inputs = self.control_buffer[self.buffer_index]
-            safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
-            self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
+            # safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
+            self.smooth_control_inputs = (1 - self.alpha_smooth) * control_inputs + self.alpha_smooth * self.smooth_control_inputs
 
             if self.debug:
                 self.get_logger().info(f'Executing buffer index {self.buffer_index} of {len(self.control_buffer)}')
@@ -338,15 +343,19 @@ class MPCNode(Node):
 
         print(f"Publishing control inputs: {control_inputs}")
 
-        real_control_inputs = self.actuator_dynamics(new_time=, new_u=control_inputs)
-        control_inputs_6 = u2_to6u_mapping(*real_control_inputs)
-        control_message = AllMotorsControl()
+        if self.actuator_dynamics is None:
+            self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"], current_time=self.clock.now().nanoseconds / 1e9)
 
-        # control_message.motors_control = control_inputs_6
-        control_message.motors_control = tuple(control_inputs_6.tolist())
+        real_control_inputs = self.actuator_dynamics(new_time=self.clock.now().nanoseconds / 1e9, new_u=control_inputs)
+        
+        control_inputs_6 = u2_to6u_mapping(*real_control_inputs)
+        safe_control_inputs_6 = check_control_inputs(control_inputs_6)
+
+        control_message = AllMotorsControl()
+        control_message.motors_control = tuple(safe_control_inputs_6.tolist())
         self.controls_publisher.publish(control_message)
         if self.debug:
-            self.get_logger().info('Published new motor control setting: ' + str(real_control_inputs))
+            self.get_logger().info('Published new motor control setting: ' + str(safe_control_inputs_6))
 
     def extract_angles(self, msg):
         angles = msg.positions
