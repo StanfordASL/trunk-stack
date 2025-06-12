@@ -33,13 +33,13 @@ def check_control_inputs(u_opt, u_opt_previous):
     """
     Check control inputs for safety constraints, rejecting vector norms that are too large.
     """
-    tip_range, mid_range, base_range = 80, 50, 30
+    tip_range = 1
     u2, u4 = u_opt[0], u_opt[1]
     # u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
     # First we clip to max and min values FOR SAVETY ONLY SEND 0 RIGHT NOW
-    u2 = 0  # jnp.clip(u2, -tip_range, tip_range)
-    u4 = 0  # jnp.clip(u4, -tip_range, tip_range)
+    u2 = jnp.clip(u2, -tip_range, tip_range)
+    u4 = jnp.clip(u4, -tip_range, tip_range)
 
     # Check the constraint: if the constraint is met, then keep previous control command
     u_opt = jnp.array([u2, u4])  # jnp.array([u1, u2, u3, u4, u5, u6]))
@@ -54,8 +54,8 @@ def u2_to6u_mapping(u2, u4):
     r_scaling = jnp.hypot(u2, u4)
 
     # reconstruct sanity checks
-    u2_calc = r_scaling * jnp.cos(teta)
-    u4_calc = r_scaling * jnp.sin(teta)
+    # u2_calc = r_scaling * jnp.cos(teta)
+    # u4_calc = r_scaling * jnp.sin(teta)
 
     # Check for debugging outside of JIT
     #if not jnp.isclose(u2, u2_calc, atol=1e-6):
@@ -112,7 +112,7 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.3  # TODO: Change
+        self.alpha_smooth = 0.0  # TODO: Change
         self.smooth_control_inputs = jnp.zeros(self.n_u)
         self.collect_angles = True
         self.last_motor_angles = None
@@ -126,11 +126,12 @@ class MPCNode(Node):
         assert self.n_y == 40, "wrong n_y calculated"
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.09369193017482758, -0.1086554080247879, 0.09297813475131989,
-                                        0.09677113592624664, -0.20255360007286072, 0.08466289937496185,
-                                        0.08620507270097733, -0.3149890899658203, 0.08313531428575516])
-
         self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"], current_time=XX)
+
+
+        self.rest_position = jnp.array([0.10753094404935837, -0.11212190985679626, 0.10474388301372528,
+                                        0.10156622529029846, -0.20444495975971222, 0.11144950985908508,
+                                        0.10224875807762146, -0.3151078522205353, 0.10935673117637634])
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()

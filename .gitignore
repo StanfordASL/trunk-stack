@@ -43,3 +43,6 @@ __pycache__/
 
 # Virtual environment
 .venv/
+
+# JAX installation
+**/jax/
