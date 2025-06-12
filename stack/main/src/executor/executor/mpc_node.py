@@ -16,9 +16,16 @@ from controller.mpc_solver_node import jnp2arr              # type: ignore
 from interfaces.msg import AllMotorsControl, TrunkRigidBodies, AllMotorsStatus
 from interfaces.srv import ControlSolver
 
+from actuator import Actuator
+
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
+
+
+config = {
+    "actuator_lambda": [[-5.0, 0.0], [0.0, -5.5]]
+}
 
 
 @jax.jit
@@ -122,7 +129,9 @@ class MPCNode(Node):
         self.rest_position = jnp.array([0.09369193017482758, -0.1086554080247879, 0.09297813475131989,
                                         0.09677113592624664, -0.20255360007286072, 0.08466289937496185,
                                         0.08620507270097733, -0.3149890899658203, 0.08313531428575516])
-        
+
+        self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"], current_time=XX)
+
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
@@ -327,14 +336,16 @@ class MPCNode(Node):
     def publish_control_inputs(self, control_inputs):
 
         print(f"Publishing control inputs: {control_inputs}")
-        control_inputs_6 = u2_to6u_mapping(*control_inputs)
+
+        real_control_inputs = self.actuator_dynamics(new_time=, new_u=control_inputs)
+        control_inputs_6 = u2_to6u_mapping(*real_control_inputs)
         control_message = AllMotorsControl()
 
         # control_message.motors_control = control_inputs_6
         control_message.motors_control = tuple(control_inputs_6.tolist())
         self.controls_publisher.publish(control_message)
         if self.debug:
-            self.get_logger().info('Published new motor control setting: ' + str(control_inputs))
+            self.get_logger().info('Published new motor control setting: ' + str(real_control_inputs))
 
     def extract_angles(self, msg):
         angles = msg.positions

@@ -4,7 +4,6 @@ jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
-from scipy.interpolate import interp1d
 from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
 import numpy as np
