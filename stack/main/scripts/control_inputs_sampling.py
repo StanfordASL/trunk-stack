@@ -123,9 +123,9 @@ def set_adiabatic_control_offset(n_samples):
 
     return const_input
 
-def hypercube_controlled_sampling(control_variables, random_seed, num_points=1000):
-    points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=1, excluded_neighbors=1)
-    len_traj = 100  # 100 = 1s
+def hypercube_controlled_sampling(control_variables, random_seed, num_points=10, visits_per_point=6, excluded_neighbors=2):
+    points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=visits_per_point, excluded_neighbors=excluded_neighbors)
+    len_traj = 200  # 100 = 1s
 
     # repeat each row len_traj times
     control_inputs_df = points_df.loc[points_df.index.repeat(len_traj)].reset_index(drop=True)
@@ -143,7 +143,7 @@ def hypercube_controlled_sampling(control_variables, random_seed, num_points=100
 
 
 
-def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=10, visits_per_point=3, excluded_neighbors=2):
+def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=100, visits_per_point=20, excluded_neighbors=20):
     np.random.seed(random_seed)
 
     # Define bounds
@@ -665,7 +665,7 @@ def main(data_type, sampling_type, seed=None):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
     # data_dir for mark's mac starts with '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data'
     # data_dir for workstation is '/home/trunk/Documents/trunk-stack/stack/main/data'
-    data_dir = os.getenv('TRUNK_DATA', '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data')
+    data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     if seed is not None:
         control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}_{seed}.csv')
     else:
@@ -705,5 +705,5 @@ def main(data_type, sampling_type, seed=None):
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
     sampling_type = 'latin_hypercube_controlled'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', 'latin_hypercube', or 'ol_test_high_z'
-    seed = 1                            # choose integer seed number
+    seed = 10                            # choose integer seed number
     main(data_type, sampling_type, seed)
