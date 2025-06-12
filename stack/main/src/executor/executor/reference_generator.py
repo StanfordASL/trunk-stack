@@ -86,7 +86,39 @@ class ReferenceTrajectoryGenerator:
                 return np.concatenate([pos, vel])
             else:
                 return pos
+        elif self.traj_type == "circle_with_ramp":
+            radius = self.traj_params.get("radius", 1.0)
+            v_tangent = radius * self.traj_speed
+            t_lead_in = radius / v_tangent
+            theta = self.traj_speed * max(t - t_lead_in, 0.0)  # offset time for circle start
 
+            if t < t_lead_in:
+                # Linear ramp phase before circle
+                frac = t / t_lead_in
+                x = self.center[0] + (radius - radius * (1 - frac))
+                y = self.center[1]
+                pos = np.array([x, y, self.z_level])
+                if self.include_velocity:
+                    vx = v_tangent
+                    vy = 0.0
+                    vz = 0.0
+                    vel = np.array([vx, vy, vz])
+                    return np.concatenate([pos, vel])
+                else:
+                    return pos
+            else:
+                # Circle phase
+                x = self.center[0] + radius * np.cos(theta)
+                y = self.center[1] + radius * np.sin(theta)
+                pos = np.array([x, y, self.z_level])
+                if self.include_velocity:
+                    vx = -radius * self.traj_speed * np.sin(theta)
+                    vy =  radius * self.traj_speed * np.cos(theta)
+                    vz = 0.0
+                    vel = np.array([vx, vy, vz])
+                    return np.concatenate([pos, vel])
+                else:
+                    return pos
         elif self.traj_type == "eight":
             amplitude = self.traj_params.get("amplitude", 1.0)
             theta = self.traj_speed * t

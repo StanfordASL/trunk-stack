@@ -37,13 +37,13 @@ class MPCInitializerNode(Node):
                 "Qzf": 2000.0,  # was 640
                 "R": 0.0,
                 "Rdu": 8.0,
-                "U_constraint": 0.15,
-                "dU_constraint": 0.01,
+                "U_constraint": 0.25,
+                "dU_constraint": 0.02,
                 "N": 10,
-                "dt": 0.02
+                "dt": 0.04
             },
             "trajectory": {
-                "type": "circle",  # Options: "circle", "eight", "pacman", "flower"
+                "type": "circle_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"
                 "duration": 20.0,  # Duration of the simulation in seconds
                 "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,

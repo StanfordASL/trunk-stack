@@ -12,7 +12,8 @@ class Actuator:
         # assert self.dt == (new_time - self.current_time), "Missmatch in time steps"
         dt = new_time - self.current_time
         self.current_time = new_time
-
+        new_u = jnp.array(new_u)
+        
         # Update the current u using the analytical solution:
         # u(t + delta_time) = new_u + expm(lambda * delta_time) dot (u(t) - new_u)
         self.current_u = new_u + jnp.dot(expm(self.lambda_ * dt), (self.current_u - new_u))

@@ -107,7 +107,7 @@ class MotorNode(Node):
 
         # Define a safe region to operate the motors in (position and velocity):
         self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
-        self.delta_limits_safe = np.array([3.2, 3.2, 3.2, 3.2, 3.2, 3.2])
+        self.delta_limits_safe = np.array([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
 
         self.last_motor_positions = None
 
@@ -131,7 +131,7 @@ class MotorNode(Node):
             callback_group=self.callback_group
         )
 
-        if self.MPC_security_mode:
+        if self.MPC_SECURITY_MODE:
             # Subscribe to current positions
             self.mocap_subscription = self.create_subscription(
                 TrunkRigidBodies,
@@ -184,11 +184,17 @@ class MotorNode(Node):
         mask_low = positions < -self.limits_safe
         mask_high = positions > self.limits_safe
 
-        if np.any(mask_low | mask_high) or self.MPC_SECURITY_MODE and np.any(mask_delta_low | mask_delta_high):
+        print(f"Positions: {positions}, Delta Positions: {delta_positions}")
+        
+        if np.any(mask_low | mask_high):  # or self.MPC_SECURITY_MODE and np.any(mask_delta_low | mask_delta_high):
             bad_idxs = np.where(mask_low | mask_high)[0]
+            bad_idxs_delta = np.where(mask_delta_low | mask_delta_high)[0]
             bad_vals = positions[bad_idxs]
+            bad_vals_delta = delta_positions[bad_idxs_delta]
+
             self.get_logger().error(
                 f"Unsafe motor commands at indices {bad_idxs.tolist()}: {bad_vals.tolist()}. "
+                f"Unsafe delta commands at indices {bad_idxs_delta.tolist()}: {bad_vals_delta.tolist()}. "
                 "Shutting down without sending to motors."
             )
 
@@ -211,9 +217,6 @@ class MotorNode(Node):
         """
         Callback to process mocap data, updating the latest observation.
         """
-        if self.debug:
-            self.get_logger().info(f'Received mocap data: {msg.positions}.')
-
         # Unpack the message into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
         y_new = np.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
         y_centered = y_new - self.rest_position_trunk
@@ -260,8 +263,8 @@ class MotorNode(Node):
 
 def main():
     rclpy.init()
-    node = DummyMotorNode()
-    # node = MotorNode()
+    # node = DummyMotorNode()
+    node = MotorNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
