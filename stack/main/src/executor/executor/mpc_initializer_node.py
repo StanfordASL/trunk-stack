@@ -49,7 +49,7 @@ class MPCInitializerNode(Node):
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.05,  # [m]  For "circle" and "pacman"
+                    "radius": 0.06,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.05,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
