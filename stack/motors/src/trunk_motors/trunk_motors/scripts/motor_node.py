@@ -186,7 +186,7 @@ class MotorNode(Node):
 
         print(f"Positions: {positions}, Delta Positions: {delta_positions}")
         
-        if np.any(mask_low | mask_high):  # or self.MPC_SECURITY_MODE and np.any(mask_delta_low | mask_delta_high):
+        if np.any(mask_low | mask_high) or self.MPC_SECURITY_MODE and np.any(mask_delta_low | mask_delta_high):
             bad_idxs = np.where(mask_low | mask_high)[0]
             bad_idxs_delta = np.where(mask_delta_low | mask_delta_high)[0]
             bad_vals = positions[bad_idxs]
@@ -205,7 +205,7 @@ class MotorNode(Node):
             rclpy.shutdown()
             return
 
-        self.last_motor_positions = positions
+        self.last_motor_positions = positions.copy()
         # inputs from ROS message are zero centered, need to center them about rest positions before sending to motor
         positions += self.rest_positions
 
@@ -224,7 +224,7 @@ class MotorNode(Node):
         # Subselect tip
         y_centered_tip = y_centered[-3:]
 
-        if np.linalg.norm(y_centered_tip) > 0.1:
+        if np.linalg.norm(y_centered_tip) > 0.2:
             self.get_logger().error(
                 f"Unsafe trunk position at value commands at indices {np.linalg.norm(y_centered_tip)}. "
                 "Shutting down the motor node."
