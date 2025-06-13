@@ -33,7 +33,7 @@ class MPCInitializerNode(Node):
         config = {
             "mpc": {
                 "Q_rows": [0, 1],
-                "Qz": 200.0,
+                "Qz": 400.0,
                 "Qzf": 2000.0,  # was 640
                 "R": 0.0,
                 "Rdu": 8.0,
@@ -43,7 +43,7 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "trajectory": {
-                "type": "eight",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"
+                "type": "circle_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"
                 "duration": 20.0,  # Duration of the simulation in seconds
                 "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
