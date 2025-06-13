@@ -37,7 +37,7 @@ class MPCInitializerNode(Node):
                 "Qzf": 2000.0,  # was 640
                 "R": 0.0,
                 "Rdu": 8.0,
-                "U_constraint": 0.3,
+                "U_constraint": 0.4,
                 "dU_constraint": 0.04,
                 "N": 10,
                 "dt": 0.02
