@@ -107,7 +107,7 @@ class MotorNode(Node):
 
         # Define a safe region to operate the motors in (position and velocity):
         self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
-        self.delta_limits_safe = np.array([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
+        self.delta_limits_safe = np.array([5.0, 5.0, 5.0, 5.0, 5.0, 5.0])
 
         self.last_motor_positions = None
 
@@ -184,7 +184,8 @@ class MotorNode(Node):
         mask_low = positions < -self.limits_safe
         mask_high = positions > self.limits_safe
 
-        print(f"Positions: {positions}, Delta Positions: {delta_positions}")
+        if self.MPC_SECURITY_MODE:
+            print(f"Positions: {positions}, Delta Positions: {delta_positions}")
         
         if np.any(mask_low | mask_high) or self.MPC_SECURITY_MODE and np.any(mask_delta_low | mask_delta_high):
             bad_idxs = np.where(mask_low | mask_high)[0]
@@ -224,7 +225,7 @@ class MotorNode(Node):
         # Subselect tip
         y_centered_tip = y_centered[-3:]
 
-        if np.linalg.norm(y_centered_tip) > 0.2:
+        if np.linalg.norm(y_centered_tip) > 0.1:
             self.get_logger().error(
                 f"Unsafe trunk position at value commands at indices {np.linalg.norm(y_centered_tip)}. "
                 "Shutting down the motor node."
