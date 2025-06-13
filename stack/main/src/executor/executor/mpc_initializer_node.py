@@ -40,7 +40,7 @@ class MPCInitializerNode(Node):
                 "U_constraint": 0.25,
                 "dU_constraint": 0.02,
                 "N": 10,
-                "dt": 0.04
+                "dt": 0.02
             },
             "trajectory": {
                 "type": "circle_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"

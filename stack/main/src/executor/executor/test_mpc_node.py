@@ -45,7 +45,7 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('results_name', 'pauls_first_test')            # name of the results file
+            ('results_name', 'pauls_second_test')            # name of the results file
         ])
 
         config = {
