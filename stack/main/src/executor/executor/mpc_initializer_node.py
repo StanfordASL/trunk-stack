@@ -33,11 +33,11 @@ class MPCInitializerNode(Node):
         config = {
             "mpc": {
                 "Q_rows": [0, 1],
-                "Qz": 400.0,
+                "Qz": 300.0,
                 "Qzf": 2000.0,  # was 640
                 "R": 0.0,
                 "Rdu": 8.0,
-                "U_constraint": 0.25,
+                "U_constraint": 0.3,
                 "dU_constraint": 0.04,
                 "N": 10,
                 "dt": 0.02
@@ -49,7 +49,7 @@ class MPCInitializerNode(Node):
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.06,  # [m]  For "circle" and "pacman"
+                    "radius": 0.05,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.05,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
