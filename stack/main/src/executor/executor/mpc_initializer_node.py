@@ -38,7 +38,7 @@ class MPCInitializerNode(Node):
                 "R": 0.0,
                 "Rdu": 8.0,
                 "U_constraint": 0.25,
-                "dU_constraint": 0.02,
+                "dU_constraint": 0.04,
                 "N": 10,
                 "dt": 0.02
             },
