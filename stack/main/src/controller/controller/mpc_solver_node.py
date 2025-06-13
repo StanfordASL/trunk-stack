@@ -94,22 +94,7 @@ class MPCSolverNode(Node):
         """
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
-        # print("Shape of x0: ", x0.shape)
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
-
-        # print("Shape of x_init: ", self.x_init.shape)
-
-        # DEBUGGING:
-        # print("self.model: ", self.model)
-        # print("config ", config)
-        # print("x0 ", x0)
-        # print("self.u_init: ", self.u_init)
-        # print("self.x_init: ", self.x_init)
-        # print("U: ", U)
-        # print("X: ", X)
-        # print("Xf: ", Xf)
-        # print("dU: ", dU)
-        # print(kwargs)
 
         self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1],
                            zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)

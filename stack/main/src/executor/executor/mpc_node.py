@@ -130,6 +130,12 @@ class MPCNode(Node):
         self.collect_angles = True
         self.last_motor_angles = None
 
+        # track whether we’re finished so mpc_callback stops sending new requests
+        self.finished = False
+
+        # store solve times
+        self.solve_times = []
+
         # Size of observations vector
         # self.n_y = self.n_obs * (self.n_delay + 1)
         self.block_size = self.n_obs + self.n_u
@@ -297,6 +303,9 @@ class MPCNode(Node):
         """
         Receive MPC results at a fixed rate.
         """
+        if self.finished:
+            return
+
         if not self.initialized:
             self.y0 = jnp.zeros(self.n_y)
             self.send_request(0.0, self.y0, self.u_previous, wait=True)
@@ -328,9 +337,16 @@ class MPCNode(Node):
             response = async_response.result()
 
             if response.done:
+                # mark finished and cancel our periodic timers
+                self.finished = True
+                self.mpc_exec_timer.cancel()
+                self.buffer_timer.cancel()
+
                 self.get_logger().info(f'Trajectory is finished! At {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f}')
                 self.destroy_node()
-                rclpy.shutdown()
+                if rclpy.ok():
+                    rclpy.shutdown()
+                return
             else:
                 # Store the optimized control inputs in the buffer for execution
                 new_buffer = []
@@ -341,7 +357,8 @@ class MPCNode(Node):
                     self.buffer_index = 0
 
                 # Save to csv file
-                self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt, self.y0[:self.n_y])
+                self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt,
+                                 self.y0[:self.n_y], response.solve_time)
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
@@ -377,15 +394,15 @@ class MPCNode(Node):
         """
         with open(self.results_file, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['topt', 'xopt', 'uopt', 'zopt', 'y'])
+            writer.writerow(['topt', 'xopt', 'uopt', 'zopt', 'y', 'solve_time'])
 
-    def save_to_csv(self, topt, xopt, uopt, zopt, y):
+    def save_to_csv(self, topt, xopt, uopt, zopt, y, solve_time):
         """
         Save optimized quantities by MPC and observations to CSV file.
         """
         with open(self.results_file, mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt), y.tolist()])
+            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt), y.tolist(), solve_time])
 
 
 def main(args=None):
