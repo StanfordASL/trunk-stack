@@ -8,6 +8,8 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 
+from .utils.socket_utils import send_state, recv_control, setup_socket_client
+
 MPC_HOST = 'localhost'
 MPC_PORT = 12345
 
@@ -27,8 +29,7 @@ class SocketMPCNode(Node):
         self.current_state = None
         self.current_time = None
 
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((MPC_HOST, MPC_PORT))
+        self.socket = setup_socket_client(MPC_HOST, MPC_PORT)
 
         self.publisher = self.create_publisher(
             AllMotorsControl,
@@ -45,14 +46,6 @@ class SocketMPCNode(Node):
         self.create_timer(0.01, self.control_callback) # 100 Hz control rate
         self.start_time = self.get_clock().now().nanoseconds / 1e9
 
-    def socket_send(self, t, x):
-        data = {'state': x, 'time': t}
-        self.socket.sendall(pickle.dumps(data))
-        
-    def socket_receive(self):
-        response = pickle.loads(self.socket.recv(1024))
-        return jnp.array(response['control'])
-        
     def mocap_callback(self, msg):
         y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
         self.current_state = transform_states(y_new)
@@ -67,11 +60,14 @@ class SocketMPCNode(Node):
         if self.current_state is None or self.current_time is None:
             self.get_logger().warn('Current state or time not set, skipping control callback.')
             return
+        
         try:
-            self.socket_send(self.current_time, self.current_state)
-            u_opt = self.socket_receive()
-            self.publish_control(u_opt)
-            
+            print(f'Sending state at time {self.current_time}: {self.current_state}')
+            send_state(self.socket, self.current_time, self.current_state)
+            u_opt = recv_control(self.socket)
+            print(f'Received control: {u_opt}')
+            self.publish_control(transform_controls(u_opt))
+
         except Exception as e:
             self.get_logger().error(f'Socket communication failed: {e}')
 
@@ -79,12 +75,8 @@ class SocketMPCNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = SocketMPCNode()
-
-    executor = MultiThreadedExecutor(num_threads=6)
-    executor.add_node(node)
-
     try:
-        executor.spin()
+        rclpy.spin(node)
     except KeyboardInterrupt:
         node.get_logger().info('Keyboard interrupt, shutting down.')
     finally:
