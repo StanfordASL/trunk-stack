@@ -225,7 +225,7 @@ class MotorNode(Node):
         # Subselect tip
         y_centered_tip = y_centered[-3:]
 
-        if np.linalg.norm(y_centered_tip) > 0.1:
+        if np.linalg.norm(y_centered_tip) > 0.15:
             self.get_logger().error(
                 f"Unsafe trunk position at value commands at indices {np.linalg.norm(y_centered_tip)}. "
                 "Shutting down the motor node."
