@@ -1,12 +1,8 @@
-import socket
-import pickle
-import jax
 import jax.numpy as jnp
 import rclpy
 from rclpy.node import Node
-from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile
-from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
+from interfaces.msg import AllMotorsControl, TrunkRigidBodies
 
 from .utils.socket_utils import send_state, recv_control, setup_socket_client
 
@@ -53,7 +49,7 @@ class SocketMPCNode(Node):
 
     def publish_control(self, u_opt):
         msg = AllMotorsControl()
-        msg.motors_control = [SingleMotorControl(mode=0, value=float(v)) for v in u_opt]
+        msg.motors_control = tuple(u_opt.tolist())
         self.publisher.publish(msg)
 
     def control_callback(self):

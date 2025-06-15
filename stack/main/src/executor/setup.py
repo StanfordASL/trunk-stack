@@ -18,7 +18,6 @@ setup(
     maintainer_email='asl@todo.todo',
     description='TODO: Package description',
     license='TODO: License declaration',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'data_collection_node = executor.data_collection_node:main',
@@ -30,6 +29,7 @@ setup(
             'adiabatic_manual_decay_node = executor.adiabatic_manual_decay_node:main',
             'mpc_initializer_node = executor.mpc_initializer_node:main',
             'mpc_node = executor.mpc_node:main',
+            'socket_mpc_node = executor.socket_mpc_node:main',
             'store_observations_node = executor.store_observations_node:main',
             'test_mpc_node = executor.test_mpc_node:main',
             'ffpid_node = executor.ffpid_node:main',
