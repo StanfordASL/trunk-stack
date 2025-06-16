@@ -3,11 +3,6 @@ import numpy as np
 import socket
 import time
 
-###################################################
-# Socket utilities for sending and receiving data #
-#     File should be equivalent to GNN MPC        #
-###################################################
-
 def pack_state(t: float, x0: np.ndarray) -> bytes:
     assert x0.ndim == 2
     rows, cols = x0.shape
@@ -69,15 +64,21 @@ def setup_socket_server(host: str, port: int):
     s.bind((host, port))
     s.listen(1)
     conn, addr = s.accept()
+    
+    print(f"Socket ready on {host}:{port}")
     return conn
 
 def setup_socket_client(host: str, port: int):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    print("Waiting for server to be available...")
+
     while True:
         try:
             s.connect((host, port))
-            return s
+            break
         except (ConnectionRefusedError, OSError):
-            print("Waiting for server to be available...")
-            time.sleep(1)
+            time.sleep(5)
+
+    print(f"Connected to server at {host}:{port}")
+    return s

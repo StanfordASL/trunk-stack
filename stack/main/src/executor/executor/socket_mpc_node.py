@@ -9,14 +9,6 @@ from .utils.socket_utils import send_state, recv_control, setup_socket_client
 MPC_HOST = 'localhost'
 MPC_PORT = 12345
 
-def transform_states(y):
-    # TODO: Translation and axis swapping
-    return y
-
-def transform_controls(u):
-    # TODO: Reorder correctly for trun
-    return u
-
 
 class SocketMPCNode(Node):
     def __init__(self):
@@ -43,8 +35,7 @@ class SocketMPCNode(Node):
         self.start_time = self.get_clock().now().nanoseconds / 1e9
 
     def mocap_callback(self, msg):
-        y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
-        self.current_state = transform_states(y_new)
+        self.current_state = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
         self.current_time = self.get_clock().now().nanoseconds / 1e9 - self.start_time
 
     def publish_control(self, u_opt):
@@ -62,7 +53,7 @@ class SocketMPCNode(Node):
             send_state(self.socket, self.current_time, self.current_state)
             u_opt = recv_control(self.socket)
             print(f'Received control: {u_opt}')
-            self.publish_control(transform_controls(u_opt))
+            self.publish_control(u_opt)
 
         except Exception as e:
             self.get_logger().error(f'Socket communication failed: {e}')
