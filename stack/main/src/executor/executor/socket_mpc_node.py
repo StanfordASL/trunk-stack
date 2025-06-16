@@ -16,6 +16,7 @@ class SocketMPCNode(Node):
 
         self.current_state = None
         self.current_time = None
+        self.limits = jnp.array([51, 81, 31, 81, 31, 51])  # Safe limits for motor positions
 
         self.socket = setup_socket_client(MPC_HOST, MPC_PORT)
 
@@ -35,7 +36,7 @@ class SocketMPCNode(Node):
         self.start_time = self.get_clock().now().nanoseconds / 1e9
 
     def mocap_callback(self, msg):
-        self.current_state = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
+        self.current_state = jnp.array([[pos.x, pos.y, pos.z] for pos in msg.positions])
         self.current_time = self.get_clock().now().nanoseconds / 1e9 - self.start_time
 
     def publish_control(self, u_opt):
@@ -48,15 +49,13 @@ class SocketMPCNode(Node):
             self.get_logger().warn('Current state or time not set, skipping control callback.')
             return
         
-        try:
-            print(f'Sending state at time {self.current_time}: {self.current_state}')
-            send_state(self.socket, self.current_time, self.current_state)
-            u_opt = recv_control(self.socket)
-            print(f'Received control: {u_opt}')
-            self.publish_control(u_opt)
-
-        except Exception as e:
-            self.get_logger().error(f'Socket communication failed: {e}')
+        print(f'Sending state at time {self.current_time}: {self.current_state}')
+        send_state(self.socket, self.current_time, self.current_state)
+        u_opt = recv_control(self.socket)
+        print(f'Received control: {u_opt}')
+        
+        assert jnp.all(jnp.abs(u_opt) <= self.limits), "Control exceeds limits"
+        self.publish_control(u_opt)
 
 
 def main(args=None):
