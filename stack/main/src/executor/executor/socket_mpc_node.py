@@ -59,15 +59,22 @@ class SocketMPCNode(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = SocketMPCNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        node.get_logger().info('Keyboard interrupt, shutting down.')
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+    while True:
+        rclpy.init(args=args)
+        node = SocketMPCNode()
+        try:
+            rclpy.spin(node)
+        except ConnectionError:
+            node.get_logger().warn('Socket disconnected, restarting node...')
+        except KeyboardInterrupt:
+            node.get_logger().info('Keyboard interrupt, shutting down.')
+            break
+        except Exception as e:
+            node.get_logger().error(f'An error occurred: {e}')
+            break
+        finally:
+            node.destroy_node()
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

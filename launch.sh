@@ -1,9 +1,13 @@
 #!/bin/bash
 
+source /opt/ros/humble/setup.bash
+source .bashrc
+
 # Terminal 1: mocap driver
 gnome-terminal -- bash -c "
 source /opt/ros/humble/setup.bash
 cd ~/Documents/trunk-stack/stack/mocap/
+colcon build
 source install/setup.bash
 ros2 launch mocap4r2_optitrack_driver optitrack2.launch.py
 "
@@ -12,6 +16,7 @@ ros2 launch mocap4r2_optitrack_driver optitrack2.launch.py
 gnome-terminal -- bash -c "
 source /opt/ros/humble/setup.bash
 cd ~/Documents/trunk-stack/stack/mocap/
+colcon build
 source install/setup.bash
 ros2 lifecycle set /mocap4r2_optitrack_driver_node activate
 ros2 run converter converter_node
@@ -21,7 +26,14 @@ ros2 run converter converter_node
 gnome-terminal -- bash -c "
 source /opt/ros/humble/setup.bash
 cd ~/Documents/trunk-stack/stack/motors/
+colcon build
 source install/setup.bash
 ros2 launch trunk_motors launch_motors.py
 "
 
+# Current terminal
+
+cd ~/Documents/trunk-stack/stack/main/
+colcon build
+source install/setup.bash
+ros2 run executor socket_mpc_node
