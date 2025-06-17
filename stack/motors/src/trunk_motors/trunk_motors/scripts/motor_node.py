@@ -19,7 +19,7 @@ class MotorNode(Node):
             ('secure_mode', True)
         ])
 
-        self.MPC_SECURITY_MODE = False# self.get_parameter('secure_mode').value  # True if MPC is running
+        self.MPC_SECURITY_MODE = False # self.get_parameter('secure_mode').value  # True if MPC is running
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()

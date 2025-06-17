@@ -1,4 +1,4 @@
-import jax.numpy as jnp
+import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile
@@ -14,8 +14,7 @@ class SocketMPCNode(Node):
     def __init__(self):
         super().__init__('socket_mpc_node')
         self.rate = 0.02  # Control rate in seconds (50 Hz)
-        self.avoid_pid = True  # Set to True to mitigate P effects in PID motor control
-        self.limits = jnp.array([51, 81, 31, 81, 31, 51])  # Safe limits for motor positions
+        self.limits = np.array([51, 81, 31, 81, 31, 51])  # Safe limits for motor positions
         
         self.current_state = None
         self.current_time = None
@@ -45,15 +44,14 @@ class SocketMPCNode(Node):
         self.start_time = self.get_clock().now().nanoseconds / 1e9
 
     def motor_angles_callback(self, msg): 
-        self.last_motor_angles = msg.positions
+        self.last_motor_angles = np.array(msg.positions)
 
     def mocap_callback(self, msg):
-        self.current_state = jnp.array([[pos.x, pos.y, pos.z] for pos in msg.positions])
+        self.current_state = np.array([[pos.x, pos.y, pos.z] for pos in msg.positions])
         self.current_time = self.get_clock().now().nanoseconds / 1e9 - self.start_time
 
     def publish_control(self, u_opt):
-        if self.avoid_pid:
-            u_opt = u_opt + self.last_motor_angles
+        assert np.all(np.abs(u_opt) <= self.limits), "Control exceeds limits"
 
         msg = AllMotorsControl()
         msg.motors_control = tuple(u_opt.tolist())
@@ -75,9 +73,7 @@ class SocketMPCNode(Node):
         delta_time = self.get_clock().now().nanoseconds / 1e9 - now
 
         if delta_time > self.rate:
-            self.get_logger().warn(f'Control callback took too long: {delta_time:.4f} seconds, expected ~0.01 seconds.')
-
-        assert jnp.all(jnp.abs(u_opt) <= self.limits), "Control exceeds limits"
+            self.get_logger().warn(f'Control callback took too long: {delta_time:.4f} seconds, expected ~{self.rate} seconds.')
         
         self.publish_control(u_opt)
 
