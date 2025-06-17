@@ -13,13 +13,14 @@ MPC_PORT = 12345
 class SocketMPCNode(Node):
     def __init__(self):
         super().__init__('socket_mpc_node')
-
+        self.rate = 0.02  # Control rate in seconds (50 Hz)
+        self.avoid_pid = True  # Set to True to mitigate P effects in PID motor control
+        self.limits = jnp.array([51, 81, 31, 81, 31, 51])  # Safe limits for motor positions
+        
         self.current_state = None
         self.current_time = None
         self.last_motor_angles = None
-        self.limits = jnp.array([51, 81, 31, 81, 31, 51])  # Safe limits for motor positions
-        self.rate = 0.02
-
+        
         self.socket = setup_socket_client(MPC_HOST, MPC_PORT)
 
         self.publisher = self.create_publisher(
@@ -34,13 +35,13 @@ class SocketMPCNode(Node):
             QoSProfile(depth=3)
         )
         self.subscription_angles = self.create_subscription(
-                AllMotorsStatus,
-                '/all_motors_status',
-                self.motor_angles_callback,
-                QoSProfile(depth=10)
-            )
+            AllMotorsStatus,
+            '/all_motors_status',
+            self.motor_angles_callback,
+            QoSProfile(depth=10)
+        )
 
-        self.create_timer(self.rate, self.control_callback) # 50 Hz control rate
+        self.create_timer(self.rate, self.control_callback)
         self.start_time = self.get_clock().now().nanoseconds / 1e9
 
     def motor_angles_callback(self, msg): 
@@ -51,6 +52,9 @@ class SocketMPCNode(Node):
         self.current_time = self.get_clock().now().nanoseconds / 1e9 - self.start_time
 
     def publish_control(self, u_opt):
+        if self.avoid_pid:
+            u_opt = u_opt + self.last_motor_angles
+
         msg = AllMotorsControl()
         msg.motors_control = tuple(u_opt.tolist())
         self.publisher.publish(msg)
@@ -74,6 +78,7 @@ class SocketMPCNode(Node):
             self.get_logger().warn(f'Control callback took too long: {delta_time:.4f} seconds, expected ~0.01 seconds.')
 
         assert jnp.all(jnp.abs(u_opt) <= self.limits), "Control exceeds limits"
+        
         self.publish_control(u_opt)
 
 
