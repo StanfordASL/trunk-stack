@@ -31,6 +31,14 @@ source install/setup.bash
 ros2 launch trunk_motors launch_motors.py
 "
 
+# Terminal 5: mocap driver
+gnome-terminal -- bash -c "
+cd ~/Documents/pbenito/gnn-mpc/
+source /opt/ros/humble/setup.bash
+exec bash
+"
+
+
 # Current terminal
 
 cd ~/Documents/trunk-stack/stack/main/
