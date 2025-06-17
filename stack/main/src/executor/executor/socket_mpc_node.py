@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile
-from interfaces.msg import AllMotorsControl, TrunkRigidBodies
+from interfaces.msg import AllMotorsControl, TrunkRigidBodies, AllMotorsStatus
 
 from .utils.socket_utils import send_state, recv_control, setup_socket_client
 
@@ -16,6 +16,7 @@ class SocketMPCNode(Node):
 
         self.current_state = None
         self.current_time = None
+        self.last_motor_angles = None
         self.limits = jnp.array([51, 81, 31, 81, 31, 51])  # Safe limits for motor positions
         self.rate = 0.02
 
@@ -32,9 +33,18 @@ class SocketMPCNode(Node):
             self.mocap_callback,
             QoSProfile(depth=3)
         )
+        self.subscription_angles = self.create_subscription(
+                AllMotorsStatus,
+                '/all_motors_status',
+                self.motor_angles_callback,
+                QoSProfile(depth=10)
+            )
 
         self.create_timer(self.rate, self.control_callback) # 50 Hz control rate
         self.start_time = self.get_clock().now().nanoseconds / 1e9
+
+    def motor_angles_callback(self, msg): 
+        self.last_motor_angles = msg.positions
 
     def mocap_callback(self, msg):
         self.current_state = jnp.array([[pos.x, pos.y, pos.z] for pos in msg.positions])
@@ -49,9 +59,13 @@ class SocketMPCNode(Node):
         if self.current_state is None or self.current_time is None:
             self.get_logger().warn('Current state or time not set, skipping control callback.')
             return
-
+        
+        if self.last_motor_angles is None:
+            self.get_logger().warn('Last motor angles not set, skipping control callback.')
+            return
+        
         now = self.get_clock().now().nanoseconds / 1e9
-        send_state(self.socket, self.current_time, self.current_state)
+        send_state(self.socket, self.current_time, self.current_state, self.last_motor_angles)
         
         u_opt = recv_control(self.socket)
         delta_time = self.get_clock().now().nanoseconds / 1e9 - now
