@@ -60,7 +60,8 @@ class MPCInitializerNode(Node):
                 "also_embedd_u": True
             },
             # "model": "first_mpc_model_real_trunk.pkl"
-            "model": "real_origin_faster_v2.pkl"
+            # "model": "real_origin_faster_v2.pkl"
+            "model": "real_model_60.pkl"
         }
 
         mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]

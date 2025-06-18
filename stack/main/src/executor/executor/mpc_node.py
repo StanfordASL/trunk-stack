@@ -24,7 +24,8 @@ jax.config.update("jax_enable_x64", True)
 
 
 config = {
-    "actuator_lambda": [[-5.0, 0.0], [0.0, -5.5]]
+    # "actuator_lambda": [[-5.0, 0.0], [0.0, -5.5]]
+    "actuator_lambda": [[-6.5, 0.0], [0.0, -6.5]]
 }
 
 
@@ -101,7 +102,7 @@ class MPCNode(Node):
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 2),                                     # number of control inputs
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
-            ('n_delay', 4),                                 # number of delays applied to observations
+            ('n_delay', 5),           # 4                      # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
@@ -142,7 +143,7 @@ class MPCNode(Node):
         self.n_y = self.block_size * (self.n_delay + 1)
 
         print(f"n_y: {self.n_y}, n_obs: {self.n_obs}, n_delay: {self.n_delay}, block_size: {self.block_size}")
-        assert self.n_y == 40, "wrong n_y calculated"
+        assert self.n_y == 48, "wrong n_y calculated"
 
         # Settled positions of the rigid bodies
         self.rest_position = jnp.array([0.10753094404935837, -0.11212190985679626, 0.10474388301372528,
