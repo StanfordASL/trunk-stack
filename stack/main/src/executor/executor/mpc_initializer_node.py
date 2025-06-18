@@ -45,11 +45,11 @@ class MPCInitializerNode(Node):
             "trajectory": {
                 "type": "circle_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"
                 "duration": 20.0,  # Duration of the simulation in seconds
-                "speed": 1.0,  # Angular speed (rad/s)
+                "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.08,  # [m]  For "circle" and "pacman"
+                    "radius": 0.03,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.05,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
@@ -59,8 +59,8 @@ class MPCInitializerNode(Node):
                 "perf_var_dim": 3,
                 "also_embedd_u": True
             },
-            # "model": "sim_origin_best.pkl"
-            "model": "first_mpc_model_real_trunk.pkl"
+            # "model": "first_mpc_model_real_trunk.pkl"
+            "model": "real_origin_faster_v2.pkl"
         }
 
         mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
