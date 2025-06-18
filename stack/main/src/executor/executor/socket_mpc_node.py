@@ -13,7 +13,7 @@ MPC_PORT = 12345
 class SocketMPCNode(Node):
     def __init__(self):
         super().__init__('socket_mpc_node')
-        self.rate = 0.02  # Control rate in seconds (50 Hz)
+        self.rate = 0.01  # Control rate in seconds (100 Hz)
         self.limits = np.array([51, 81, 31, 81, 31, 51])  # Safe limits for motor positions
         
         self.current_state = None
@@ -45,10 +45,14 @@ class SocketMPCNode(Node):
 
     def motor_angles_callback(self, msg): 
         self.last_motor_angles = np.array(msg.positions)
-
+        
     def mocap_callback(self, msg):
         self.current_state = np.array([[pos.x, pos.y, pos.z] for pos in msg.positions])
+        old_time = self.current_time
         self.current_time = self.get_clock().now().nanoseconds / 1e9 - self.start_time
+
+        if old_time is not None and self.current_time - old_time > 0.02:  # If the time difference is greater than expected
+            self.get_logger().warn(f'Mocap callback took too long: {self.current_time - old_time:.4f} seconds, expected ~{0.01} seconds.')
 
     def publish_control(self, u_opt):
         assert np.all(np.abs(u_opt) <= self.limits), "Control exceeds limits"
