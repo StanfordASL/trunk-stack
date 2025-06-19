@@ -125,8 +125,8 @@ class GuSTO:
         # Timing information to be stored
         t0 = time.time()
         t_locp = 0.0
-
         t_overhead = time.time()
+
         itr = 0
         self.x_k = x_init
         self.u_k = u_init
@@ -160,14 +160,16 @@ class GuSTO:
         t_overhead = time.time() - t_overhead
         print('DEBUG: Overhead time for GuSTO initialization: {:.4f} seconds'.format(t_overhead))
 
+        t_while = time.perf_counter()
         while self._is_valid_iteration(itr) and not converged and omega <= self.omega_max:
+            t0_locp_update = time.perf_counter()
+            
             rho_k = -1
             max_violation = -1
             dsol = -1
             delta_cur = delta  # just for printing
             omega_cur = omega  # just for printing
             
-            t0_locp_update = time.time()
             # Update the LOCP with new parameters and solve
             if new_solution:
                 self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, cd=c_d)
@@ -177,14 +179,16 @@ class GuSTO:
 
             if self.verbose >= 2:
                 print('DEBUG: Routines pre-solve computed in {:.4f} seconds'.format(time.time() - t0))
-            t0_locp_update = time.time() - t0_locp_update
+            t0_locp_update = time.perf_counter() - t0_locp_update
             print('DEBUG: LOCP update time: {:.4f} seconds'.format(t0_locp_update))
 
             # Solve the LOCP
-            t0_locp = time.time()
+            t0_locp = time.perf_counter()
             Jstar, success, stats = self.locp.solve()
-            t0_locp = time.time() - t0_locp
+            t0_locp = time.perf_counter() - t0_locp
             print('DEBUG: LOCP solve time: {:.4f} seconds'.format(t0_locp))
+
+            t_get_solution = time.perf_counter()
 
             if not success:
                 print('Iteration {} of problem cannot be solved, see solver status for more information'.format(itr))
@@ -195,14 +199,13 @@ class GuSTO:
                 else:
                     self.zopt = jnp.transpose(self.H @ self.xopt.T)
                 return
-
-            t_get_solution = time.time()
+ 
             t_locp += stats.solve_time
             x_next, u_next, _ = self.locp.get_solution()
-            t_get_solution = time.time() - t_get_solution
+            t_get_solution = time.perf_counter() - t_get_solution
             print('DEBUG: LOCP solution extraction time: {:.4f} seconds'.format(t_get_solution))
 
-            t_trust_region = time.time()
+            t_trust_region = time.perf_counter()
             # Check if trust region is satisfied
             e_tr, tr_satisfied = self._is_in_trust_region(self.x_k, x_next, delta)
 
@@ -259,10 +262,7 @@ class GuSTO:
                 omega = self.gamma_fail * omega
 
             if self.verbose >= 2:
-                print('DEBUG: Trust region + LOCP computed in {:.4f} seconds'.format(time.time() - t0))
-
-            t_trust_region = time.time() - t_trust_region
-            print('DEBUG: Trust region check time: {:.4f} seconds'.format(t_trust_region))
+                print('DEBUG: Trust region + LOCP computed in {:.4f} seconds'.format(time.perf_counter() - t0))
 
             itr += 1
 
@@ -277,7 +277,10 @@ class GuSTO:
                     print('{:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {}'.format(
                         Jstar, e_tr, rho_k, max_violation, dsol, delta_cur, omega_cur, itr))
 
-            t_recompute = time.time()
+            t_trust_region = time.perf_counter() - t_trust_region
+            print('DEBUG: Trust region check time: {:.4f} seconds'.format(t_trust_region))
+
+            t_recompute = time.perf_counter()
             # If valid solution, update and recompute dynamics
             if new_solution:
                 self.x_k = x_next.copy()
@@ -290,11 +293,13 @@ class GuSTO:
                     else:
                         H_d, c_d = None, None
 
-            t_recompute = time.time() - t_recompute
+            t_recompute = time.perf_counter() - t_recompute
             print('DEBUG: Dynamics recomputed in {:.4f} seconds'.format(t_recompute))
 
+        t_while = time.perf_counter() - t_while
+        print('DEBUG: GuSTO while loop time: {:.4f} seconds'.format(t_while))
         
-        t_gusto = time.time() - t0
+        t_gusto = time.perf_counter() - t0
         if omega > self.omega_max:
             print('omega > omega_max, solution did not converge')
         if not self._is_valid_iteration(itr-1):
