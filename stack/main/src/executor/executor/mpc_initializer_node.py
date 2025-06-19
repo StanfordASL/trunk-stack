@@ -43,13 +43,13 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "trajectory": {
-                "type": "circle_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"
+                "type": "eight",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"
                 "duration": 20.0,  # Duration of the simulation in seconds
                 "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.03,  # [m]  For "circle" and "pacman"
+                    "radius": 0.05,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.05,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
@@ -142,7 +142,7 @@ class MPCInitializerNode(Node):
             du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
 
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red_u_init, t=self.times, dt=mpc_config["dt"],
-                                                   ref_traj=self.ref_traj, U=u, dU=du, solver="OSQP")  # Was GUROBI
+                                                   ref_traj=self.ref_traj, U=u, dU=du, solver="CLARABEL")  # Was GUROBI
 
     def _load_model(self):
         """
