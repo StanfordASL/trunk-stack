@@ -5,7 +5,7 @@ import time
 
 def pack_state(t: float, x0: np.ndarray, motor_state: np.ndarray) -> bytes:
     assert x0.ndim == 2
-    assert motor_state.shape == (6,), "Motor state must be 6-dimensional"
+    assert motor_state.shape == (6,3), "Motor state must be 6-dimensional"
     rows, cols = x0.shape
     header = struct.pack('fii', t, rows, cols)  # 4+4+4 bytes
     body = x0.astype(np.float32).tobytes()
@@ -16,7 +16,7 @@ def unpack_state(data: bytes):
     t, rows, cols = struct.unpack('fii', data[:12])
     state_size = rows * cols * 4  # 4 bytes per float32
     x0 = np.frombuffer(data[12:12+state_size], dtype=np.float32).reshape((rows, cols))
-    motor_state = np.frombuffer(data[12+state_size:], dtype=np.float32)
+    motor_state = np.frombuffer(data[12+state_size:], dtype=np.float32).reshape((6, 3))
     return t, x0, motor_state
 
 
@@ -47,7 +47,7 @@ def send_state(sock: socket.socket, t: float, x0: np.ndarray, motor_state: np.nd
 def recv_state(sock: socket.socket):
     header = recv_exact(sock, 12)
     t, rows, cols = struct.unpack('fii', header)
-    body = recv_exact(sock, 4 * (rows * cols + 6))  # +6 for motor state
+    body = recv_exact(sock, 4 * (rows * cols + 6*3))  # +6 for motor state
     state_size = rows * cols * 4
     x0 = np.frombuffer(body[:state_size], dtype=np.float32).reshape((rows, cols))
     motor_state = np.frombuffer(body[state_size:], dtype=np.float32)

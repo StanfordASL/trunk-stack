@@ -17,9 +17,11 @@ class SocketMPCNode(Node):
         self.limits = np.array([51, 81, 31, 81, 31, 51])  # Safe limits for motor positions
         
         self.current_state = None
+        self.current_velocity = None
         self.current_time = None
-        self.last_motor_angles = None
-        
+        self.last_state = None
+        self.last_position = None
+
         self.socket = setup_socket_client(MPC_HOST, MPC_PORT)
 
         self.publisher = self.create_publisher(
@@ -44,16 +46,27 @@ class SocketMPCNode(Node):
         self.start_time = self.get_clock().now().nanoseconds / 1e9
 
     def motor_angles_callback(self, msg): 
-        self.last_motor_angles = np.array(msg.positions)
-        
+        self.last_motor_state = np.stack([
+            np.array(msg.positions),
+            np.array(msg.velocities),
+            np.array(msg.currents)
+        ], axis=1)
+
     def mocap_callback(self, msg):
+        prev_state = self.current_state
         self.current_state = np.array([[pos.x, pos.y, pos.z] for pos in msg.positions])
+
         old_time = self.current_time
         self.current_time = self.get_clock().now().nanoseconds / 1e9 - self.start_time
 
-        if old_time is not None and self.current_time - old_time > 0.02:  # If the time difference is greater than expected
-            self.get_logger().warn(f'Mocap callback took too long: {self.current_time - old_time:.4f} seconds, expected ~{0.01} seconds.')
+        if old_time is not None:
+            dt = self.current_time - old_time
+            if prev_state is not None and dt > 0:
+                self.current_velocity = (self.current_state - prev_state) / dt
 
+            if self.current_time - old_time > 0.02:  # If the time difference is greater than expected
+                self.get_logger().warn(f'Mocap callback took too long: {self.current_time - old_time:.4f} seconds, expected ~{0.01} seconds.')
+            
     def publish_control(self, u_opt):
         assert np.all(np.abs(u_opt) <= self.limits), "Control exceeds limits"
 
@@ -62,16 +75,18 @@ class SocketMPCNode(Node):
         self.publisher.publish(msg)
 
     def control_callback(self):
-        if self.current_state is None or self.current_time is None:
+        if self.current_state is None or self.current_time is None or self.current_velocity is None:
             self.get_logger().warn('Current state or time not set, skipping control callback.')
             return
         
-        if self.last_motor_angles is None:
+        if self.last_motor_state is None:
             self.get_logger().warn('Last motor angles not set, skipping control callback.')
             return
         
+        full_state = np.concatenate((self.current_state, self.current_velocity), axis=1)
+
         now = self.get_clock().now().nanoseconds / 1e9
-        send_state(self.socket, self.current_time, self.current_state, self.last_motor_angles)
+        send_state(self.socket, self.current_time, full_state, self.last_motor_state)
         
         u_opt = recv_control(self.socket)
         delta_time = self.get_clock().now().nanoseconds / 1e9 - now
