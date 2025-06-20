@@ -146,10 +146,10 @@ class MPCNode(Node):
         assert self.n_y == 40, "wrong n_y calculated"
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.09711502492427826, -0.10878492891788483, 0.10386402159929276,
-                                        0.10451989620923996, -0.20458264648914337, 0.10020535439252853,
-                                        0.11307857930660248, -0.31655168533325195, 0.09398672729730606])
-
+        self.rest_position = jnp.array([0.10753094404935837, -0.11212190985679626, 0.10474388301372528,
+                                        0.10156622529029846, -0.20444495975971222, 0.11144950985908508,
+                                        0.10224875807762146, -0.3151078522205353, 0.10935673117637634])
+        
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
