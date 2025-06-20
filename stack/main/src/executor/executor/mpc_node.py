@@ -24,8 +24,8 @@ jax.config.update("jax_enable_x64", True)
 
 
 config = {
-    # "actuator_lambda": [[-5.0, 0.0], [0.0, -5.5]]
-    "actuator_lambda": [[-6.5, 0.0], [0.0, -6.5]]
+    "actuator_lambda": [[-5.0, 0.0], [0.0, -5.5]]
+    #"actuator_lambda": [[-6.5, 0.0], [0.0, -6.5]]
 }
 
 
@@ -146,9 +146,9 @@ class MPCNode(Node):
         assert self.n_y == 40, "wrong n_y calculated"
 
         # Settled positions of the rigid bodies      
-        self.rest_position = jnp.array([0.09535884857177734, -0.1082666888833046, 0.10464410483837128,
-                                        0.09597773104906082, -0.20486007630825043, 0.10313401371240616,
-                                        0.0981750413775444, -0.3174373507499695, 0.10287603735923767])
+        self.rest_position = jnp.array([0.095304, -0.108629, 0.104559,
+                                        0.095182, -0.205807, 0.103501,
+                                        0.095267, -0.318554, 0.105924])
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
