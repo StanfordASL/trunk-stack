@@ -102,7 +102,7 @@ class MPCNode(Node):
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 2),                                     # number of control inputs
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
-            ('n_delay', 5),           # 4                      # number of delays applied to observations
+            ('n_delay', 4),           # 4                      # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
@@ -143,12 +143,12 @@ class MPCNode(Node):
         self.n_y = self.block_size * (self.n_delay + 1)
 
         print(f"n_y: {self.n_y}, n_obs: {self.n_obs}, n_delay: {self.n_delay}, block_size: {self.block_size}")
-        assert self.n_y == 48, "wrong n_y calculated"
+        assert self.n_y == 40, "wrong n_y calculated"
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.10753094404935837, -0.11212190985679626, 0.10474388301372528,
-                                        0.10156622529029846, -0.20444495975971222, 0.11144950985908508,
-                                        0.10224875807762146, -0.3151078522205353, 0.10935673117637634])
+        self.rest_position = jnp.array([0.09581147879362106, -0.10847032070159912, 0.10540508478879929,
+                                        0.09856301546096802, -0.20505709946155548, 0.1047205924987793,
+                                        0.10094169527292252, -0.3178192377090454, 0.10759502649307251])
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()

@@ -43,7 +43,7 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "trajectory": {
-                "type": "eight",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"
+                "type": "circle_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "flower"
                 "duration": 20.0,  # Duration of the simulation in seconds
                 "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
@@ -61,7 +61,8 @@ class MPCInitializerNode(Node):
             },
             # "model": "first_mpc_model_real_trunk.pkl"
             # "model": "real_origin_faster_v2.pkl"
-            "model": "real_model_60.pkl"
+            # "model": "real_model_60.pkl"
+            "model": "best_51_v3.pkl"
         }
 
         mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
