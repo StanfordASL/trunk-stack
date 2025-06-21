@@ -20,6 +20,7 @@ class SocketMPCNode(Node):
         self.current_velocity = None
         self.current_time = None
         self.last_state = None
+        self.last_motor_state = None
         self.last_position = None
 
         self.socket = setup_socket_client(MPC_HOST, MPC_PORT)
