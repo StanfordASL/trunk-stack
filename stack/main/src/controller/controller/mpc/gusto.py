@@ -86,6 +86,7 @@ class GuSTO:
         self.x_k = None  # previous state
         self.u_k = None  # previous input
         self.locp_solve_time = None  # time spent in LOCP solve
+        self.gusto_solve_time = None  # time spent for whole gusto solve call
 
         # LOCP problem
         if self.verbose == 2:
@@ -315,9 +316,10 @@ class GuSTO:
         else:
             self.zopt = jnp.transpose(self.H @ self.xopt.T)
         self.locp_solve_time = t_locp
+        self.gusto_solve_time = t_gusto
 
     def get_solution(self):
-        return self.xopt, self.uopt, self.zopt, self.locp_solve_time
+        return self.xopt, self.uopt, self.zopt, self.gusto_solve_time  # self.locp_solve_time
 
     def _extract_config(self, config):
         """

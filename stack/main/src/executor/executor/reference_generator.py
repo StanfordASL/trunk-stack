@@ -88,13 +88,13 @@ class ReferenceTrajectoryGenerator:
                 return pos
         elif self.traj_type == "circle_with_ramp":
             radius = self.traj_params.get("radius", 1.0)
-            v_tangent = radius * self.traj_speed
-            t_lead_in = radius / v_tangent
-            theta = self.traj_speed * max(t - t_lead_in, 0.0)  # offset time for circle start
+            ramp_duration = 4.0
+            v_tangent = radius / ramp_duration
+            theta = self.traj_speed * max(t - ramp_duration, 0.0)  # offset time for circle start
 
-            if t < t_lead_in:
+            if t < ramp_duration:
                 # Linear ramp phase before circle
-                frac = t / t_lead_in
+                frac = t / ramp_duration
                 x = self.center[0] + (radius - radius * (1 - frac))
                 y = self.center[1]
                 pos = np.array([x, y, self.z_level])
