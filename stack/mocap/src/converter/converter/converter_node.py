@@ -2,6 +2,69 @@ import rclpy  # type: ignore
 from rclpy.node import Node  # type: ignore
 from interfaces.msg import TrunkMarkers, TrunkRigidBodies
 from mocap4r2_msgs.msg import Markers, RigidBodies  # type: ignore
+from geometry_msgs.msg import Point, Quaternion, Vector3
+
+from rclpy.time import Time
+
+
+class DummyConverterNode(Node):
+    def __init__(self):
+        super().__init__('dummy_converter_node')
+
+        self.declare_parameter('type', 'rigid_bodies')
+        self.type = self.get_parameter('type').get_parameter_value().string_value
+
+        if self.type == 'rigid_bodies':
+            self.publisher = self.create_publisher(TrunkRigidBodies, '/trunk_rigid_bodies', 10)
+        elif self.type == 'markers':
+            self.publisher = self.create_publisher(TrunkMarkers, '/trunk_markers', 10)
+        else:
+            self.get_logger().error(
+                f'Invalid type parameter "{self.type}". Choose "markers" or "rigid_bodies".'
+            )
+            rclpy.shutdown()
+            return
+
+        self.frame_number = 0
+        self.timer = self.create_timer(0.01, self.timer_callback)  # 100 Hz
+        self.get_logger().info(f'Dummy converter publishing "{self.type}" at 100 Hz')
+
+    def timer_callback(self):
+        t = self.get_clock().now().to_msg()
+
+        if self.type == 'rigid_bodies':
+            msg = TrunkRigidBodies()
+            msg.header.stamp = t
+            msg.frame_number = self.frame_number
+
+            # three dummy rigid bodies
+            msg.rigid_body_names = ['body_1', 'body_2', 'body_3']
+            msg.positions = [
+                Point(x=0.0, y=0.0, z=0.0),
+                Point(x=0.0, y=0.0, z=0.0),
+                Point(x=0.0, y=0.0, z=0.0),
+            ]
+            msg.orientations = [
+                Quaternion(x=0.0, y=0.0, z=0.0, w=1.0),
+                Quaternion(x=0.0, y=0.0, z=0.0, w=1.0),
+                Quaternion(x=0.0, y=0.0, z=0.0, w=1.0),
+            ]
+
+        else:  # markers
+            msg = TrunkMarkers()
+            msg.header.stamp = t
+            msg.frame_number = self.frame_number
+
+            # three dummy markers
+            msg.translations = [
+                Vector3(x=0.0, y=0.0, z=0.0),
+                Vector3(x=0.0, y=0.0, z=0.0),
+                Vector3(x=0.0, y=0.0, z=0.0),
+            ]
+
+        self.publisher.publish(msg)
+        self.frame_number += 1
+
 
 class ConverterNode(Node):
     def __init__(self):
@@ -41,6 +104,9 @@ class ConverterNode(Node):
     def rigid_body_callback(self, msg):
         trunk_msg = TrunkRigidBodies()
         trunk_msg.header = msg.header
+        stamp_ros_time = Time.from_msg(msg.header.stamp)
+        # latency = self.get_clock().now() - stamp_ros_time
+        # self.get_logger().info(f"OptiTrack rigid body latency: {latency.nanoseconds / 1e6:.2f} ms")
         trunk_msg.frame_number = msg.frame_number
         trunk_msg.rigid_body_names = [rigid_body.rigid_body_name for rigid_body in msg.rigidbodies]
         trunk_msg.positions = [rigid_body.pose.position for rigid_body in msg.rigidbodies]
@@ -50,10 +116,13 @@ class ConverterNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
+    # TODO: Change that back when using the real MOCAB system again
     node = ConverterNode()
+    # node = DummyConverterNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
