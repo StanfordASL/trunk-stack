@@ -33,7 +33,7 @@ class MPCInitializerNode(Node):
         config = {
             "mpc": {
                 "Q_rows": [0, 1],
-                "Qz": 500.0, # was circles: 500, 1000
+                "Qz": 1500.0, # was circles: 500, 1000
                 "Qzf": 2000.0,  # was 640
                 "R": 0.0,
                 "Rdu": 16.0,
