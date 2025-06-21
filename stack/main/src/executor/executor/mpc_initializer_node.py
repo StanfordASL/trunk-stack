@@ -43,9 +43,9 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "trajectory": {
-                "type": "pacman_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
-                "duration": 30.0,  # Duration of the simulation in seconds
-                "speed": 1.5,  # Angular speed (rad/s)
+                "type": "eight",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
+                "duration": 20.0,  # Duration of the simulation in seconds
+                "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
