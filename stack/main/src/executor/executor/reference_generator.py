@@ -203,6 +203,83 @@ class ReferenceTrajectoryGenerator:
                 else:
                     return pos
 
+        elif self.traj_type == "pacman_with_ramp":
+            radius = self.traj_params.get("radius", 1.0)
+            mouth_angle = self.traj_params.get("mouth_angle", np.pi / 4)
+            ramp_duration = 4.0
+            v_ramp = radius / ramp_duration
+
+            # Define angles and lengths like in pacman
+            start_angle = mouth_angle / 2
+            end_angle = 2 * np.pi - mouth_angle / 2
+            arc_span = end_angle - start_angle
+            L_arc = radius * arc_span
+            L_line1 = radius
+            L_line2 = radius
+            L_total = L_arc + L_line1 + L_line2
+            v = self.traj_speed * radius
+
+            if t < ramp_duration:
+                # Ramp phase: move in a straight line toward starting point of arc
+                frac = t / ramp_duration
+                x = self.center[0] + (radius - radius * (1 - frac))
+                y = self.center[1]
+                pos = np.array([x, y, self.z_level])
+                if self.include_velocity:
+                    vx = v_ramp
+                    vy = 0.0
+                    vz = 0.0
+                    vel = np.array([vx, vy, vz])
+                    return np.concatenate([pos, vel])
+                else:
+                    return pos
+            else:
+                # Shift time and compute regular pacman trajectory
+                t_shifted = t - ramp_duration
+                s = (v * t_shifted) % L_total
+
+                if s < L_arc:
+                    angle = start_angle + s / radius
+                    x = self.center[0] + radius * np.cos(angle)
+                    y = self.center[1] + radius * np.sin(angle)
+                    pos = np.array([x, y, self.z_level])
+                    if self.include_velocity:
+                        angle_dot = self.traj_speed
+                        vx = -radius * np.sin(angle) * angle_dot
+                        vy = radius * np.cos(angle) * angle_dot
+                        vel = np.array([vx, vy, 0.0])
+                        return np.concatenate([pos, vel])
+                    else:
+                        return pos
+                elif s < L_arc + L_line1:
+                    s_line = s - L_arc
+                    u = s_line / L_line1
+                    P1 = np.array([self.center[0] + radius * np.cos(end_angle),
+                                self.center[1] + radius * np.sin(end_angle),
+                                self.z_level])
+                    C = np.array([self.center[0], self.center[1], self.z_level])
+                    pos = (1 - u) * P1 + u * C
+                    if self.include_velocity:
+                        T_line = L_line1 / v
+                        vel = (C - P1) / T_line
+                        return np.concatenate([pos, vel])
+                    else:
+                        return pos
+                else:
+                    s_line = s - (L_arc + L_line1)
+                    u = s_line / L_line2
+                    P2 = np.array([self.center[0] + radius * np.cos(start_angle),
+                                self.center[1] + radius * np.sin(start_angle),
+                                self.z_level])
+                    C = np.array([self.center[0], self.center[1], self.z_level])
+                    pos = (1 - u) * C + u * P2
+                    if self.include_velocity:
+                        T_line = L_line2 / v
+                        vel = (P2 - C) / T_line
+                        return np.concatenate([pos, vel])
+                    else:
+                        return pos
+
         elif self.traj_type == "flower":
             # lazy‐init the equidistant star
             if not getattr(self, "_flower_init", False):
