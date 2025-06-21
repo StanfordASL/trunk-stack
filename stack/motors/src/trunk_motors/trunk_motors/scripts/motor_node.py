@@ -107,7 +107,7 @@ class MotorNode(Node):
 
         # Define a safe region to operate the motors in (position and velocity):
         self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
-        self.delta_limits_safe = np.array([5.0, 5.0, 5.0, 5.0, 5.0, 5.0])
+        self.delta_limits_safe = np.array([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
 
         self.last_motor_positions = None
 
@@ -149,8 +149,8 @@ class MotorNode(Node):
         )
 
         self.rest_position_trunk = np.array([0.09535884857177734, -0.1082666888833046, 0.10464410483837128,
-                                            0.09597773104906082, -0.20486007630825043, 0.10213401371240616,
-                                            0.0981750413775444, -0.3174373507499695, 0.10087603735923767])
+                                            0.09557773104906082, -0.20486007630825043, 0.10213401371240616,
+                                            0.0971750413775444, -0.3174373507499695, 0.100])
         
         self.timer = self.create_timer(1.0/100, self.read_status)  # publish at 100Hz
 
