@@ -13,6 +13,7 @@ from controller.mpc.gusto import GuSTOConfig                # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
 from .utils.models import SSMR
 from .utils.misc import HyperRectangle
+from .reference_generator import ReferenceTrajectoryGenerator
 
 
 class MPCInitializerNode(Node):
@@ -22,9 +23,26 @@ class MPCInitializerNode(Node):
     def __init__(self):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
-            ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g_slow'),         # 'ssmr_200g' (what model to use)
+            ('debug', False)                               # False or True (print debug messages)
         ])
+
+        config = {
+            "trajectory": {
+                "type": "eight",
+                "duration": 20.0,  # Duration of the simulation in seconds
+                "speed": 1.5,  # Angular speed (rad/s)
+                "include_velocity": False,
+                "parameters": {
+                    "center": [0.0, 0.0],  # Center of the (x,y) trajectory
+                    "radius": 0.05,  # [m]  For "circle" and "pacman"
+                    "amplitude": 0.03,  # [m]  For "eight"
+                    "z_level": 0.0,  # [m]  Constant z-coordinate
+                    "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth
+                },
+                "model": "best_51_v3.pkl"
+            }
+        }
+
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
@@ -34,8 +52,9 @@ class MPCInitializerNode(Node):
 
         # Generate reference trajectory
         dt = 0.02
-        z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.08)
 
+        mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
+        self.model_name = config["model"]
         # MPC configuration
         # U = HyperRectangle([0.45]*6, [-0.45]*6)
         U = None
@@ -58,9 +77,13 @@ class MPCInitializerNode(Node):
             N=6,
             dt=dt
         )
+        self.ref_traj = ReferenceTrajectoryGenerator(traj_config, mpc_config["dt"])
+        self.ref_traj.sample_trajectory(traj_config["duration"])
+        times = self.ref_traj.times
 
         x0 = jnp.zeros(self.model.n_x)
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=t, dt=dt, z=z_ref, U=U, dU=dU, solver="GUROBI")
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, z=self.ref_traj, U=U,
+                                                   dU=dU, solver="GUROBI")
 
     def _load_model(self):
         """

@@ -19,44 +19,62 @@ from controller.mpc_solver_node import jnp2arr              # type: ignore
 from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
 
+from .actuator import Actuator
+
+
+config = {
+    "actuator_lambda": [[-5.0, 0.0], [0.0, -5.5]]
+}
 
 @jax.jit
-def check_control_inputs(u_opt, u_opt_previous):
+def check_control_inputs(u_opt, u_previous=None):
     """
     Check control inputs for safety constraints, rejecting vector norms that are too large.
     """
-    tip_range, mid_range, base_range = 0.45, 0.35, 0.3
+    scale = 0.3
 
+    tip_range, mid_range, base_range = 80, 50, 30
+
+    tip_range *= scale
+    mid_range *= scale
+    base_range *= scale
+
+    # u2, u4 = u_opt[0], u_opt[1]
     u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
-    # First we clip to max and min values
-    u1 = jnp.clip(u1, -tip_range, tip_range)
-    u6 = jnp.clip(u6, -tip_range, tip_range)
-    u2 = jnp.clip(u2, -mid_range, mid_range)
-    u4 = jnp.clip(u5, -mid_range, mid_range)
+    # First we clip to max and min values FOR SAVETY ONLY SEND 0 RIGHT NOW
+    u2 = jnp.clip(u2, -tip_range, tip_range)
+    u4 = jnp.clip(u4, -tip_range, tip_range)
+
+    u1 = jnp.clip(u1, -mid_range, mid_range)
+    u6 = jnp.clip(u6, -mid_range, mid_range)
+
     u3 = jnp.clip(u3, -base_range, base_range)
-    u5 = jnp.clip(u4, -base_range, base_range)
-
-    # Compute control input vectors
-    u1_vec = u1 * jnp.array([-jnp.cos(15 * jnp.pi/180), jnp.sin(15 * jnp.pi/180)])
-    u2_vec = u2 * jnp.array([jnp.cos(45 * jnp.pi/180), jnp.sin(45 * jnp.pi/180)])
-    u3_vec = u3 * jnp.array([-jnp.cos(15 * jnp.pi/180), -jnp.sin(15 * jnp.pi/180)])
-    u4_vec = u4 * jnp.array([-jnp.cos(45 * jnp.pi/180), jnp.sin(45 * jnp.pi/180)])
-    u5_vec = u5 * jnp.array([jnp.cos(75 * jnp.pi/180), -jnp.sin(75 * jnp.pi/180)])
-    u6_vec = u6 * jnp.array([-jnp.cos(75 * jnp.pi/180), -jnp.sin(75 * jnp.pi/180)])
-
-    # Calculate the norm based on the constraint
-    vector_sum = (
-        0.75 * (u3_vec + u5_vec) +
-        1.0 * (u2_vec + u4_vec) +
-        1.4 * (u1_vec + u6_vec)
-    )
-    norm_value = jnp.linalg.norm(vector_sum)
+    u5 = jnp.clip(u5, -base_range, base_range)
 
     # Check the constraint: if the constraint is met, then keep previous control command
-    u_opt = jnp.where(norm_value > 0.8, u_opt_previous, jnp.array([u1, u2, u3, u4, u5, u6]))
+    u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
 
     return u_opt
+
+
+def u2_to6u_mapping(u2, u4):
+    # angle and radius
+    teta = jnp.arctan2(u4, u2)
+    r_scaling = jnp.hypot(u2, u4)
+
+    # compute the six raw legs
+    u3 = r_scaling * jnp.cos(teta - jnp.pi / 3)
+    u5 = r_scaling * jnp.sin(teta - jnp.pi / 3)
+    u1 = -r_scaling * jnp.sin(teta - jnp.pi / 6)
+    u6 = -r_scaling * jnp.cos(teta - jnp.pi / 6)
+
+    # stack into a vector and apply your per‐leg weights
+    raw = jnp.stack([u1, u2, u3, u4, u5, u6])
+    weights = jnp.array([50, 80, 30, 80, 30, 50], dtype=raw.dtype)
+    scaled = raw * weights
+
+    return scaled
 
 
 class MPCNode(Node):
@@ -68,10 +86,10 @@ class MPCNode(Node):
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # print debug messages
             ('n_z', 3),                                     # number of performance vars
-            ('n_u', 6),                                     # number of control inputs
-            ('n_obs', 3),                                   # 2D, 3D or 6D observations
-            ('n_delay', 3),                                 # number of delays applied to observations
-            ('n_exec', 1),                                  # number of control inputs to execute from MPC solution
+            ('n_u', 2),                                     # number of control inputs
+            ('n_obs', 6),                                   # 2D, 3D or 6D observations
+            ('n_delay', 4),                                 # number of delays applied to observations
+            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -94,16 +112,16 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.3 # TODO: Change
+        self.alpha_smooth = 0.0  # TODO: Change
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
         self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.1018, -0.1075, 0.1062,
-                                        0.1037, -0.2055, 0.1148,
-                                        0.1025, -0.3254, 0.1129])
+        self.rest_position = jnp.array([0.09535884857177734, -0.1082666888833046, 0.10464410483837128,
+                                        0.09557773104906082, -0.20486007630825043, 0.10213401371240616,
+                                        0.0971750413775444, -0.3174373507499695, 0.100])
         
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
@@ -139,11 +157,14 @@ class MPCNode(Node):
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
+        self.actuator_dynamics = None
 
         # Maintain previous control inputs
         self.u_previous = jnp.zeros(self.n_u)
-
         self.clock = self.get_clock()
+
+        # track whether we’re finished so mpc_callback stops sending new requests
+        self.finished = False
 
         # Need some initialization
         self.initialized = False
@@ -155,7 +176,7 @@ class MPCNode(Node):
         check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
-        self.controller_period = 0.03
+        self.controller_period = 0.02
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
                     self.mpc_callback,
@@ -181,21 +202,26 @@ class MPCNode(Node):
         if self.debug:
             self.get_logger().info(f'Received mocap data: {msg.positions}.')
 
-        # Unpack the message into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
-        y_new = jnp.array([coord for pos in msg.positions for coord in [pos.x, pos.y, pos.z]])
+        # 1) flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
+        y_new = jnp.array([coord for pos in msg.positions for coord in (pos.x, pos.y, pos.z)])
         y_centered = y_new - self.rest_position
 
-        # Subselect tip
-        y_centered_tip = y_centered[-3:]
+        perm_idx = jnp.array([6, 8, 7, 3, 5, 4, 0, 2, 1])
+        y_reordered = y_centered[perm_idx]
+        # then take only the first 6 entries (body 3 then 2)
+        y_observables = y_reordered[:6]
+
+        # 4) form your block the same way
+        block = y_observables
 
         # Update the current observations, including delay embeddings
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(y_centered_tip, self.n_delay + 1)
+            self.latest_y = jnp.tile(block, (self.n_delay + 1,))
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
-            self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-self.n_z]])
-        
+            self.latest_y = jnp.concatenate([block, self.latest_y[:-self.n_obs]])
+
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
     def execute_buffer_callback(self):
@@ -207,8 +233,8 @@ class MPCNode(Node):
                 return
 
             control_inputs = self.control_buffer[self.buffer_index]
-            safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
-            self.smooth_control_inputs = (1 - self.alpha_smooth) * safe_control_inputs + self.alpha_smooth * self.smooth_control_inputs
+            # safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
+            self.smooth_control_inputs = (1 - self.alpha_smooth) * control_inputs + self.alpha_smooth * self.smooth_control_inputs
 
             if self.debug:
                 self.get_logger().info(f'Executing buffer index {self.buffer_index} of {len(self.control_buffer)}')
@@ -222,6 +248,9 @@ class MPCNode(Node):
         """
         Receive MPC results at a fixed rate.
         """
+        if self.finished:
+            return
+
         if not self.initialized:
             self.y0 = jnp.zeros(self.n_y)
             self.send_request(0.0, self.y0, self.u_previous, wait=True)
@@ -253,9 +282,16 @@ class MPCNode(Node):
             response = async_response.result()
 
             if response.done:
+                # mark finished and cancel our periodic timers
+                self.finished = True
+                self.mpc_exec_timer.cancel()
+                self.buffer_timer.cancel()
+
                 self.get_logger().info(f'Trajectory is finished! At {(self.clock.now().nanoseconds / 1e9 - self.start_time):.3f}')
                 self.destroy_node()
-                rclpy.shutdown()
+                if rclpy.ok():
+                    rclpy.shutdown()
+                return
             else:
                 # Store the optimized control inputs in the buffer for execution
                 new_buffer = []
@@ -266,7 +302,8 @@ class MPCNode(Node):
                     self.buffer_index = 0
 
                 # Save to csv file
-                self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt, self.y0[:self.n_y])
+                self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt, self.y0[:self.n_y],
+                                 response.solve_time)
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
@@ -274,13 +311,23 @@ class MPCNode(Node):
         """
         Publish the control inputs.
         """
+        print(f"Publishing control inputs: {control_inputs}")
+
+        if self.actuator_dynamics is None:
+            self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"],
+                                              current_time=self.clock.now().nanoseconds / 1e9)
+
+        real_control_inputs = self.actuator_dynamics(new_time=self.clock.now().nanoseconds / 1e9, new_u=control_inputs)
+
+        control_inputs_6 = u2_to6u_mapping(*real_control_inputs)
+        safe_control_inputs_6 = check_control_inputs(control_inputs_6)
+        print(f"Publishing safe and scaled control inputs: {safe_control_inputs_6}")
+
         control_message = AllMotorsControl()
-        control_message.motors_control = [
-            SingleMotorControl(mode=0, value=value) for value in control_inputs
-        ]
+        control_message.motors_control = tuple(safe_control_inputs_6.tolist())
         self.controls_publisher.publish(control_message)
         if self.debug:
-            self.get_logger().info(f'Published new motor control setting: {control_inputs}.')
+            self.get_logger().info('Published new motor control setting: ' + str(safe_control_inputs_6))
 
     def initialize_csv(self):
         """
@@ -288,15 +335,15 @@ class MPCNode(Node):
         """
         with open(self.results_file, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['topt', 'xopt', 'uopt', 'zopt', 'y'])
+            writer.writerow(['topt', 'xopt', 'uopt', 'zopt', 'y', 'solve_time'])
 
-    def save_to_csv(self, topt, xopt, uopt, zopt, y):
+    def save_to_csv(self, topt, xopt, uopt, zopt, y, solve_time):
         """
         Save optimized quantities by MPC and observations to CSV file.
         """
         with open(self.results_file, mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt), y.tolist()])
+            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt), y.tolist(), solve_time])
 
 
 def main(args=None):
@@ -315,6 +362,7 @@ def main(args=None):
     finally:
         mpc_node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
