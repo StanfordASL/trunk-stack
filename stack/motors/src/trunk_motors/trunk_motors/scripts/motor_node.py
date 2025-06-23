@@ -107,7 +107,7 @@ class MotorNode(Node):
 
         # Define a safe region to operate the motors in (position and velocity):
         self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
-        self.delta_limits_safe = np.array([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
+        self.delta_limits_safe = np.array([15.0, 15.0, 15.0, 15.0, 15.0, 15.0])
 
         self.last_motor_positions = None
 

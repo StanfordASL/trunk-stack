@@ -28,18 +28,18 @@ class MPCInitializerNode(Node):
 
         config = {
             "trajectory": {
-                "type": "eight",
+                "type": "circle_with_ramp",
                 "duration": 20.0,  # Duration of the simulation in seconds
-                "speed": 1.5,  # Angular speed (rad/s)
+                "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.05,  # [m]  For "circle" and "pacman"
+                    "radius": 0.03,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.03,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth
                 },
-                "model": "best_51_v3.pkl"
+                "model": "origin_ssm_baseline.npz"
             }
         }
 
@@ -56,8 +56,8 @@ class MPCInitializerNode(Node):
         mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
         self.model_name = config["model"]
         # MPC configuration
-        # U = HyperRectangle([0.45]*6, [-0.45]*6)
-        U = None
+        U = HyperRectangle([0.45]*6, [-0.45]*6)
+        # U = None
         dU = None
         Qz = 100.0 * jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
