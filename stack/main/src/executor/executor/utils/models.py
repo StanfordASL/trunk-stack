@@ -140,14 +140,170 @@ class SSMR(ReducedOrderModel):
         Save the SSMR model to a file.
         """
         np.savez(path,
-                 dynamics_coeff = self.delay_ssm.dynamics_coeff,
-                 dynamics_exp = self.delay_ssm.dynamics_exp,
-                 encoder_coeff = self.delay_ssm.encoder_coeff,
-                 encoder_exp = self.delay_ssm.encoder_exp,
-                 decoder_coeff = self.delay_ssm.decoder_coeff,
-                 decoder_exp = self.delay_ssm.decoder_exp,
-                 B_r_coeff = self.residual_dynamics.learned_B_r.B_r_coeff,
-                 obs_perf_matrix = self.obs_perf_matrix)
+                 dynamics_coeff=self.delay_ssm.dynamics_coeff,
+                 dynamics_exp=self.delay_ssm.dynamics_exp,
+                 encoder_coeff=self.delay_ssm.encoder_coeff,
+                 encoder_exp=self.delay_ssm.encoder_exp,
+                 decoder_coeff=self.delay_ssm.decoder_coeff,
+                 decoder_exp=self.delay_ssm.decoder_exp,
+                 B_r_coeff=self.residual_dynamics.learned_B_r.B_r_coeff,
+                 obs_perf_matrix=self.obs_perf_matrix)
+
+
+class KoopmanSSMR(ReducedOrderModel):
+    """
+    Discrete-time (or continuous + RK4) lifted-linear model
+        x⁺ = A x + B u                (lifted state  x ∈ R^{n_x})
+        y   = C x                     (raw observations)
+        z   = H x                     (performance vars, usually ⊂ y)
+
+    The **encode()** method stacks delays, scales, and lifts the raw measurement
+    to the Koopman state; **decode()** does the reverse (optional).
+    """
+
+    # ---------- initialisation ------------------------------------------------
+    def __init__(self,
+                 A_d, B_d,            # discrete matrices  (n_x×n_x)  (n_x×n_u)
+                 C=None,              # observation matrix (n_y×n_x)
+                 H=None,              # performance matrix (n_z×n_x)  (if None use C[:n_z])
+                 g_encode=None,       # callable g(y): ℝ^{n_y*(d+1)} → ℝ^{n_x}
+                 g_decode=None,       # optional inverse  x → y
+                 delays: int = 0,
+                 scale=None):
+        """
+        *A_d, B_d* come from your EDMD / DMDc or extended-Koopman fit.
+        *g_encode* is the library map (possibly incl. W projection).
+        *scale* is a pair (y_mean, y_std) or a Scaling object — will be
+        applied **inside encode/decode** so the rest of the code sees raw units.
+        """
+        n_x, n_u = B_d.shape
+        n_y = C.shape[0] if C is not None else None
+        n_z = H.shape[0] if H is not None else n_y
+        super().__init__(n_x, n_u, n_y, n_z)
+
+        # store
+        self.A_d, self.B_d = jnp.asarray(A_d), jnp.asarray(B_d)
+        self.C = jnp.asarray(C) if C is not None else None
+        self._H = jnp.asarray(H) if H is not None else self.C[:n_z]
+        self.g_enc = g_encode
+        self.g_dec = g_decode
+        self.delays = delays
+        self.scale = scale          # None | (μ, σ) | custom object
+
+    # ---------- dynamics ------------------------------------------------------
+    def continuous_dynamics(self, x, u):
+        """Optional: if you have A_c, B_c.  Otherwise raise."""
+        raise AttributeError("Koopman model defined in discrete time only.")
+
+    @partial(jax.jit, static_argnums=(0,))
+    def discrete_dynamics(self, x, u, dt=0.01):
+        """One Euler step of the lifted linear system (already discrete)."""
+        return self.A_d @ x + self.B_d @ u
+
+    @partial(jax.jit, static_argnums=(0,))
+    def rollout(self, x0, u, dt=0.01):
+        """
+        Vectorised rollout identical to SSMR: if u has length N, output N+1 states.
+        """
+        def step(x, u_t):
+            return self.discrete_dynamics(x, u_t, dt), x
+        _, xs = jax.lax.scan(step, x0, u)
+        return jnp.vstack([xs, self.discrete_dynamics(xs[-1], u[-1], dt)])
+
+    # ---------- performance / observation ------------------------------------
+    def performance_mapping(self, x):
+        return self._H @ x
+
+    @property
+    def H(self):
+        return self._H
+
+    # ---------- encoder / decoder --------------------------------------------
+    def _apply_scaling(self, y, inverse=False):
+        if self.scale is None:
+            return y
+        mu, sig = self.scale
+        return y * sig + mu if inverse else (y - mu) / sig
+
+    def encode(self, y):
+        """
+        (1) stack delays [y_k, … , y_{k-d}], flatten
+        (2) scale down
+        (3) lift  →  x ∈ ℝ^{n_x}
+        """
+        y = jnp.asarray(y)
+        if y.size != self.n_y * (self.delays + 1):
+            raise ValueError("encode(): y must already contain delay embedding.")
+        y_scaled = self._apply_scaling(y, inverse=False)
+        return self.g_enc(y_scaled)                     # (n_x,)
+
+    def decode(self, x):
+        """
+        Optional inverse mapping; fall back to linear C† if g_decode not given.
+        """
+        if self.g_dec:
+            y_scaled = self.g_dec(x)
+        elif self.C is not None:
+            y_scaled = self.C @ x
+        else:
+            raise AttributeError("No decoder provided for KoopmanROM.")
+        return self._apply_scaling(y_scaled, inverse=True)
+
+    # ---------- linearisations for GuSTO -------------------------------------
+    @partial(jax.vmap, in_axes=(None, 0, 0))
+    def get_dynamics_linearizations(self, x, u):
+        """A, B, d are constant for a lifted-linear system."""
+        d = self.discrete_dynamics(x, u) - self.A_d @ x - self.B_d @ u   # zero
+        return self.A_d, self.B_d, d
+
+    @partial(jax.vmap, in_axes=(None, 0))
+    def get_perf_mapping_linearizations(self, x):
+        """H, c are constant (c = 0)."""
+        c = self.performance_mapping(x) - self._H @ x    # zero
+        return self._H, c
+
+    def save_model(self, path):
+        """
+        Serialize all numeric parameters needed to reconstruct the KoopmanSSMR
+        instance.  *g_encode* / *g_decode* are **not** stored – you reload them
+        explicitly when constructing with ``from_file``.
+        """
+        data = dict(
+            A_d=np.asarray(self.A_d, dtype=np.float64),
+            B_d=np.asarray(self.B_d, dtype=np.float64),
+            C=np.asarray(self.C, dtype=np.float64) if self.C is not None else None,
+            H=np.asarray(self._H, dtype=np.float64),
+            delays=self.delays,
+            scale_mu=None if self.scale is None else np.asarray(self.scale[0], dtype=np.float64),
+            scale_std=None if self.scale is None else np.asarray(self.scale[1], dtype=np.float64),
+            n_y=self.n_y,  # stored only for validation
+            n_z=self.n_z
+        )
+        np.savez(path, **data)
+
+    @classmethod
+    def from_file(cls, path, g_encode, g_decode=None):
+        """
+        Re-instantiate a KoopmanSSMR from a file created by ``save_model``.
+        You *must* pass the same ``g_encode`` (and optionally ``g_decode``)
+        callable you used when training.
+        """
+        data = np.load(path, allow_pickle=True)
+
+        # Recover optional elements
+        C = data['C'] if data['C'].dtype != 'O' else None
+        scale = None
+        if data['scale_mu'] is not None and data['scale_std'] is not None:
+            scale = (data['scale_mu'], data['scale_std'])
+
+        return cls(A_d=data['A_d'],
+                   B_d=data['B_d'],
+                   C=C,
+                   H=data['H'],
+                   g_encode=g_encode,
+                   g_decode=g_decode,
+                   delays=int(data['delays']),
+                   scale=scale)
 
 
 class ParametricSSMR(ReducedOrderModel):
