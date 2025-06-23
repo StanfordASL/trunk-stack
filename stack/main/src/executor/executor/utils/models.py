@@ -222,32 +222,53 @@ class KoopmanSSMR(ReducedOrderModel):
     def _apply_scaling(self, y, inverse=False):
         if self.scale is None:
             return y
-        mu, sig = self.scale
+        mu, sig = self.scale  # (n_y,) each
+        mu, sig = jnp.asarray(mu), jnp.asarray(sig)
+
+        # --- make them broadcastable ---
+        if y.ndim >= 2:  # e.g. (n_y, T) or (n_y, ...)
+            mu = mu[:, None]  # (n_y, 1)
+            sig = sig[:, None]  # (n_y, 1)
+
         return y * sig + mu if inverse else (y - mu) / sig
 
-    def encode(self, y):
+    def encode(self, zeta):
         """
-        (1) stack delays [y_k, … , y_{k-d}], flatten
-        (2) scale down
-        (3) lift  →  x ∈ ℝ^{n_x}
+        zeta = [y_k, y_{k-1}, …, u_{k-1}, …]  length = n_y*(d+1)+n_u*d
         """
-        y = jnp.asarray(y)
-        if y.size != self.n_y * (self.delays + 1):
-            raise ValueError("encode(): y must already contain delay embedding.")
-        y_scaled = self._apply_scaling(y, inverse=False)
-        return self.g_enc(y_scaled)                     # (n_x,)
+        zeta = jnp.asarray(zeta)
+        expected = self.n_y * (self.delays + 1) + self.n_u * self.delays
+        if zeta.size != expected:
+            raise ValueError(f"encode(): got {zeta.size}, expected {expected}")
+
+        # 1) split into obs-block and control-block
+        n_obs_block = self.n_y * (self.delays + 1)
+        y_block = zeta[:n_obs_block]
+        u_block = zeta[n_obs_block:]
+
+        # 2) scale the obs-block
+        if self.scale is not None:
+            mu, sig = self.scale
+            mu_rep = jnp.tile(mu, self.delays + 1)
+            sig_rep = jnp.tile(sig, self.delays + 1)
+            y_block = (y_block - mu_rep) / sig_rep
+
+        # 3) concatenate again and lift
+        zeta_scaled = jnp.concatenate([y_block, u_block])
+        return self.g_enc(zeta_scaled)
 
     def decode(self, x):
         """
-        Optional inverse mapping; fall back to linear C† if g_decode not given.
+        Decode lifted state to current observation y_k (raw units).
         """
-        if self.g_dec:
-            y_scaled = self.g_dec(x)
+        if self.g_dec is not None:
+            y_scaled = self.g_dec(x)  # scaled
+            return self._apply_scaling(y_scaled, inverse=True)
         elif self.C is not None:
-            y_scaled = self.C @ x
+            y_raw = self.C @ x
+            return y_raw  # <- DON’T rescale
         else:
             raise AttributeError("No decoder provided for KoopmanROM.")
-        return self._apply_scaling(y_scaled, inverse=True)
 
     # ---------- linearisations for GuSTO -------------------------------------
     @partial(jax.vmap, in_axes=(None, 0, 0))
@@ -283,18 +304,18 @@ class KoopmanSSMR(ReducedOrderModel):
 
     @classmethod
     def from_file(cls, path, g_encode, g_decode=None):
-        """
-        Re-instantiate a KoopmanSSMR from a file created by ``save_model``.
-        You *must* pass the same ``g_encode`` (and optionally ``g_decode``)
-        callable you used when training.
-        """
         data = np.load(path, allow_pickle=True)
 
-        # Recover optional elements
         C = data['C'] if data['C'].dtype != 'O' else None
-        scale = None
-        if data['scale_mu'] is not None and data['scale_std'] is not None:
-            scale = (data['scale_mu'], data['scale_std'])
+
+        # --- safe scale handling ---
+        mu_arr = data.get('scale_mu', None)
+        std_arr = data.get('scale_std', None)
+        if (mu_arr is None or mu_arr.dtype == 'O' or
+                std_arr is None or std_arr.dtype == 'O'):
+            scale = None
+        else:
+            scale = (mu_arr, std_arr)
 
         return cls(A_d=data['A_d'],
                    B_d=data['B_d'],
