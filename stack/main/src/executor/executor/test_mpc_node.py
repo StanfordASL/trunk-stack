@@ -11,6 +11,7 @@ from rclpy.node import Node                              # type: ignore
 from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
 from .utils.models import SSMR
+import numpy as np
 
 
 @jax.jit
@@ -20,14 +21,19 @@ def check_control_inputs(u_opt, u_opt_previous):
     """
     tip_range, mid_range, base_range = 81, 51, 31
 
-    u1, u6 = u_opt[0], u_opt[1]
+    u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
     # First we clip to max and min values
     u1 = jnp.clip(u1, -tip_range, tip_range)
     u6 = jnp.clip(u6, -tip_range, tip_range)
-    u_opt = jnp.array([u1, u6])
+    u2 = jnp.clip(u2, -mid_range, mid_range)
+    u4 = jnp.clip(u5, -mid_range, mid_range)
+    u3 = jnp.clip(u3, -base_range, base_range)
+    u5 = jnp.clip(u4, -base_range, base_range)
+    u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
     
     return u_opt
+
 
 
 class TestMPCNode(Node):
@@ -49,7 +55,8 @@ class TestMPCNode(Node):
 
         # Load the model
         self._load_model()
-        self.n_delay = self.model.n_y // self.model.n_z - 1 
+        num_measurements = 6
+        self.n_delay = self.model.n_y // num_measurements - 1 
 
         # Initialize the CSV file
         self.results_file = os.path.join(self.data_dir, f"trajectories/test_mpc/{self.results_name}.csv")
@@ -158,7 +165,8 @@ class TestMPCNode(Node):
                 
                 # We do not execute the control inputs here but it's still being checked
                 safe_control_inputs = check_control_inputs(jnp.array(uopt[:self.model.n_u]), self.uopt_previous)
-                self.uopt_previous = safe_control_inputs
+                self.uopt_previous = safe_control_inputs[np.array([2, 4])]
+                print("Shape of self.uopt_previous: ", self.uopt_previous)
 
                 # Save the predicted observations and control inputs
                 if self.latest_y is not None:
@@ -178,25 +186,52 @@ class TestMPCNode(Node):
         idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
         x_predicted = self.model.rollout(self.x0, self.uopt)
         y_predicted = self.model.decode(x_predicted.T).T
-        y_centered_tip = y_predicted[:idx0+1, :self.model.n_z]
+
+        print(f"[DEBUG] y_predicted shape: {y_predicted.shape}")
+        y_centered_tip = y_predicted[:idx0+1, :6]
+        print(f"[DEBUG] y_centered_tip shape: {y_centered_tip.shape}")
+
         N_new_obs = y_centered_tip.shape[0]
+        print(f"[DEBUG] N_new_obs: {N_new_obs}")
 
         # Add noise to simulate real experiment
-        y_tip_noisy = y_centered_tip + eps_noise * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
+        noise = eps_noise * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
+        y_tip_noisy = y_centered_tip + noise
+        print(f"[DEBUG] y_tip_noisy shape: {y_tip_noisy.shape}")
 
         # Update tracked observation
         if self.latest_y is None:
-            # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(y_tip_noisy[-1:].squeeze(), (self.n_delay+1))
+            print("[DEBUG] Initializing latest_y")
+            init_obs = y_tip_noisy[-1:].squeeze()
+            print(f"[DEBUG] init_obs (after squeeze) shape: {init_obs.shape}")
+            self.latest_y = jnp.tile(init_obs, (self.n_delay + 1))
+            print(f"[DEBUG] self.latest_y (after tile) shape: {self.latest_y.shape}")
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
-            # Note the different ordering of MPC horizon and delay embeddings which requires the flipping
             if N_new_obs > self.n_delay + 1:
-                # If we have more than self.n_delay + 1 new observations, we only keep the last self.n_delay + 1
-                self.latest_y = jnp.flip(y_tip_noisy[-(self.n_delay+1):].T, 1).T.flatten()
+                print("[DEBUG] Updating latest_y with flip-then-flatten path")
+                flipped = jnp.flip(y_tip_noisy[-(self.n_delay + 1):].T, 1).T
+                print(f"[DEBUG] flipped shape: {flipped.shape}")
+                self.latest_y = flipped.flatten()
+                print(f"[DEBUG] self.latest_y shape (after flatten): {self.latest_y.shape}")
             else:
-                # Otherwise we concatenate the new observations with the old ones
-                self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(), self.latest_y[:(self.n_delay+1-N_new_obs)*self.model.n_z]])
+                print("[DEBUG] Updating latest_y with concatenate path")
+                num_blocks = self.n_delay + 1
+                block_size = self.model.n_y // num_blocks
+                new_block = y_tip_noisy[-N_new_obs:, :].reshape(-1)
+                print(f"[DEBUG] new_block shape: {new_block.shape}")
+
+                old_needed = num_blocks - N_new_obs
+                old_part = self.latest_y[: old_needed * block_size]
+                print(f"[DEBUG] old_part shape: {old_part.shape}")
+
+                self.latest_y = jnp.concatenate([new_block, old_part])
+                print(f"[DEBUG] self.latest_y shape (after concat): {self.latest_y.shape}")
+
+        # Normalize shape to guarantee it's always 1D (24,)
+        self.latest_y = self.latest_y.reshape(-1)
+        print(f"[DEBUG] self.latest_y final shape: {self.latest_y.shape}")
+
 
     def initialize_csv(self):
         """

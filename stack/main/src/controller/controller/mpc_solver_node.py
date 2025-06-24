@@ -130,6 +130,7 @@ class MPCSolverNode(Node):
 
         # TODO: include interp for adiabatic here 
 
+        print("DEBUG: Shape of incoming y0 is ", y0.shape)
         x0 = self.model.encode(y0)
 
         # Get target values at proper times by interpolating
