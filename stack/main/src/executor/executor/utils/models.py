@@ -139,9 +139,7 @@ class control_SSMR(ReducedOrderModel):
                 [jnp.vstack([jnp.zeros((len(self.ssm.specified_params["measured_rows"]), 1)), -self.ssm.lam @ u_past_shifted[i].reshape(-1, 1)])
                  for i in range(0, u_past_shifted.shape[0], (1 + self.ssm.specified_params["shift_steps"]))]
             ).flatten()
-            # DEBUGGUING
-            print("Shape of u_ref_ext: ", u_ref_ext.shape)
-            print("Shape of u_past_shifted: ", u_past_shifted.shape)
+
             u_flat = u.flatten()  # Shape (2,)
             u_past_flat = u_past[:-self.n_u].flatten()  # Shape (8,)
             u_stacked = jnp.concatenate([u_flat, u_past_flat])
@@ -156,6 +154,7 @@ class control_SSMR(ReducedOrderModel):
         u, dt = u_dt[:-1], u_dt[-1]
         return self.discrete_dynamics(x, u, dt), x
 
+    @partial(jax.jit, static_argnums=(0,))
     def rollout(self, x0, u, dt=0.01):
         """
         Rollout of the discrete-time dynamics model, with u being an array of length N.

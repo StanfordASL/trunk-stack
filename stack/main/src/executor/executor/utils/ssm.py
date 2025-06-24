@@ -69,9 +69,11 @@ class Control_origin_ssm:
         self.y_eq = jnp.concatenate([y_eq, u_eq], axis=0)
         self.u_eq = u_eq
 
+    @partial(jax.jit, static_argnums=(0,))
     def encode(self, y):
         return jnp.array(self.SSM_basis.T @ y)
 
+    @partial(jax.jit, static_argnums=(0,))
     def decode(self, y):
         return (self.decoder.predict(y.T)).T
 

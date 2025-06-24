@@ -42,6 +42,7 @@ class BaseFittedMapping(ABC):
         """
         ...
 
+    @functools.partial(jax.jit, static_argnums=(0,))
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         return self.predict(x)
 
@@ -194,8 +195,8 @@ class PolynomialFittedMapping(BaseFittedMapping):
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def predict(self, x: jnp.ndarray) -> jnp.ndarray:
-        # pure JAX, no NumPy anywhere
-        Xp = self._poly_transform_jax(x)  # (n, n_feats)
+        # (n, n_feats)
+        Xp = self._poly_transform_jax(x)
         # now do the matrix multiply
         return Xp @ self.beta.T + self.intercept
 
