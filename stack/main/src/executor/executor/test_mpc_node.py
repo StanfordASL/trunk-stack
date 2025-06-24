@@ -18,37 +18,15 @@ def check_control_inputs(u_opt, u_opt_previous):
     """
     Check control inputs for safety constraints, rejecting vector norms that are too large.
     """
-    tip_range, mid_range, base_range = 0.45, 0.35, 0.3
+    tip_range, mid_range, base_range = 81, 51, 31
 
-    u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
+    u1, u6 = u_opt[0], u_opt[1]
 
     # First we clip to max and min values
     u1 = jnp.clip(u1, -tip_range, tip_range)
     u6 = jnp.clip(u6, -tip_range, tip_range)
-    u2 = jnp.clip(u2, -mid_range, mid_range)
-    u4 = jnp.clip(u5, -mid_range, mid_range)
-    u3 = jnp.clip(u3, -base_range, base_range)
-    u5 = jnp.clip(u4, -base_range, base_range)
-
-    # Compute control input vectors
-    u1_vec = u1 * jnp.array([-jnp.cos(15 * jnp.pi/180), jnp.sin(15 * jnp.pi/180)])
-    u2_vec = u2 * jnp.array([jnp.cos(45 * jnp.pi/180), jnp.sin(45 * jnp.pi/180)])
-    u3_vec = u3 * jnp.array([-jnp.cos(15 * jnp.pi/180), -jnp.sin(15 * jnp.pi/180)])
-    u4_vec = u4 * jnp.array([-jnp.cos(45 * jnp.pi/180), jnp.sin(45 * jnp.pi/180)])
-    u5_vec = u5 * jnp.array([jnp.cos(75 * jnp.pi/180), -jnp.sin(75 * jnp.pi/180)])
-    u6_vec = u6 * jnp.array([-jnp.cos(75 * jnp.pi/180), -jnp.sin(75 * jnp.pi/180)])
-
-    # Calculate the norm based on the constraint
-    vector_sum = (
-        0.75 * (u3_vec + u5_vec) +
-        1.0 * (u2_vec + u4_vec) +
-        1.4 * (u1_vec + u6_vec)
-    )
-    norm_value = jnp.linalg.norm(vector_sum)
-
-    # Check the constraint: if the constraint is met, then keep previous control command
-    u_opt = jnp.where(norm_value > 0.8, u_opt_previous, jnp.array([u1, u2, u3, u4, u5, u6]))
-
+    u_opt = jnp.array([u1, u6])
+    
     return u_opt
 
 
@@ -60,7 +38,7 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'ssm_origin_300g_slow'),         # 'ssmr_200g' (what model to use)
+            ('model_name', 'origin_ssm_baseline'),          # 'ssmr_200g' (what model to use)
             ('results_name', 'test_experiment')             # name of the results file
         ])
 

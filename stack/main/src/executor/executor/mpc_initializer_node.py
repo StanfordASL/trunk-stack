@@ -39,12 +39,13 @@ class MPCInitializerNode(Node):
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth
                 },
-                "model": "origin_ssm_baseline.npz"
-            }
+                "dt": 0.02
+            },
+            "model": "origin_ssm_baseline"
         }
 
         self.debug = self.get_parameter('debug').value
-        self.model_name = self.get_parameter('model_name').value
+        self.model_name = config["model"]  # self.get_parameter('model_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Load the model
@@ -53,18 +54,18 @@ class MPCInitializerNode(Node):
         # Generate reference trajectory
         dt = 0.02
 
-        mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
+        traj_config = config["trajectory"]
         self.model_name = config["model"]
         # MPC configuration
-        U = HyperRectangle([0.45]*6, [-0.45]*6)
+        U = HyperRectangle([0.45]*2, [-0.45]*2)
         # U = None
         dU = None
         Qz = 100.0 * jnp.eye(self.model.n_z)
         Qz = Qz.at[1, 1].set(0)
         Qzf = 0.0 * jnp.eye(self.model.n_z)
         Qzf = Qzf.at[1, 1].set(0)
-        R_tip, R_mid, R_top = 0.001, 0.005, 0.01
-        R = 0.0 * jnp.diag(jnp.array([R_tip, R_mid, R_top, R_mid, R_top, R_tip]))
+        # R_tip, R_mid, R_top = 0.001, 0.005, 0.01
+        R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 0.1 * jnp.eye(self.model.n_u)
 
         gusto_config = GuSTOConfig(
@@ -74,16 +75,16 @@ class MPCInitializerNode(Node):
             R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
-            N=6,
+            N=10,
             dt=dt
         )
-        self.ref_traj = ReferenceTrajectoryGenerator(traj_config, mpc_config["dt"])
+        self.ref_traj = ReferenceTrajectoryGenerator(traj_config, traj_config["dt"])
         self.ref_traj.sample_trajectory(traj_config["duration"])
         times = self.ref_traj.times
 
         x0 = jnp.zeros(self.model.n_x)
-        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, z=self.ref_traj, U=U,
-                                                   dU=dU, solver="GUROBI")
+        self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, ref_traj=self.ref_traj, U=U,
+                                                   dU=dU, solver="OSQP")  # CLARABEL
 
     def _load_model(self):
         """

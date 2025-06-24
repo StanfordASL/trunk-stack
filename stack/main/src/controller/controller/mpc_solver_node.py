@@ -9,7 +9,7 @@ from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
 import numpy as np
 
-def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
+def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=None, zf=None,
                        U=None, X=None, Xf=None, dU=None, init_node=False, **kwargs):
     """
     Function that builds a ROS node to run MPC and runs it continuously. This node
@@ -36,7 +36,7 @@ def run_mpc_solver_node(model, config, x0, t=None, dt=None, z=None, u=None, zf=N
     assert t is not None or dt is not None, "Either t array or dt must be provided."
     if init_node:
         rclpy.init()
-    node = MPCSolverNode(model, config, x0, t=t, dt=dt, z=z, u=u, zf=zf,
+    node = MPCSolverNode(model, config, x0, t=t, dt=dt, ref_traj=ref_traj, u=u, zf=zf,
                            U=U, X=X, Xf=Xf, dU=dU, **kwargs)
     rclpy.spin(node)
     rclpy.shutdown()
@@ -64,8 +64,8 @@ class MPCSolverNode(Node):
     Defines a service provider node that will run the GuSTO MPC implementation.
     """
 
-    def __init__(self, model, config, x0, t=None, dt=None, z=None, u=None, zf=None,
-                 U=None, X=None, Xf=None, dU=None, **kwargs):
+    def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None,
+                 U=None, dU=None, **kwargs):
         self.model = model
         if dt is not None:
             self.dt = dt
@@ -75,8 +75,9 @@ class MPCSolverNode(Node):
         self.t = t
 
         # Define target values
-        self.z = z
+        self.ref_traj = ref_traj
         self.u = u
+        """
         if z is not None and z.ndim == 2:
             self.z_interp = interp1d(t, z, axis=0,
                                      bounds_error=False, fill_value=(z[0, :], z[-1, :]))
@@ -84,14 +85,14 @@ class MPCSolverNode(Node):
         if u is not None and u.ndim == 2:
             self.u_interp = interp1d(t, u, axis=0,
                                      bounds_error=False, fill_value=(u[0, :], u[-1, :]))
+        """
 
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
-        z, zf, u = self.get_target(0.0)
-        self.gusto = GuSTO(model, config, x0, self.u_init, self.x_init, z=z, u=u,
-                           zf=zf, U=U, X=X, Xf=Xf, dU=dU, **kwargs)
+        self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1], # u=u,
+                           zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)  # X=X, Xf=Xf,
         self.xopt, self.uopt, _, _ = self.gusto.get_solution()
         self.topt = self.dt * jnp.arange(self.N + 1)
 
@@ -115,8 +116,13 @@ class MPCSolverNode(Node):
         t, xopt, uopt, zopt
         """
         t0 = request.t0
-        if t0 > self.t[-1]:
+
+        full_ref = np.array(self.ref_traj.eval())  # shape = (M, n_z)
+        M = full_ref.shape[0]
+        T_final = (M - 1) * self.dt        # 2) If t0 is beyond the last valid reference time, return done=True immediately
+        if t0 > T_final:
             response.done = True
+            return response
         else:
             response.done = False
         
@@ -127,12 +133,25 @@ class MPCSolverNode(Node):
         x0 = self.model.encode(y0)
 
         # Get target values at proper times by interpolating
-        z, zf, u = self.get_target(t0)
+        # z, zf, u = self.get_target(t0)
+
+        start_idx = int(t0 / self.dt)
+        end_idx = start_idx + (self.N + 1)        
+        if end_idx <= M:
+            # We still have at least (N+1) points remaining
+            slice_np = full_ref[start_idx:end_idx, :]  # shape = (N+1, n_z)
+        else:
+            # We are near the end; slice what remains, then pad
+            available = full_ref[start_idx:M, :]  # shape = (M - start_idx, n_z)
+            n_missing = (self.N + 1) - (M - start_idx)  # how many rows we’re short
+            last_row = full_ref[M - 1, :].reshape(1, -1)  # shape = (1, n_z)
+            pad_rows = np.repeat(last_row, n_missing, axis=0)  # shape = (n_missing, n_z)
+            slice_np = np.vstack([available, pad_rows])  # shape = (N+1, n_z)        # Convert to JAX arrays for solver
+        ref_window = jnp.array(slice_np)  # (N+1, n_z)
+        ref_final = jnp.array(slice_np[-1, :])  # (n_z,)
 
         # Get initial guess
         idx0 = jnp.searchsorted(self.topt, t0, side='right')
-        
-        # NOTE: time spent on getting initial condition is still out of proportion
         n_remaining_u = self.N - idx0
         n_remaining_x = self.N + 1 - idx0
 
@@ -156,9 +175,10 @@ class MPCSolverNode(Node):
         self.gusto.locp.u0_prev.value = np.asarray(request.u0)
 
         # Solve GuSTO and get solution
-        self.gusto.solve(x0, self.u_init, self.x_init, z=z, zf=zf, u=u)
+        self.gusto.solve(x0, self.u_init, self.x_init, z=ref_window, zf=ref_final)
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
 
+        print("Shape of self.uopt: ", self.uopt.shape)
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
         response.xopt = jnp2arr(self.xopt)
