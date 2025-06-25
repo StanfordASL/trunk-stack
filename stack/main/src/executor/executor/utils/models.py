@@ -225,7 +225,7 @@ class KoopmanSSMR(ReducedOrderModel):
 
     # ---------- performance / observation ------------------------------------
     def performance_mapping(self, x):
-        print(f"[performance_mapping] x.shape = {x.shape}, z.shape = {z.shape}")
+        # print(f"[performance_mapping] x.shape = {x.shape}, z.shape = {z.shape}")
         return self._H @ x
 
     @property

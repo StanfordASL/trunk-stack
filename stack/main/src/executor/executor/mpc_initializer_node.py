@@ -23,7 +23,7 @@ class MPCInitializerNode(Node):
     def __init__(self):
         super().__init__('mpc_initializer_node')
         self.declare_parameters(namespace='', parameters=[
-            ('debug', False)                               # False or True (print debug messages)
+            ('debug', True)                               # False or True (print debug messages)
         ])
 
         config = {
@@ -85,7 +85,7 @@ class MPCInitializerNode(Node):
 
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, ref_traj=self.ref_traj, U=U,
-                                                   dU=dU, solver="OSQP")  # CLARABEL
+                                                   dU=dU, solver="SCS")  # CLARABEL
 
     def _load_model(self, model_type):
         """
