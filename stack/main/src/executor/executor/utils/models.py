@@ -163,11 +163,11 @@ class KoopmanSSMR(ReducedOrderModel):
 
     # ---------- initialisation ------------------------------------------------
     def __init__(self,
-                 A_d, B_d,            # discrete matrices  (n_x×n_x)  (n_x×n_u)
-                 C=None,              # observation matrix (n_y×n_x)
-                 H=None,              # performance matrix (n_z×n_x)  (if None use C[:n_z])
-                 g_encode=None,       # callable g(y): ℝ^{n_y*(d+1)} → ℝ^{n_x}
-                 g_decode=None,       # optional inverse  x → y
+                 A_d, B_d,  # discrete matrices  (n_x×n_x)  (n_x×n_u)
+                 C=None,  # observation matrix (n_y×n_x)
+                 H=None,  # performance matrix (n_z×n_x)  (if None use C[:n_z])
+                 g_encode=None,  # callable g(y): ℝ^{n_y*(d+1)} → ℝ^{n_x}
+                 g_decode=None,  # optional inverse  x → y
                  delays: int = 0,
                  scale=None):
         """
@@ -179,6 +179,10 @@ class KoopmanSSMR(ReducedOrderModel):
         n_x, n_u = B_d.shape
         n_y = C.shape[0] if C is not None else None
         n_z = H.shape[0] if H is not None else n_y
+        self.n_obs = n_y
+
+        self.n_y = (self.n_obs * (delays + 1) + self.n_u * delays)
+        print(f"Calculated n_y: {self.n_y}, n_obs: {self.n_obs}, n_delay: {self.delays}")
         super().__init__(n_x, n_u, n_y, n_z)
 
         # store
@@ -188,7 +192,7 @@ class KoopmanSSMR(ReducedOrderModel):
         self.g_enc = g_encode
         self.g_dec = g_decode
         self.delays = delays
-        self.scale = scale          # None | (μ, σ) | custom object
+        self.scale = scale  # None | (μ, σ) | custom object
 
     # ---------- dynamics ------------------------------------------------------
     def continuous_dynamics(self, x, u):
