@@ -260,5 +260,6 @@ def main(args=None):
     test_mpc_node.destroy_node()
     rclpy.shutdown()
 
+
 if __name__ == '__main__':
     main()
