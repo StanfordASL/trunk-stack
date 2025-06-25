@@ -77,7 +77,8 @@ class MPCInitializerNode(Node):
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
             N=10,
-            dt=dt
+            dt=dt,
+            verbose=2
         )
         self.ref_traj = ReferenceTrajectoryGenerator(traj_config, traj_config["dt"])
         self.ref_traj.sample_trajectory(traj_config["duration"])
