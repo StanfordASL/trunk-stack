@@ -16,7 +16,7 @@ from rclpy.executors import MultiThreadedExecutor           # type: ignore
 from rclpy.qos import QoSProfile                            # type: ignore
 
 from controller.mpc_solver_node import jnp2arr              # type: ignore
-from interfaces.msg import SingleMotorControl, AllMotorsControl, TrunkRigidBodies
+from interfaces.msg import AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
 
 from .actuator import Actuator

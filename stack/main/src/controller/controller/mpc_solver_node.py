@@ -91,6 +91,15 @@ class MPCSolverNode(Node):
         self.u_init = jnp.zeros((config.N, self.model.n_u))
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
+        print(f"[INIT] ref_traj.eval().shape = {ref_traj.eval().shape}")
+        print(f"[INIT] z (first call to GuSTO) shape = {ref_traj.eval()[:self.N+1].shape}")
+        print(f"[INIT] zf shape = {ref_traj.eval()[self.N+1].shape}")
+        print(f"[INIT] Qz.shape = {config.Qz.shape}")
+        print(f"[INIT] R.shape = {config.R.shape}")
+        print(f"[INIT] x_init.shape = {self.x_init.shape}")
+        print(f"[INIT] u_init.shape = {self.u_init.shape}")
+
+
         self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1], # u=u,
                            zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)  # X=X, Xf=Xf,
         self.xopt, self.uopt, _, _ = self.gusto.get_solution()

@@ -194,6 +194,15 @@ class KoopmanSSMR(ReducedOrderModel):
         self.delays = delays
         self.scale = scale  # None | (μ, σ) | custom object
 
+
+        print(f"[KoopmanSSMR] A_d.shape = {A_d.shape}, B_d.shape = {B_d.shape}")
+        if C is not None:
+            print(f"[KoopmanSSMR] C.shape = {C.shape}")
+        if H is not None:
+            print(f"[KoopmanSSMR] H.shape = {H.shape}")
+        print(f"[KoopmanSSMR] self.H.shape = {self._H.shape}")
+        print(f"[KoopmanSSMR] n_x = {self.n_x}, n_u = {self.n_u}, n_y = {self.n_y}, n_z = {self.n_z}")
+
     # ---------- dynamics ------------------------------------------------------
     def continuous_dynamics(self, x, u):
         """Optional: if you have A_c, B_c.  Otherwise raise."""
@@ -216,6 +225,7 @@ class KoopmanSSMR(ReducedOrderModel):
 
     # ---------- performance / observation ------------------------------------
     def performance_mapping(self, x):
+        print(f"[performance_mapping] x.shape = {x.shape}, z.shape = {z.shape}")
         return self._H @ x
 
     @property
