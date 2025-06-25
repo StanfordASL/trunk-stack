@@ -11,7 +11,7 @@ jax.config.update("jax_enable_x64", True)
 
 from controller.mpc.gusto import GuSTOConfig                # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
-from .utils.models import SSMR
+from .utils.models import SSMR, KoopmanSSMR
 from .utils.misc import HyperRectangle
 from .reference_generator import ReferenceTrajectoryGenerator
 
@@ -61,9 +61,9 @@ class MPCInitializerNode(Node):
         U = HyperRectangle([0.2]*2, [-0.2]*2)
         # U = None
         dU = HyperRectangle([0.05]*2, [-0.05]*2)
-        Qz = 700.0 * jnp.eye(self.model.n_z)
+        Qz = 700.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
         Qz = Qz.at[2, 2].set(0)
-        Qzf = 2000.0 * jnp.eye(self.model.n_z)
+        Qzf = 2000.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
         # R_tip, R_mid, R_top = 0.001, 0.005, 0.01
         R = 0.0 * jnp.eye(self.model.n_u)
@@ -97,7 +97,7 @@ class MPCInitializerNode(Node):
             self.model = SSMR(model_path=model_path)
         elif model_type == "koopman":
             model_path = os.path.join(self.data_dir, f'models/koopman/{self.model_name}.npz')
-            self.model = KoopmanSSMR(model_path=model_path)
+            self.model = KoopmanSSMR.from_file(model_path)
         else:
             KeyError(f"The requested model type {model_type} was not recognized.")
         
