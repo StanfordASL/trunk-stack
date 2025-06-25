@@ -283,47 +283,78 @@ class KoopmanSSMR(ReducedOrderModel):
         c = self.performance_mapping(x) - self._H @ x    # zero
         return self._H, c
 
+    @staticmethod
+    def _monomial_powers(n_vars: int, degree: int) -> np.ndarray:
+        """Return integer matrix (N_lib, n_vars) with all multi-indices α
+        such that |α| ≤ degree and |α| > 0 (excludes constant)."""
+        from itertools import combinations_with_replacement
+        powers = []
+        for k in range(1, degree + 1):
+            for combo in combinations_with_replacement(range(n_vars), k):
+                alpha = np.zeros(n_vars, dtype=int)
+                for idx in combo:
+                    alpha[idx] += 1
+                powers.append(alpha)
+        return np.vstack(powers)  # (N_lib, n_vars)
+
+    @staticmethod
+    def _lift_from_powers(powers: np.ndarray):
+        """Create the λ(z) built from a powers matrix."""
+        powers = np.asarray(powers, dtype=int)
+
+        def phi(z):
+            z = np.asarray(z)
+            return np.stack([np.prod(z ** p, axis=-1) for p in powers], axis=-1)
+
+        phi.n_out = len(powers)
+        phi.n_in = powers.shape[1]
+        phi.degree = np.max(powers.sum(1))
+        phi.powers = powers
+        return phi
+
     def save_model(self, path):
-        """
-        Serialize all numeric parameters needed to reconstruct the KoopmanSSMR
-        instance.  *g_encode* / *g_decode* are **not** stored – you reload them
-        explicitly when constructing with ``from_file``.
-        """
+        # ----- gather lift info (if it is a polynomial lift) -----
+        lift_powers = getattr(self.g_enc, "powers", None)
+        if lift_powers is None:
+            lift_powers = np.array([], dtype=int)
         data = dict(
             A_d=np.asarray(self.A_d, dtype=np.float64),
             B_d=np.asarray(self.B_d, dtype=np.float64),
             C=np.asarray(self.C, dtype=np.float64) if self.C is not None else None,
             H=np.asarray(self._H, dtype=np.float64),
             delays=self.delays,
-            scale_mu=None if self.scale is None else np.asarray(self.scale[0], dtype=np.float64),
-            scale_std=None if self.scale is None else np.asarray(self.scale[1], dtype=np.float64),
-            n_y=self.n_y,  # stored only for validation
+            lift_powers=lift_powers,  # <–– NEW
+            scale_mu=None if self.scale is None else np.asarray(self.scale[0]),
+            scale_std=None if self.scale is None else np.asarray(self.scale[1]),
+            n_y=self.n_y,
             n_z=self.n_z
         )
         np.savez(path, **data)
 
     @classmethod
-    def from_file(cls, path, g_encode, g_decode=None):
+    def from_file(cls, path, g_encode=None, g_decode=None):
         data = np.load(path, allow_pickle=True)
 
-        C = data['C'] if data['C'].dtype != 'O' else None
+        # ---- 1) rebuild lift if not supplied and powers are stored ----
+        lp = data.get("lift_powers", np.array([], dtype=int))
+        if g_encode is None and lp.size and lp.dtype != object:
+            g_encode = cls._lift_from_powers(lp)
 
-        # --- safe scale handling ---
-        mu_arr = data.get('scale_mu', None)
-        std_arr = data.get('scale_std', None)
-        if (mu_arr is None or mu_arr.dtype == 'O' or
-                std_arr is None or std_arr.dtype == 'O'):
-            scale = None
-        else:
+        # ---- 2) scaling as before ----
+        C = data["C"] if data["C"].dtype != "O" else None
+        mu_arr, std_arr = data.get("scale_mu", None), data.get("scale_std", None)
+        scale = None
+        if (mu_arr is not None and std_arr is not None and
+                mu_arr.dtype != "O" and std_arr.dtype != "O"):
             scale = (mu_arr, std_arr)
 
-        return cls(A_d=data['A_d'],
-                   B_d=data['B_d'],
+        return cls(A_d=data["A_d"],
+                   B_d=data["B_d"],
                    C=C,
-                   H=data['H'],
+                   H=data["H"],
                    g_encode=g_encode,
                    g_decode=g_decode,
-                   delays=int(data['delays']),
+                   delays=int(data["delays"]),
                    scale=scale)
 
 

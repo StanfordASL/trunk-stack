@@ -88,7 +88,7 @@ class MPCNode(Node):
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 2),                                     # number of control inputs
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
-            ('n_delay', 4),                                 # number of delays applied to observations
+            ('n_delay', 3),                                 # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
