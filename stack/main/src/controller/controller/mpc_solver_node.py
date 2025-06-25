@@ -97,7 +97,15 @@ class MPCSolverNode(Node):
         print(f"[INIT] Qz.shape = {config.Qz.shape}")
         print(f"[INIT] R.shape = {config.R.shape}")
         print(f"[INIT] x_init.shape = {self.x_init.shape}")
-        print(f"[INIT] u_init.shape = {self.u_init.shape}")
+
+
+        print(f"x0 values:\n{x0}")
+        print(f"x_init[0] values:\n{self.x_init[0]}")
+
+        z = jnp.array(self.ref_traj.eval())[:self.N+1]
+        zf = self.ref_traj.eval()[-1]
+        print(f"z[0] (first reference point):\n{z[0]}")
+        print(f"zf (final reference point):\n{zf}")
 
 
         self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1], # u=u,

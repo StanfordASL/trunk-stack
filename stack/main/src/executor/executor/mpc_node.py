@@ -93,6 +93,8 @@ class MPCNode(Node):
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
+        self.koopman_mpc = True
+
         self.debug = self.get_parameter('debug').value
         self.n_z = self.get_parameter('n_z').value
         self.n_u = self.get_parameter('n_u').value
@@ -157,6 +159,9 @@ class MPCNode(Node):
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
+        if self.koopman_mpc:
+            self.latest_y_koopman = None
+
         self.actuator_dynamics = None
 
         # Maintain previous control inputs
@@ -222,6 +227,9 @@ class MPCNode(Node):
         else:
             self.latest_y = jnp.concatenate([block, self.latest_y[:-self.n_obs]])
 
+        if self.koopman_mpc:
+            self.latest_y_koopman = jnp.concatenate([self.latest_y, self.u_previous])  # augment the last applied input 
+
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
     def execute_buffer_callback(self):
@@ -250,14 +258,19 @@ class MPCNode(Node):
         """
         if self.finished:
             return
+        
+        if self.koopman_mpc:
+            y_latest = self.latest_y_koopman
+        else:
+            y_latest = self.latest_y
 
         if not self.initialized:
             self.y0 = jnp.zeros(self.n_y)
             self.send_request(0.0, self.y0, self.u_previous, wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
-        elif self.latest_y is not None:
-            self.y0 = self.latest_y
+        elif latest_y is not None:
+            self.y0 = latest_y
             self.send_request(self.t0, self.y0, self.u_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 

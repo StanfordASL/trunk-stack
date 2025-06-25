@@ -181,9 +181,9 @@ class KoopmanSSMR(ReducedOrderModel):
         n_z = H.shape[0] if H is not None else n_y
         self.n_obs = n_y
 
-        self.n_y = (self.n_obs * (delays + 1) + self.n_u * delays)
-        print(f"Calculated n_y: {self.n_y}, n_obs: {self.n_obs}, n_delay: {self.delays}")
-        super().__init__(n_x, n_u, n_y, n_z)
+        self.n_y = (self.n_obs * (delays + 1) + n_u * delays)
+        print(f"Calculated n_y: {self.n_y}, n_obs: {self.n_obs}, n_delay: {delays}")
+        super().__init__(n_x, n_u, self.n_y, n_z)
 
         # store
         self.A_d, self.B_d = jnp.asarray(A_d), jnp.asarray(B_d)
@@ -251,12 +251,12 @@ class KoopmanSSMR(ReducedOrderModel):
         zeta = [y_k, y_{k-1}, …, u_{k-1}, …]  length = n_y*(d+1)+n_u*d
         """
         zeta = jnp.asarray(zeta)
-        expected = self.n_y * (self.delays + 1) + self.n_u * self.delays
+        expected = self.n_obs * (self.delays + 1) + self.n_u * self.delays
         if zeta.size != expected:
             raise ValueError(f"encode(): got {zeta.size}, expected {expected}")
 
         # 1) split into obs-block and control-block
-        n_obs_block = self.n_y * (self.delays + 1)
+        n_obs_block = self.n_obs * (self.delays + 1)
         y_block = zeta[:n_obs_block]
         u_block = zeta[n_obs_block:]
 

@@ -42,7 +42,7 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "model_type": "koopman",  # Options: ssm or koopman
-            "model": "koopman_real_trunk"  # origin_ssm_baseline(1)
+            "model": "koopman_real_trunk_perf3"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
         }
 
         self.debug = self.get_parameter('debug').value

@@ -10,7 +10,7 @@ import rclpy                                             # type: ignore
 from rclpy.node import Node                              # type: ignore
 from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
-from .utils.models import SSMR
+from .utils.models import SSMR, KoopmanSSMR
 import numpy as np
 
 
@@ -44,9 +44,11 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'origin_ssm_baseline'),          # 'ssmr_200g' (what model to use)
+            ('model_name', 'koopman_real_trunk_perf3'),          # 'koopman_real_trunk_perf3' ,  'origin_ssm_baseline', 'ssmr_200g' (what model to use)
             ('results_name', 'test_experiment')             # name of the results file
         ])
+
+        model_type = "koopman"
 
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
@@ -54,9 +56,9 @@ class TestMPCNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Load the model
-        self._load_model()
+        self._load_model(model_type)
         num_measurements = 6
-        self.n_delay = self.model.n_y // num_measurements - 1 
+        self.n_delay = int(self.model.n_y // num_measurements - 1)
 
         # Initialize the CSV file
         self.results_file = os.path.join(self.data_dir, f"trajectories/test_mpc/{self.results_name}.csv")
@@ -108,14 +110,20 @@ class TestMPCNode(Node):
         # Define reference time
         self.start_time = self.clock.now().nanoseconds / 1e9
 
-    def _load_model(self):
+    def _load_model(self, model_type):
         """
         Load the learned (non-autonomous) dynamics model of the system.
         """
-        model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
-
         # Load the model
-        self.model = SSMR(model_path=model_path)
+        if model_type == "ssm":
+            model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
+            self.model = SSMR(model_path=model_path)
+        elif model_type == "koopman":
+            model_path = os.path.join(self.data_dir, f'models/koopman/{self.model_name}.npz')
+            self.model = KoopmanSSMR.from_file(model_path)
+        else:
+            KeyError(f"The requested model type {model_type} was not recognized.")
+
         print(f'---- Model loaded: {self.model_name}')
         print('Dimensions:')
         print('     n_x:', self.model.n_x)
