@@ -13,8 +13,7 @@ import time
 import traceback
 
 
-def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=None, zf=None,
-                       U=None, X=None, Xf=None, dU=None, init_node=False, koopman=False, **kwargs):
+def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=None, zf=None, U=None, X=None, Xf=None, dU=None, init_node=False, koopman=False, **kwargs):
     """
     Function that builds a ROS node to run MPC and runs it continuously. This node
     provides a service that at each query will run MPC once.
@@ -217,7 +216,7 @@ class Koopman_MPCSolverNode(Node):
     Defines a service provider node that will run MPC using LOCP
     """
 
-    def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None, U=None, X=None, Xf=None, dU=None, verbose=2, warm_start=True, **kwargs):
+    def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None, U=None, X=None, Xf=None, dU=None, verbose=0, warm_start=True, **kwargs):
         self.model = model
         self.N = config.N
         self.Qz = config.Qz
@@ -346,7 +345,6 @@ class Koopman_MPCSolverNode(Node):
         # THIS IS NOT PASSED IN JOHNS NODE - But he doesnt have Rdu
         self.locp.u0_prev.value = np.asarray(request.u0)
 
-        # CHECK WHAT IS PASSED FOR D_D AND XK
         try:
             self.locp.update(self.A_d, self.B_d, self.d_d, x0, xk, 0, 0, z=z, zf=zf)
             # self.locp.update(self.A_d, self.B_d, self.d_d, x0, None, 0, 0, z=z, zf=zf, u=u)

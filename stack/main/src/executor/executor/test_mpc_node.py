@@ -43,8 +43,8 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'koopman_real_trunk_perf3'),     # 'koopman_real_trunk_perf3' ,  'origin_ssm_baseline', 'ssmr_200g' (what model to use)
-            ('results_name', 'test_experiment')             # name of the results file
+            ('model_name', 'koopman_real_trunk_perf3'),     # 'koopman_real_trunk_perf3' ,  'origin_ssm_baseline(1)', 'ssmr_200g' (what model to use)
+            ('results_name', 'test_experiment_koopman')             # name of the results file
         ])
 
         model_type = "koopman"
@@ -181,10 +181,25 @@ class TestMPCNode(Node):
             else:
                 topt, xopt, uopt, zopt = response.t, response.xopt, response.uopt, response.zopt
                 
+                # uopt_np = np.array(uopt)
+                # xopt_np = np.array(xopt)
+                # zopt_np = np.array(zopt)
+
+                # print("Converted u: ", type(uopt_np), "— Shape:", uopt_np.shape)
+                # print("Converted x: ", type(xopt_np), "— Shape:", xopt_np.shape)
+                # print("Converted z: ", type(zopt_np), "— Shape:", zopt_np.shape)
+
+                """
+                self.uopt_previous:  [-0.00055862 -0.00055862]
+                Converted u:  <class 'numpy.ndarray'> — Shape: (20,)
+                Converted x:  <class 'numpy.ndarray'> — Shape: (1309,)
+                Converted z:  <class 'numpy.ndarray'> — Shape: (33,)
+                """
+
                 # We do not execute the control inputs here but it's still being checked
                 safe_control_inputs = check_control_inputs(jnp.array(uopt[:self.model.n_u]), self.uopt_previous)
                 self.uopt_previous = safe_control_inputs[np.array([2, 4])]
-                print("Self.uopt_previous: ", self.uopt_previous)
+                print("self.uopt_previous: ", self.uopt_previous)
 
                 # Save the predicted observations and control inputs
                 if self.latest_y is not None:

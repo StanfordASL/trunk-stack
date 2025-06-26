@@ -34,7 +34,7 @@ class MPCInitializerNode(Node):
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.001,  # [m]  For "circle" and "pacman"
+                    "radius": 0.03,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.03,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth
@@ -63,7 +63,8 @@ class MPCInitializerNode(Node):
         traj_config = config["trajectory"]
         self.model_name = config["model"]
 
-        """ WORKS FOR SSM
+        """
+        # Works for ssm
         # MPC constraints
         U = HyperRectangle([0.2]*2, [-0.2]*2)
         dU = HyperRectangle([0.05]*2, [-0.05]*2)
@@ -75,9 +76,11 @@ class MPCInitializerNode(Node):
         Qzf = Qzf.at[2, 2].set(0)
         R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 16.0 * jnp.eye(self.model.n_u)
+    
         """
+
         # MPC constraints
-        U = HyperRectangle([0.2]*2, [-0.2]*2)
+        U = HyperRectangle([0.4]*2, [-0.4]*2)
         dU = HyperRectangle([0.05]*2, [-0.05]*2)
         
         # MPC cost:
@@ -87,6 +90,7 @@ class MPCInitializerNode(Node):
         Qzf = Qzf.at[2, 2].set(0)
         R = 0.00 * jnp.eye(self.model.n_u)
         R_du = 0.1 * jnp.eye(self.model.n_u)
+        
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
@@ -97,7 +101,7 @@ class MPCInitializerNode(Node):
             f_char=jnp.ones(self.model.n_x),
             N=10,
             dt=dt,
-            verbose=2
+            verbose=0
         )
         self.ref_traj = ReferenceTrajectoryGenerator(traj_config, traj_config["dt"])
         self.ref_traj.sample_trajectory(traj_config["duration"])
@@ -105,7 +109,7 @@ class MPCInitializerNode(Node):
 
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, ref_traj=self.ref_traj, U=U,
-                                                   dU=dU, koopman=koopman, solver="SCS")  # CLARABEL
+                                                   dU=dU, koopman=koopman, solver="CLARABEL")  # CLARABEL
 
     def _load_model(self, model_type):
         """
