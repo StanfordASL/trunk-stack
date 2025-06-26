@@ -35,7 +35,6 @@ def check_control_inputs(u_opt, u_opt_previous):
     return u_opt
 
 
-
 class TestMPCNode(Node):
     """
     This node is responsible for testing the MPC loop.
@@ -247,7 +246,6 @@ class TestMPCNode(Node):
 
         # Update current time
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
-
 
     def initialize_csv(self):
         """

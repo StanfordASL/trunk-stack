@@ -345,8 +345,6 @@ class Koopman_MPCSolverNode(Node):
         zf = slice_np[-1, :]      # shape = (n_z,)
         print(f"[DEBUG] z.shape = {z.shape}, zf.shape = {zf.shape}")
 
-
-        # You may still extract u (reference control) if needed
         u = None  # if your model needs reference input trajectory, implement slicing similarly
 
         # === Now update the solver and run as usual ===
