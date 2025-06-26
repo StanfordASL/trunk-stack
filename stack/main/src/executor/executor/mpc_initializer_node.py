@@ -45,6 +45,11 @@ class MPCInitializerNode(Node):
             "model": "koopman_real_trunk_perf3"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
         }
 
+        if config["model_type"] == "koopman":
+            koopman = True
+        else:
+            koopman = False
+            
         self.debug = self.get_parameter('debug').value
         self.model_name = config["model"]  # self.get_parameter('model_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
@@ -86,7 +91,7 @@ class MPCInitializerNode(Node):
 
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, ref_traj=self.ref_traj, U=U,
-                                                   dU=dU, solver="SCS")  # CLARABEL
+                                                   dU=dU, koopman=koopman, solver="SCS")  # CLARABEL
 
     def _load_model(self, model_type):
         """

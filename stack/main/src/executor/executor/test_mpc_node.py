@@ -44,7 +44,7 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'koopman_real_trunk_perf3'),          # 'koopman_real_trunk_perf3' ,  'origin_ssm_baseline', 'ssmr_200g' (what model to use)
+            ('model_name', 'koopman_real_trunk_perf3'),     # 'koopman_real_trunk_perf3' ,  'origin_ssm_baseline', 'ssmr_200g' (what model to use)
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -56,6 +56,12 @@ class TestMPCNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Load the model
+
+        if model_type == "koopman":
+            self.koopman = True
+        else:
+            self.koopman = False
+
         self._load_model(model_type)
         num_measurements = 6
         self.n_delay = int(self.model.n_y // num_measurements - 1)
@@ -81,6 +87,7 @@ class TestMPCNode(Node):
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
+        self.latest_y_koopman = None
 
         # Maintain previous control inputs
         self.uopt_previous = jnp.zeros(self.model.n_u)
@@ -142,7 +149,11 @@ class TestMPCNode(Node):
         else:
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations(eps_noise=0)
-            self.send_request(self.t0, self.latest_y, self.uopt_previous, wait=False)
+            if self.koopman:
+                send_y = self.latest_y_koopman
+            else:
+                send_y = self.latest_y
+            self.send_request(self.t0, send_y, self.uopt_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
     def send_request(self, t0, y0, u0, wait=False):
@@ -178,7 +189,7 @@ class TestMPCNode(Node):
 
                 # Save the predicted observations and control inputs
                 if self.latest_y is not None:
-                    self.save_to_csv(topt, xopt, uopt, zopt)
+                    self.save_to_csv(topt, xopt, uopself.latest_y_koopmant, zopt)
                 self.topt = arr2jnp(topt, 1, squeeze=True)
                 self.x0 = jnp.array(xopt[:self.model.n_x])
                 self.uopt = arr2jnp(uopt, self.model.n_u)
@@ -190,55 +201,51 @@ class TestMPCNode(Node):
         """
         Update the latest observations using predicted observations from MPC plus added noise.
         """
-        # Figure out what predictions to use for observations update
+
+        # Get index based on current time
         idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
+
+        # Rollout predicted states and decode to preself.latest_y_koopmandicted observations
         x_predicted = self.model.rollout(self.x0, self.uopt)
         y_predicted = self.model.decode(x_predicted.T).T
 
-        print(f"[DEBUG] y_predicted shape: {y_predicted.shape}")
+        # Slice predicted tip observations up to idx0
         y_centered_tip = y_predicted[:idx0+1, :6]
-        print(f"[DEBUG] y_centered_tip shape: {y_centered_tip.shape}")
 
+        # Number of new observations available
         N_new_obs = y_centered_tip.shape[0]
-        print(f"[DEBUG] N_new_obs: {N_new_obs}")
 
-        # Add noise to simulate real experiment
+        # Add noise to simulate measurement noise
         noise = eps_noise * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
         y_tip_noisy = y_centered_tip + noise
-        print(f"[DEBUG] y_tip_noisy shape: {y_tip_noisy.shape}")
 
-        # Update tracked observation
+        # Update tracked observation (delay embedding)
         if self.latest_y is None:
-            print("[DEBUG] Initializing latest_y")
             init_obs = y_tip_noisy[-1:].squeeze()
-            print(f"[DEBUG] init_obs (after squeeze) shape: {init_obs.shape}")
-            self.latest_y = jnp.tile(init_obs, (self.n_delay + 1))
-            print(f"[DEBUG] self.latest_y (after tile) shape: {self.latest_y.shape}")
+            self.latest_y = jnp.tile(init_obs, (self.n_delay + 1,))
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
             if N_new_obs > self.n_delay + 1:
-                print("[DEBUG] Updating latest_y with flip-then-flatten path")
                 flipped = jnp.flip(y_tip_noisy[-(self.n_delay + 1):].T, 1).T
-                print(f"[DEBUG] flipped shape: {flipped.shape}")
                 self.latest_y = flipped.flatten()
-                print(f"[DEBUG] self.latest_y shape (after flatten): {self.latest_y.shape}")
             else:
-                print("[DEBUG] Updating latest_y with concatenate path")
                 num_blocks = self.n_delay + 1
                 block_size = self.model.n_y // num_blocks
                 new_block = y_tip_noisy[-N_new_obs:, :].reshape(-1)
-                print(f"[DEBUG] new_block shape: {new_block.shape}")
-
                 old_needed = num_blocks - N_new_obs
                 old_part = self.latest_y[: old_needed * block_size]
-                print(f"[DEBUG] old_part shape: {old_part.shape}")
-
                 self.latest_y = jnp.concatenate([new_block, old_part])
-                print(f"[DEBUG] self.latest_y shape (after concat): {self.latest_y.shape}")
 
-        # Normalize shape to guarantee it's always 1D (24,)
+        # Normalize shape
         self.latest_y = self.latest_y.reshape(-1)
-        print(f"[DEBUG] self.latest_y final shape: {self.latest_y.shape}")
+
+        # === NEW: Augment observations with previous inputs for Koopman MPC ===
+        if self.koopman:
+            # Assuming self.u_previous contains the previous control input(s), shape (n_u,) or (N, n_u)
+            self.latest_y_koopman = jnp.concatenate([self.latest_y, self.uopt[0].reshape(-1)])  # self.uopt_previous
+
+        # Update current time
+        self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
 
     def initialize_csv(self):
