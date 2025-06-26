@@ -34,7 +34,7 @@ class MPCInitializerNode(Node):
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.03,  # [m]  For "circle" and "pacman"
+                    "radius": 0.001,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.03,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth
@@ -49,7 +49,7 @@ class MPCInitializerNode(Node):
             koopman = True
         else:
             koopman = False
-            
+
         self.debug = self.get_parameter('debug').value
         self.model_name = config["model"]  # self.get_parameter('model_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
