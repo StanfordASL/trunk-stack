@@ -280,7 +280,7 @@ class KoopmanSSMR(ReducedOrderModel):
             return self._apply_scaling(y_scaled, inverse=True)
         elif self.C is not None:
             y_raw = self.C @ x
-            return y_raw  # <- DON’T rescale
+            return y_raw
         else:
             raise AttributeError("No decoder provided for KoopmanROM.")
 

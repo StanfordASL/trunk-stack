@@ -250,6 +250,7 @@ class Koopman_MPCSolverNode(Node):
                          x_char=self.x_char, R_du=self.R_du, **kwargs)
 
         # Get the linear model matrices for use in the optimization
+        # Defaults to zero for sure
         self.d_d = [self.model.d_d for i in range(self.N)] if hasattr(self.model, 'd_d') else [np.zeros(self.A_d[0].shape[0]) for i in range(self.N)]
 
         self.X = X
@@ -270,7 +271,8 @@ class Koopman_MPCSolverNode(Node):
             zf_dummy = z_dummy[-1]
 
             # Dummy solve to trigger JIT compile
-            self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, xk, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
+            # self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, xk, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
+            self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, None, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
             J_init, success, stats = self.locp.solve()
 
             if success:
@@ -284,7 +286,6 @@ class Koopman_MPCSolverNode(Node):
             self.get_logger().warn(f'[WARM START] Exception during warm start solve: {e}')
             self.xopt = jnp.tile(jnp.zeros(self.model.n_x), (self.N + 1, 1))
             self.uopt = jnp.zeros((self.N, self.model.n_u))
-
 
         # Define the service, which uses the mpc_callback function
         self.srv = self.create_service(ControlSolver, 'mpc_solver', self.mpc_callback)
@@ -300,8 +301,8 @@ class Koopman_MPCSolverNode(Node):
         x0 = self.model.encode(y0)
         self.get_logger().info(f"Encoded x0.shape = {x0.shape}")
 
-        xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))
-        self.get_logger().info(f"Encoded xk.shape = {xk.shape}")
+        # xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))
+        # self.get_logger().info(f"Encoded xk.shape = {xk.shape}")
 
         full_ref = np.array(self.ref_traj.eval())
         M = full_ref.shape[0]
@@ -333,12 +334,13 @@ class Koopman_MPCSolverNode(Node):
         zf = slice_np[-1, :]
         self.get_logger().info(f"z.shape = {z.shape}, zf.shape = {zf.shape}")
 
-        u = None
-
+        # THIS IS NOT PASSED IN JOHNS NODE - But it doesnt have Rdu
         self.locp.u0_prev.value = np.asarray(request.u0)
 
+        # CHECK WHAT IS PASSED FOR D_D AND XK
         try:
-            self.locp.update(self.A_d, self.B_d, self.d_d, x0, xk, 0, 0, z=z, zf=zf, u=u)
+            # self.locp.update(self.A_d, self.B_d, self.d_d, x0, xk, 0, 0, z=z, zf=zf, u=u)
+            self.locp.update(self.A_d, self.B_d, self.d_d, x0, None, 0, 0, z=z, zf=zf, u=None)
             self.get_logger().info("locp.update() successful")
         except Exception as e:
             # Log the full traceback for better debugging
