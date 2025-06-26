@@ -189,7 +189,8 @@ class TestMPCNode(Node):
 
                 # Save the predicted observations and control inputs
                 if self.latest_y is not None:
-                    self.save_to_csv(topt, xopt, uopself.latest_y_koopmant, zopt)
+                    self.save_to_csv(topt, xopt, uopt, zopt)
+
                 self.topt = arr2jnp(topt, 1, squeeze=True)
                 self.x0 = jnp.array(xopt[:self.model.n_x])
                 self.uopt = arr2jnp(uopt, self.model.n_u)

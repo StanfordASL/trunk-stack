@@ -9,6 +9,7 @@ from interfaces.srv import ControlSolver
 from .mpc.gusto import GuSTO
 from .mpc.locp import LOCP
 import numpy as np
+import time
 
 
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=None, zf=None,
