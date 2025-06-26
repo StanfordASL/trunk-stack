@@ -216,10 +216,16 @@ class Koopman_MPCSolverNode(Node):
     Defines a service provider node that will run MPC using LOCP
     """
 
-    def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None,
-                 U=None, X=None, Xf=None, dU=None, verbose=0, warm_start=True, **kwargs):
+    def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None, U=None, X=None, Xf=None, dU=None, verbose=2, warm_start=True, **kwargs):
         self.model = model
-        self.N = config.N  # Assuming config contains the planning horizon
+        self.N = config.N
+        self.Qz = config.Qz
+        self.Qzf = config.Qzf
+
+        self.R = config.R
+        self.R_du = config.R_du
+        self.x_char = config.x_char 
+
         self.dt = dt
 
         # Extract necessary matrices from the Koopman model
@@ -228,18 +234,7 @@ class Koopman_MPCSolverNode(Node):
         self.C = self.model.C
         self.H = self.model.H
 
-        # Print out the model matrices for verification
-        print(f"[INIT] A_d.shape = {self.A_d[0].shape}")
-        print(f"[INIT] B_d.shape = {self.B_d[0].shape}")
-        if self.C is not None:
-            print(f"[INIT] C.shape = {self.C.shape}")
-        print(f"[INIT] H.shape = {self.H.shape}")
-
-        # Define target values and setup interpolation if needed
-        self.cost_params = config  # Assuming config contains the cost parameters
-
         self.ref_traj = ref_traj
-
         self.verbose = verbose
 
         # LOCP problem setup
@@ -248,10 +243,11 @@ class Koopman_MPCSolverNode(Node):
         else:
             locp_verbose = False
 
-        # Initialize the LOCP object with Koopman model matrices
-        self.locp = LOCP(self.N, self.H, self.cost_params.Qz, self.cost_params.R,
-                         Qzf=self.cost_params.Qzf, U=U, X=X, Xf=Xf, dU=dU, verbose=locp_verbose, warm_start=warm_start,
-                         is_tr_active=False, **kwargs)
+        # Initialize LOCP
+        self.locp = LOCP(self.N, self.H, self.Qz, self.R, Qzf=self.Qzf,
+                         U=U, X=X, Xf=Xf, dU=dU,
+                         verbose=locp_verbose, warm_start=warm_start, 
+                         x_char=self.x_char, R_du=self.R_du, **kwargs)
 
         # Get the linear model matrices for use in the optimization
         self.d_d = [self.model.d_d for i in range(self.N)] if hasattr(self.model, 'd_d') else [np.zeros(self.A_d[0].shape[0]) for i in range(self.N)]
@@ -295,33 +291,25 @@ class Koopman_MPCSolverNode(Node):
         self.get_logger().info('MPC solver service has been created.')
 
     def mpc_callback(self, request, response):
-        """
-        Callback function that runs when the service is queried, request message contains:
-        t0, x0
-
-        and the response message will contain:
-        t, xopt, uopt, zopt
-        """
         t0 = request.t0
-        print(f"[DEBUG] Received t0 = {t0}")
+        self.get_logger().info(f"Received t0 = {t0}")
 
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
-        print(f"[DEBUG] y0.shape = {y0.shape}, y0 = {y0}")
+        self.get_logger().info(f"y0.shape = {y0.shape}, y0 = {y0}")
 
         x0 = self.model.encode(y0)
-        print(f"[DEBUG] Encoded x0.shape = {x0.shape}")
+        self.get_logger().info(f"Encoded x0.shape = {x0.shape}")
 
-        xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))  # shape (N+1, n_x)
-        print(f"[DEBUG] Encoded xk.shape = {xk.shape}")
+        xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))
+        self.get_logger().info(f"Encoded xk.shape = {xk.shape}")
 
-        # === Replace get_target with the same slicing logic as gusto_callback ===
-        full_ref = np.array(self.ref_traj.eval())  # shape = (M, n_z)
+        full_ref = np.array(self.ref_traj.eval())
         M = full_ref.shape[0]
         T_final = (M - 1) * self.dt
-        print(f"[DEBUG] full_ref.shape = {full_ref.shape}, T_final = {T_final}")
+        self.get_logger().info(f"full_ref.shape = {full_ref.shape}, T_final = {T_final}")
 
         if t0 > T_final:
-            print("[DEBUG] t0 exceeds reference time horizon, setting response.done = True")
+            self.get_logger().info("t0 exceeds reference time horizon, setting response.done = True")
             response.done = True
             return response
         else:
@@ -329,73 +317,72 @@ class Koopman_MPCSolverNode(Node):
 
         start_idx = int(t0 / self.dt)
         end_idx = start_idx + (self.N + 1)
-        print(f"[DEBUG] Slicing ref from start_idx = {start_idx} to end_idx = {end_idx}")
+        self.get_logger().info(f"Slicing ref from start_idx = {start_idx} to end_idx = {end_idx}")
 
         if end_idx <= M:
-            slice_np = full_ref[start_idx:end_idx, :]  # shape = (N+1, n_z)
+            slice_np = full_ref[start_idx:end_idx, :]
         else:
             available = full_ref[start_idx:M, :]
             n_missing = (self.N + 1) - (M - start_idx)
             last_row = full_ref[M - 1, :].reshape(1, -1)
             pad_rows = np.repeat(last_row, n_missing, axis=0)
             slice_np = np.vstack([available, pad_rows])
-            print(f"[DEBUG] Near end of ref: padded {n_missing} rows with last ref point")
+            self.get_logger().info(f"Near end of ref: padded {n_missing} rows with last ref point")
 
-        z = slice_np              # shape = (N+1, n_z)
-        zf = slice_np[-1, :]      # shape = (n_z,)
-        print(f"[DEBUG] z.shape = {z.shape}, zf.shape = {zf.shape}")
+        z = slice_np
+        zf = slice_np[-1, :]
+        self.get_logger().info(f"z.shape = {z.shape}, zf.shape = {zf.shape}")
 
-        u = None  # if your model needs reference input trajectory, implement slicing similarly
+        u = None
 
-        # === Now update the solver and run as usual ===
+        self.locp.u0_prev.value = np.asarray(request.u0)
+
         try:
-            print("=== [DEBUG] Inputs to locp.update ===")
-            print(f"A_d.shape = {self.A_d[0].shape}")
-            print(f"B_d.shape = {self.B_d[0].shape}")
-            print(f"d_d.shape = {self.d_d[0].shape if self.d_d is not None else None}")
-            print(f"x0.shape = {x0.shape}, x0 = {x0}")
-            print(f"xk = None")  # Explicitly None for now
-            print(f"z.shape = {z.shape}, z (first row) = {z[0]}")
-            print(f"zf.shape = {zf.shape}, zf = {zf}")
-            print(f"u = {u}") 
             self.locp.update(self.A_d, self.B_d, self.d_d, x0, xk, 0, 0, z=z, zf=zf, u=u)
-            print("[DEBUG] locp.update() successful")
+            self.get_logger().info("locp.update() successful")
         except Exception as e:
-            print(f"[ERROR] Exception during locp.update: {e}")
-            response.done = True
-            return response
+            # Log the full traceback for better debugging
+            self.get_logger().error(f"Exception during locp.update.")
+
+        self.get_logger().info("locp.update() successful")
 
         try:
             start_time = time.time()
             Jstar, success, solver_stats = self.locp.solve()
             elapsed_time = time.time() - start_time
-            
-            print(f"[SOLVE] LOCP solve success={success}, J*={Jstar:.4f}, elapsed_time={elapsed_time:.4f} s")
+            self.get_logger().info(f"[SOLVE] LOCP solve success={success}, J*={Jstar:.4f}, elapsed_time={elapsed_time:.4f} s")
         except Exception as e:
-            print(f"[ERROR] Exception during solve: {e}")
+            self.get_logger().error(f"Exception during solve: {e}")
             success = False
 
         if success:
             try:
-                print('[DEBUG] {:.3f} s from LOCP solve'.format(solver_stats.solve_time))
+                self.get_logger().debug('{:.3f} s from LOCP solve'.format(solver_stats.solve_time))
             except Exception:
-                print('[DEBUG] Solver succeeded but no solve_time available.')
+                self.get_logger().debug('Solver succeeded but no solve_time available.')
             self.xopt, self.uopt, _ = self.locp.get_solution()
-            print(f"[DEBUG] xopt.shape = {self.xopt.shape}, uopt.shape = {self.uopt.shape}")
+            self.get_logger().debug(f"xopt.shape = {self.xopt.shape}, uopt.shape = {self.uopt.shape}")
         else:
-            print('[DEBUG] No solution found, extending previous solution')
+            self.get_logger().debug('No solution found, extending previous solution')
             self.xopt = np.concatenate((self.xopt[1:, :], np.expand_dims(self.xopt[-1, :], axis=0)), axis=0)
             self.uopt = np.concatenate((self.uopt[1:, :], np.expand_dims(self.uopt[-1, :], axis=0)), axis=0)
-
 
         self.topt = t0 + self.dt * np.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
         response.xopt = jnp2arr(self.xopt)
         response.uopt = jnp2arr(self.uopt)
+
         try:
             response.solve_time = solver_stats.solve_time
         except Exception:
             response.solve_time = 0.0
 
-        print("[DEBUG] Response packaged and sent back.")
+        try:
+            response.zopt = jnp2arr(z)
+            self.get_logger().debug(f"response.zopt.shape = {np.array(z).shape}")
+        except Exception as e:
+            self.get_logger().error(f"Failed to assign response.zopt: {e}")
+            response.zopt = []
+
+        self.get_logger().debug("Response packaged and sent back.")
         return response
