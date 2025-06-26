@@ -184,7 +184,7 @@ class TestMPCNode(Node):
                 # We do not execute the control inputs here but it's still being checked
                 safe_control_inputs = check_control_inputs(jnp.array(uopt[:self.model.n_u]), self.uopt_previous)
                 self.uopt_previous = safe_control_inputs[np.array([2, 4])]
-                print("Shape of self.uopt_previous: ", self.uopt_previous)
+                print("Self.uopt_previous: ", self.uopt_previous)
 
                 # Save the predicted observations and control inputs
                 if self.latest_y is not None:

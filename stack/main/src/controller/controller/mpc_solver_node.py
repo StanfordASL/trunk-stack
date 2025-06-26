@@ -10,6 +10,7 @@ from .mpc.gusto import GuSTO
 from .mpc.locp import LOCP
 import numpy as np
 import time
+import traceback
 
 
 def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=None, zf=None,
@@ -228,6 +229,12 @@ class Koopman_MPCSolverNode(Node):
 
         self.dt = dt
 
+        print("N : ", self.N)
+        print("Self.Qz: ", self.Qz)
+        print("Self.Qzf: ", self.Qzf)
+        print("Self.R: ", self.R)
+        print("Self.R_du: ", self.R_du)
+
         # Extract necessary matrices from the Koopman model
         self.A_d = [self.model.A_d for i in range(self.N)]
         self.B_d = [self.model.B_d for i in range(self.N)]
@@ -243,11 +250,14 @@ class Koopman_MPCSolverNode(Node):
         else:
             locp_verbose = False
 
+        u0_prev_init = np.zeros((self.model.n_u,))
+
         # Initialize LOCP
-        self.locp = LOCP(self.N, self.H, self.Qz, self.R, Qzf=self.Qzf,
-                         U=U, X=X, Xf=Xf, dU=dU,
-                         verbose=locp_verbose, warm_start=warm_start, 
-                         x_char=self.x_char, R_du=self.R_du, **kwargs)
+        self.locp = LOCP(self.N, self.H, self.Qz, self.R, 
+                        Qzf=self.Qzf, U=U, X=X, Xf=Xf, dU=dU,
+                         verbose=locp_verbose, warm_start=warm_start, is_tr_active=False,
+                         x_char=self.x_char, R_du=self.R_du, u0_prev_init=u0_prev_init, **kwargs)
+
 
         # Get the linear model matrices for use in the optimization
         # Defaults to zero for sure
@@ -262,30 +272,29 @@ class Koopman_MPCSolverNode(Node):
         super().__init__('koopman_mpc_solver_node')
 
         # --- Warm start: initial solve for JIT compilation ---
-        try:
-            print("[WARM START] Starting initial solve to trigger JIT compilation...")
-            dummy_y = jnp.zeros(self.model.n_y)
-            dummy_x = self.model.encode(dummy_y)
-            xk = jnp.tile(dummy_x.reshape(1, -1), (self.N + 1, 1))
-            z_dummy = jnp.tile(jnp.zeros(self.H.shape[0]), (self.N + 1, 1))
-            zf_dummy = z_dummy[-1]
+        print("[WARM START] Starting initial solve to trigger JIT compilation...")
+        dummy_y = jnp.zeros(self.model.n_y)
+        dummy_x = self.model.encode(dummy_y)
+        xk = jnp.tile(dummy_x.reshape(1, -1), (self.N + 1, 1))
+        z_dummy = jnp.tile(jnp.zeros(self.H.shape[0]), (self.N + 1, 1))
+        zf_dummy = z_dummy[-1]
 
-            # Dummy solve to trigger JIT compile
-            # self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, xk, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
-            self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, None, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
-            J_init, success, stats = self.locp.solve()
+        # Dummy solve to trigger JIT compile
+        self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, xk, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
+        
+        # HOW CAN THIS EVEN RUN IN SOFT ROBOT CONTROL REPO?
+        # self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, None, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
+        self.locp.u0_prev.value = np.zeros((self.model.n_u,))
+        J_init, success, stats = self.locp.solve()
 
-            if success:
-                self.xopt, self.uopt, _ = self.locp.get_solution()
-                self.get_logger().info(f'[WARM START] Initial solve completed successfully in {stats.solve_time:.4f} s.')
-            else:
-                self.xopt = xk
-                self.uopt = jnp.zeros((self.N, self.model.n_u))
-                self.get_logger().warn('[WARM START] Initial dummy solve failed. Defaulting to zero input rollout.')
-        except Exception as e:
-            self.get_logger().warn(f'[WARM START] Exception during warm start solve: {e}')
-            self.xopt = jnp.tile(jnp.zeros(self.model.n_x), (self.N + 1, 1))
+        if success:
+            self.xopt, self.uopt, _ = self.locp.get_solution()
+            self.get_logger().info(f'[WARM START] Initial solve completed successfully in {stats.solve_time:.4f} s.')
+        else:
+            self.xopt = xk
             self.uopt = jnp.zeros((self.N, self.model.n_u))
+            self.get_logger().warn('[WARM START] Initial dummy solve failed. Defaulting to zero input rollout.')
+
 
         # Define the service, which uses the mpc_callback function
         self.srv = self.create_service(ControlSolver, 'mpc_solver', self.mpc_callback)
@@ -301,7 +310,7 @@ class Koopman_MPCSolverNode(Node):
         x0 = self.model.encode(y0)
         self.get_logger().info(f"Encoded x0.shape = {x0.shape}")
 
-        # xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))
+        xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))
         # self.get_logger().info(f"Encoded xk.shape = {xk.shape}")
 
         full_ref = np.array(self.ref_traj.eval())
@@ -334,19 +343,18 @@ class Koopman_MPCSolverNode(Node):
         zf = slice_np[-1, :]
         self.get_logger().info(f"z.shape = {z.shape}, zf.shape = {zf.shape}")
 
-        # THIS IS NOT PASSED IN JOHNS NODE - But it doesnt have Rdu
+        # THIS IS NOT PASSED IN JOHNS NODE - But he doesnt have Rdu
         self.locp.u0_prev.value = np.asarray(request.u0)
 
         # CHECK WHAT IS PASSED FOR D_D AND XK
         try:
-            # self.locp.update(self.A_d, self.B_d, self.d_d, x0, xk, 0, 0, z=z, zf=zf, u=u)
-            self.locp.update(self.A_d, self.B_d, self.d_d, x0, None, 0, 0, z=z, zf=zf, u=None)
+            self.locp.update(self.A_d, self.B_d, self.d_d, x0, xk, 0, 0, z=z, zf=zf)
+            # self.locp.update(self.A_d, self.B_d, self.d_d, x0, None, 0, 0, z=z, zf=zf, u=u)
             self.get_logger().info("locp.update() successful")
         except Exception as e:
             # Log the full traceback for better debugging
-            self.get_logger().error(f"Exception during locp.update.")
-
-        self.get_logger().info("locp.update() successful")
+            tb = traceback.format_exc()
+            self.get_logger().error(f"Exception during locp.update: {e}\n{tb}")
 
         try:
             start_time = time.time()

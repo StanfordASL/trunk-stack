@@ -62,17 +62,31 @@ class MPCInitializerNode(Node):
 
         traj_config = config["trajectory"]
         self.model_name = config["model"]
-        # MPC configuration
+
+        """ WORKS FOR SSM
+        # MPC constraints
         U = HyperRectangle([0.2]*2, [-0.2]*2)
-        # U = None
         dU = HyperRectangle([0.05]*2, [-0.05]*2)
+        
+        # MPC cost:
         Qz = 700.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
         Qz = Qz.at[2, 2].set(0)
         Qzf = 2000.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
-        # R_tip, R_mid, R_top = 0.001, 0.005, 0.01
         R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 16.0 * jnp.eye(self.model.n_u)
+        """
+        # MPC constraints
+        U = HyperRectangle([0.2]*2, [-0.2]*2)
+        dU = HyperRectangle([0.05]*2, [-0.05]*2)
+        
+        # MPC cost:
+        Qz = 1.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
+        Qz = Qz.at[2, 2].set(0)
+        Qzf = 20.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
+        Qzf = Qzf.at[2, 2].set(0)
+        R = 0.00 * jnp.eye(self.model.n_u)
+        R_du = 0.1 * jnp.eye(self.model.n_u)
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
