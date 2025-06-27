@@ -31,7 +31,7 @@ def _check_control_inputs_jit(u_opt):
     """
     JIT-safe core function to clip control inputs.
     """
-    scale = 0.3
+    scale = 0.9
     tip_range = 80 * scale
     mid_range = 50 * scale
     base_range = 30 * scale
