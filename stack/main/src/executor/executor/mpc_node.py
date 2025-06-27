@@ -94,12 +94,12 @@ class MPCNode(Node):
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 2),                                     # number of control inputs
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
-            ('n_delay', 3),                                 # number of delays applied to observations
+            ('n_delay', 1),     # ssm: 3                             # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
-        self.koopman_mpc = False
+        self.koopman_mpc = True
 
         self.debug = self.get_parameter('debug').value
         self.n_z = self.get_parameter('n_z').value
@@ -120,7 +120,7 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.0  # TODO: Change
+        self.alpha_smooth = 0.0  
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
@@ -184,7 +184,7 @@ class MPCNode(Node):
         self.mpc_callback()
 
         # JIT compile this functions
-        u6_init = u2_to6u_mapping(*jnp.zeros(self.n_u,))
+        u6_init = u2_to6u_mapping(*self.u_previous)
         check_control_inputs(u6_init, self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
@@ -272,7 +272,10 @@ class MPCNode(Node):
             y_latest = self.latest_y
 
         if not self.initialized:
-            self.y0 = jnp.zeros(self.n_y)
+            if self.koopman_mpc:
+                self.y0 = jnp.zeros(self.n_y + self.n_u)
+            else:
+                self.y0 = jnp.zeros(self.n_y)
             self.send_request(0.0, self.y0, self.u_previous, wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True

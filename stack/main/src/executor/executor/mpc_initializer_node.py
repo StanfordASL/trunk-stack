@@ -28,7 +28,7 @@ class MPCInitializerNode(Node):
 
         config = {
             "trajectory": {
-                "type": "eight",
+                "type": "circle_with_ramp",
                 "duration": 20.0,  # Duration of the simulation in seconds
                 "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
@@ -41,8 +41,8 @@ class MPCInitializerNode(Node):
                 },
                 "dt": 0.02
             },
-            "model_type": "ssm",  # Options: ssm or koopman
-            "model": "origin_ssm_baseline(1)"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
+            "model_type": "koopman",  # Options: ssm or koopman
+            "model": "koopman_real_trunk_perf3"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
         }
 
         if config["model_type"] == "koopman":
@@ -63,7 +63,7 @@ class MPCInitializerNode(Node):
         traj_config = config["trajectory"]
         self.model_name = config["model"]
 
-        
+        """
         # Works for ssm
         # MPC constraints
         U = HyperRectangle([0.4]*2, [-0.4]*2)
@@ -90,8 +90,8 @@ class MPCInitializerNode(Node):
         Qzf = 5.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
         R = 0.0 * jnp.eye(self.model.n_u)
-        R_du = 0.5 * jnp.eye(self.model.n_u)
-        """
+        R_du = 0.05 * jnp.eye(self.model.n_u)
+        
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
@@ -100,7 +100,7 @@ class MPCInitializerNode(Node):
             R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
-            N=10,
+            N=2,
             dt=dt,
             verbose=0
         )
@@ -110,7 +110,7 @@ class MPCInitializerNode(Node):
 
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, ref_traj=self.ref_traj, U=U,
-                                                   dU=dU, koopman=koopman, solver="CLARABEL")  # change to osqp for koopman
+                                                   dU=dU, koopman=koopman, solver="CLARABEL")  # change to osqp for koopman, CLARABEL otherwise
 
     def _load_model(self, model_type):
         """
