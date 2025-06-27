@@ -260,9 +260,13 @@ class Koopman_MPCSolverNode(Node):
         self.d_d = [self.model.d_d for i in range(self.N)] if hasattr(self.model, 'd_d') else [np.zeros(self.A_d[0].shape[0]) for i in range(self.N)]
 
         self.X = X
-        self.xopt = None
-        self.uopt = None
-        self.topt = None
+        # self.xopt = None
+        # self.uopt = None
+        # self.topt = None
+
+        self.xopt = np.tile(x0.reshape(1, -1), (self.N + 1, 1))  # Shape: (N+1, n_x)
+        self.uopt = np.zeros((self.N, self.model.n_u))           # Shape: (N, n_u)
+        self.topt = self.dt * np.arange(self.N + 1)              # Time vector
 
         # Initialize the ROS node
         super().__init__('koopman_mpc_solver_node')
@@ -309,7 +313,27 @@ class Koopman_MPCSolverNode(Node):
         t_encode_start = time.perf_counter()
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
         x0 = self.model.encode(y0)
-        xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))
+        # xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))
+
+
+        # === Warm-start state and control trajectory guesses ===
+        idx0 = np.searchsorted(self.topt, t0, side='right')
+        idx0 = min(idx0, self.N) 
+
+        n_remaining_u = self.N - idx0
+        n_remaining_x = self.N + 1 - idx0
+
+        x_init_temp = self.xopt.copy()      # (N+1, n_x)
+
+        for i in range(n_remaining_x):
+            x_init_temp[i] = self.xopt[idx0 + i]
+        for i in range(n_remaining_x, self.N + 1):
+            x_init_temp[i] = self.xopt[-1]
+
+        # Set xk to warm-started state trajectory
+        xk = x_init_temp
+
+
         t_encode_end = time.perf_counter()
 
         # Step 2: Reference trajectory slicing
@@ -348,8 +372,7 @@ class Koopman_MPCSolverNode(Node):
         t_solve_start = time.perf_counter()
         Jstar, success, solver_stats = self.locp.solve()
         t_solve_end = time.perf_counter()
-        elapsed_time = t_solve_start - t_solve_end
-        self.get_logger().info(f"[SOLVE] LOCP solve success={success}, J*={Jstar:.4f}, elapsed_time={elapsed_time:.4f} s")
+        elapsed_time = t_solve_end - t_solve_start
 
         # Step 5: Post-process
         t_post_start = time.perf_counter()

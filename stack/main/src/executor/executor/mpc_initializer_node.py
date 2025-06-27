@@ -99,7 +99,7 @@ class MPCInitializerNode(Node):
             R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
-            N=10,
+            N=5,
             dt=dt,
             verbose=0
         )
