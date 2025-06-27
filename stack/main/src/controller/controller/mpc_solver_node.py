@@ -364,7 +364,7 @@ class Koopman_MPCSolverNode(Node):
             self.xopt = np.concatenate((self.xopt[1:], [self.xopt[-1]]), axis=0)
             self.uopt = np.concatenate((self.uopt[1:], [self.uopt[-1]]), axis=0)
 
-        self.z_opt = (self.H @ self.xopt.T).T
+        self.zopt = (self.H @ self.xopt.T).T
         self.topt = t0 + self.dt * np.arange(self.N + 1)
 
         response.t = jnp2arr(self.topt)
