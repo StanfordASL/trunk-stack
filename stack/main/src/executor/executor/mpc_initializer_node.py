@@ -88,8 +88,8 @@ class MPCInitializerNode(Node):
         Qz = Qz.at[2, 2].set(0)
         Qzf = 5.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
-        R = 0.001 * jnp.eye(self.model.n_u)
-        R_du = 0.05 * jnp.eye(self.model.n_u)
+        R = 0.0 * jnp.eye(self.model.n_u)
+        R_du = 0.5 * jnp.eye(self.model.n_u)
         
 
         gusto_config = GuSTOConfig(
