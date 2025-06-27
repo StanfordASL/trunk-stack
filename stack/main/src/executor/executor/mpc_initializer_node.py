@@ -34,8 +34,8 @@ class MPCInitializerNode(Node):
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.03,  # [m]  For "circle" and "pacman"
-                    "amplitude": 0.05,  # [m]  For "eight"
+                    "radius": 0.05,  # [m]  For "circle" and "pacman"
+                    "amplitude": 0.03,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth
                 },
@@ -76,6 +76,7 @@ class MPCInitializerNode(Node):
         Qzf = Qzf.at[2, 2].set(0)
         R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 16.0 * jnp.eye(self.model.n_u)
+        N = 10
     
         """
 
@@ -87,10 +88,11 @@ class MPCInitializerNode(Node):
         # MPC cost:
         Qz = 1.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
         Qz = Qz.at[2, 2].set(0)
-        Qzf = 30.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
+        Qzf = 20.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z) # 30 gave oscillations 
         Qzf = Qzf.at[2, 2].set(0)
         R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 0.05 * jnp.eye(self.model.n_u)
+        N = 2
         
 
         gusto_config = GuSTOConfig(
@@ -100,7 +102,7 @@ class MPCInitializerNode(Node):
             R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
-            N=2,
+            N=N,
             dt=dt,
             verbose=0
         )
