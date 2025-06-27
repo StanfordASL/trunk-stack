@@ -248,6 +248,7 @@ class Koopman_MPCSolverNode(Node):
         self.X = X
 
         self.xopt = np.tile(x0.reshape(1, -1), (self.N + 1, 1))  # Shape: (N+1, n_x)
+        self.z_opt = (self.H @ self.xopt.T).T   # Shape: (N+1, n_x)
         self.uopt = np.zeros((self.N, self.model.n_u))           # Shape: (N, n_u)
         self.topt = self.dt * np.arange(self.N + 1)              # Time vector
 
@@ -363,10 +364,14 @@ class Koopman_MPCSolverNode(Node):
             self.xopt = np.concatenate((self.xopt[1:], [self.xopt[-1]]), axis=0)
             self.uopt = np.concatenate((self.uopt[1:], [self.uopt[-1]]), axis=0)
 
+        self.z_opt = (self.H @ self.xopt.T).T
         self.topt = t0 + self.dt * np.arange(self.N + 1)
+
         response.t = jnp2arr(self.topt)
         response.xopt = jnp2arr(self.xopt)
+        response.zopt = jnp2arr(self.zopt)
         response.uopt = jnp2arr(self.uopt)
+        response.solve_time = elapsed_time
 
         try:
             response.zopt = jnp2arr(z)

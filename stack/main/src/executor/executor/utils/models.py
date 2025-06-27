@@ -337,7 +337,7 @@ class KoopmanSSMR(ReducedOrderModel):
             C=np.asarray(self.C, dtype=np.float64) if self.C is not None else None,
             H=np.asarray(self._H, dtype=np.float64),
             delays=self.delays,
-            lift_powers=lift_powers,  # <–– NEW
+            lift_powers=lift_powers,
             scale_mu=None if self.scale is None else np.asarray(self.scale[0]),
             scale_std=None if self.scale is None else np.asarray(self.scale[1]),
             n_y=self.n_y,
