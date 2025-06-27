@@ -86,7 +86,7 @@ class MPCInitializerNode(Node):
         # MPC cost:
         Qz = 1.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
         Qz = Qz.at[2, 2].set(0)
-        Qzf = 30.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
+        Qzf = 5.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
         R = 0.00 * jnp.eye(self.model.n_u)
         R_du = 0.01 * jnp.eye(self.model.n_u)
@@ -99,7 +99,7 @@ class MPCInitializerNode(Node):
             R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
-            N=4,
+            N=2,
             dt=dt,
             verbose=0
         )
