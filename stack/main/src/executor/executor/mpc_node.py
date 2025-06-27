@@ -27,37 +27,43 @@ config = {
 }
 
 @jax.jit
-def check_control_inputs(u_opt, u_previous=None):
+def _check_control_inputs_jit(u_opt):
     """
-    Check control inputs for safety constraints, rejecting vector norms that are too large.
+    JIT-safe core function to clip control inputs.
     """
     scale = 0.3
+    tip_range = 80 * scale
+    mid_range = 50 * scale
+    base_range = 30 * scale
 
-    tip_range, mid_range, base_range = 80, 50, 30
-
-    tip_range *= scale
-    mid_range *= scale
-    base_range *= scale
-
-    # u2, u4 = u_opt[0], u_opt[1]
-    u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
-
-    # First we clip to max and min values FOR SAVETY ONLY SEND 0 RIGHT NOW
-    u2 = jnp.clip(u2, -tip_range, tip_range)
-    u4 = jnp.clip(u4, -tip_range, tip_range)
+    u1, u2, u3, u4, u5, u6 = u_opt
 
     u1 = jnp.clip(u1, -mid_range, mid_range)
+    u2 = jnp.clip(u2, -tip_range, tip_range)
+    u3 = jnp.clip(u3, -base_range, base_range)
+    u4 = jnp.clip(u4, -tip_range, tip_range)
+    u5 = jnp.clip(u5, -base_range, base_range)
     u6 = jnp.clip(u6, -mid_range, mid_range)
 
-    u3 = jnp.clip(u3, -base_range, base_range)
-    u5 = jnp.clip(u5, -base_range, base_range)
-
-    # Check the constraint: if the constraint is met, then keep previous control command
-    u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
-
-    return u_opt
+    return jnp.array([u1, u2, u3, u4, u5, u6])
 
 
+def check_control_inputs(u_opt, u_previous=None):
+    """
+    Wrapper that prints when clipping happens, while calling JIT-safe core logic.
+    """
+    u_opt_clipped = _check_control_inputs_jit(u_opt)
+
+    # Compare and print if clipping happened
+    diffs = jnp.abs(u_opt - u_opt_clipped)
+    for i, diff in enumerate(diffs):
+        if diff > 1e-6:
+            print(f"[WARNING] u{i+1} was clipped from {float(u_opt[i]):.3f} to {float(u_opt_clipped[i]):.3f}")
+
+    return u_opt_clipped
+
+
+@jax.jit
 def u2_to6u_mapping(u2, u4):
     # angle and radius
     teta = jnp.arctan2(u4, u2)
@@ -93,7 +99,7 @@ class MPCNode(Node):
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
-        self.koopman_mpc = True
+        self.koopman_mpc = False
 
         self.debug = self.get_parameter('debug').value
         self.n_z = self.get_parameter('n_z').value
@@ -177,8 +183,9 @@ class MPCNode(Node):
         # Initialize by calling mpc callback function
         self.mpc_callback()
 
-        # JIT compile this function
-        check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
+        # JIT compile this functions
+        u6_init = u2_to6u_mapping(*jnp.zeros(self.n_u,))
+        check_control_inputs(u6_init, self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
         self.controller_period = 0.02
@@ -269,8 +276,8 @@ class MPCNode(Node):
             self.send_request(0.0, self.y0, self.u_previous, wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
-        elif latest_y is not None:
-            self.y0 = latest_y
+        elif y_latest is not None:
+            self.y0 = y_latest
             self.send_request(self.t0, self.y0, self.u_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 

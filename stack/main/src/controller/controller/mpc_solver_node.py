@@ -99,20 +99,9 @@ class MPCSolverNode(Node):
         self.u_init = jnp.zeros((config.N, self.model.n_u))
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
-        print(f"[INIT] ref_traj.eval().shape = {ref_traj.eval().shape}")
-        print(f"[INIT] z (first call to GuSTO) shape = {ref_traj.eval()[:self.N+1].shape}")
-        print(f"[INIT] zf shape = {ref_traj.eval()[self.N+1].shape}")
-        print(f"[INIT] Qz.shape = {config.Qz.shape}")
-        print(f"[INIT] R.shape = {config.R.shape}")
-        print(f"[INIT] x_init.shape = {self.x_init.shape}")
-
-        print(f"x0 values:\n{x0}")
-        print(f"x_init[0] values:\n{self.x_init[0]}")
 
         z = jnp.array(self.ref_traj.eval())[:self.N+1]
         zf = self.ref_traj.eval()[-1]
-        print(f"z[0] (first reference point):\n{z[0]}")
-        print(f"zf (final reference point):\n{zf}")
 
         self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1], # u=u,
                            zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)  # X=X, Xf=Xf,
@@ -154,7 +143,6 @@ class MPCSolverNode(Node):
 
         # TODO: include interp for adiabatic here 
 
-        print("DEBUG: Shape of incoming y0 is ", y0.shape)
         x0 = self.model.encode(y0)
 
         start_idx = int(t0 / self.dt)
@@ -200,7 +188,6 @@ class MPCSolverNode(Node):
         self.gusto.solve(x0, self.u_init, self.x_init, z=ref_window, zf=ref_final)
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
 
-        print("Shape of self.uopt: ", self.uopt.shape)
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
         response.xopt = jnp2arr(self.xopt)
@@ -215,7 +202,6 @@ class Koopman_MPCSolverNode(Node):
     """
     Defines a service provider node that will run MPC using LOCP
     """
-
     def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None, U=None, X=None, Xf=None, dU=None, verbose=0, warm_start=True, **kwargs):
         
         self.model = model
@@ -260,9 +246,6 @@ class Koopman_MPCSolverNode(Node):
         self.d_d = [self.model.d_d for i in range(self.N)] if hasattr(self.model, 'd_d') else [np.zeros(self.A_d[0].shape[0]) for i in range(self.N)]
 
         self.X = X
-        # self.xopt = None
-        # self.uopt = None
-        # self.topt = None
 
         self.xopt = np.tile(x0.reshape(1, -1), (self.N + 1, 1))  # Shape: (N+1, n_x)
         self.uopt = np.zeros((self.N, self.model.n_u))           # Shape: (N, n_u)
@@ -284,8 +267,6 @@ class Koopman_MPCSolverNode(Node):
         # Dummy solve to trigger JIT compile
         self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, xk, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
         
-        # HOW CAN THIS EVEN RUN IN SOFT ROBOT CONTROL REPO?
-        # self.locp.update(self.A_d, self.B_d, self.d_d, dummy_x, None, 0.0, 0.0, z=z_dummy, zf=zf_dummy)
         self.locp.u0_prev.value = np.zeros((self.model.n_u,))
         J_init, success, stats = self.locp.solve()
 

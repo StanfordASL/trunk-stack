@@ -30,7 +30,7 @@ class MPCInitializerNode(Node):
             "trajectory": {
                 "type": "circle_with_ramp",
                 "duration": 20.0,  # Duration of the simulation in seconds
-                "speed": 0.5,  # Angular speed (rad/s)
+                "speed": 1.0,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
@@ -41,8 +41,8 @@ class MPCInitializerNode(Node):
                 },
                 "dt": 0.02
             },
-            "model_type": "koopman",  # Options: ssm or koopman
-            "model": "koopman_real_trunk_perf3"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
+            "model_type": "ssm",  # Options: ssm or koopman
+            "model": "origin_ssm_baseline(1)"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
         }
 
         if config["model_type"] == "koopman":
@@ -63,10 +63,10 @@ class MPCInitializerNode(Node):
         traj_config = config["trajectory"]
         self.model_name = config["model"]
 
-        """
+        
         # Works for ssm
         # MPC constraints
-        U = HyperRectangle([0.2]*2, [-0.2]*2)
+        U = HyperRectangle([0.4]*2, [-0.4]*2)
         dU = HyperRectangle([0.05]*2, [-0.05]*2)
         
         # MPC cost:
@@ -79,6 +79,7 @@ class MPCInitializerNode(Node):
     
         """
 
+        # Works for Koopman
         # MPC constraints
         U = HyperRectangle([0.4]*2, [-0.4]*2)
         dU = HyperRectangle([0.05]*2, [-0.05]*2)
@@ -90,7 +91,7 @@ class MPCInitializerNode(Node):
         Qzf = Qzf.at[2, 2].set(0)
         R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 0.5 * jnp.eye(self.model.n_u)
-        
+        """
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
@@ -99,7 +100,7 @@ class MPCInitializerNode(Node):
             R_du=R_du,
             x_char=jnp.ones(self.model.n_x),
             f_char=jnp.ones(self.model.n_x),
-            N=2,
+            N=10,
             dt=dt,
             verbose=0
         )
@@ -109,7 +110,7 @@ class MPCInitializerNode(Node):
 
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, ref_traj=self.ref_traj, U=U,
-                                                   dU=dU, koopman=koopman, solver="CLARABEL")  # CLARABEL
+                                                   dU=dU, koopman=koopman, solver="CLARABEL")  # change to osqp for koopman
 
     def _load_model(self, model_type):
         """

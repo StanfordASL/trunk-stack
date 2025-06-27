@@ -148,8 +148,6 @@ class LOCP:
                     cd = kwargs.get('cd')
                     self.cd.value = np.ravel(np.asarray(cd))
 
-                print(f"[DEBUG] self.xk.shape = {self.xk.shape}")
-                print(f"[DEBUG] np.asarray(xk).shape = {np.asarray(xk).shape}")
                 self.xk.value = np.asarray(xk)
                 self.x0.value = np.asarray(x0)
 
