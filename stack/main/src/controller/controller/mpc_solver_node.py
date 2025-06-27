@@ -373,12 +373,6 @@ class Koopman_MPCSolverNode(Node):
         response.uopt = jnp2arr(self.uopt)
         response.solve_time = elapsed_time
 
-        try:
-            response.zopt = jnp2arr(z)
-        except Exception as e:
-            self.get_logger().error(f"Failed to assign response.zopt: {e}")
-            response.zopt = []
-
         t_post_end = time.perf_counter()
 
         # Timing summary
