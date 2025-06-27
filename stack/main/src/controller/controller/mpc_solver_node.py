@@ -217,6 +217,7 @@ class Koopman_MPCSolverNode(Node):
     """
 
     def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None, U=None, X=None, Xf=None, dU=None, verbose=0, warm_start=True, **kwargs):
+        
         self.model = model
         self.N = config.N
         self.Qz = config.Qz
@@ -228,22 +229,18 @@ class Koopman_MPCSolverNode(Node):
 
         self.dt = dt
 
-        print("N : ", self.N)
-        print("Self.Qz: ", self.Qz)
-        print("Self.Qzf: ", self.Qzf)
-        print("Self.R: ", self.R)
-        print("Self.R_du: ", self.R_du)
-
         # Extract necessary matrices from the Koopman model
         self.A_d = [self.model.A_d for i in range(self.N)]
         self.B_d = [self.model.B_d for i in range(self.N)]
         self.C = self.model.C
         self.H = self.model.H
 
-        self.ref_traj = ref_traj
-        self.verbose = verbose
-
+        self.full_ref = np.array(ref_traj.eval())
+        self.M = self.full_ref.shape[0]
+        self.T_final = (self.M - 1) * self.dt
+        
         # LOCP problem setup
+        self.verbose = verbose
         if self.verbose == 2:
             locp_verbose = True
         else:
@@ -270,6 +267,8 @@ class Koopman_MPCSolverNode(Node):
         # Initialize the ROS node
         super().__init__('koopman_mpc_solver_node')
 
+        self.get_logger().info(f"Reference trajectory loaded: shape={self.full_ref.shape}, T_final={self.T_final:.2f}")
+
         # --- Warm start: initial solve for JIT compilation ---
         print("[WARM START] Starting initial solve to trigger JIT compilation...")
         dummy_y = jnp.zeros(self.model.n_y)
@@ -286,6 +285,9 @@ class Koopman_MPCSolverNode(Node):
         self.locp.u0_prev.value = np.zeros((self.model.n_u,))
         J_init, success, stats = self.locp.solve()
 
+        # Define the service, which uses the mpc_callback function
+        self.srv = self.create_service(ControlSolver, 'mpc_solver', self.mpc_callback)
+
         if success:
             self.xopt, self.uopt, _ = self.locp.get_solution()
             self.get_logger().info(f'[WARM START] Initial solve completed successfully in {stats.solve_time:.4f} s.')
@@ -294,30 +296,25 @@ class Koopman_MPCSolverNode(Node):
             self.uopt = jnp.zeros((self.N, self.model.n_u))
             self.get_logger().warn('[WARM START] Initial dummy solve failed. Defaulting to zero input rollout.')
 
-
-        # Define the service, which uses the mpc_callback function
-        self.srv = self.create_service(ControlSolver, 'mpc_solver', self.mpc_callback)
         self.get_logger().info('MPC solver service has been created.')
 
     def mpc_callback(self, request, response):
+
+        total_start = time.perf_counter()
+
         t0 = request.t0
         self.get_logger().info(f"Received t0 = {t0}")
 
+        # Step 1: Encode y0
+        t_encode_start = time.perf_counter()
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
-        self.get_logger().info(f"y0.shape = {y0.shape}, y0 = {y0}")
-
         x0 = self.model.encode(y0)
-        self.get_logger().info(f"Encoded x0.shape = {x0.shape}")
-
         xk = np.tile(x0.reshape(1, -1), (self.locp.N + 1, 1))
-        # self.get_logger().info(f"Encoded xk.shape = {xk.shape}")
+        t_encode_end = time.perf_counter()
 
-        full_ref = np.array(self.ref_traj.eval())
-        M = full_ref.shape[0]
-        T_final = (M - 1) * self.dt
-        self.get_logger().info(f"full_ref.shape = {full_ref.shape}, T_final = {T_final}")
-
-        if t0 > T_final:
+        # Step 2: Reference trajectory slicing
+        t_ref_start = time.perf_counter()
+        if t0 > self.T_final:
             self.get_logger().info("t0 exceeds reference time horizon, setting response.done = True")
             response.done = True
             return response
@@ -326,54 +323,41 @@ class Koopman_MPCSolverNode(Node):
 
         start_idx = int(t0 / self.dt)
         end_idx = start_idx + (self.N + 1)
-        self.get_logger().info(f"Slicing ref from start_idx = {start_idx} to end_idx = {end_idx}")
 
-        if end_idx <= M:
-            slice_np = full_ref[start_idx:end_idx, :]
+        if end_idx <= self.M:
+            slice_np = self.full_ref[start_idx:end_idx, :]
         else:
-            available = full_ref[start_idx:M, :]
-            n_missing = (self.N + 1) - (M - start_idx)
-            last_row = full_ref[M - 1, :].reshape(1, -1)
+            available = self.full_ref[start_idx:self.M, :]
+            n_missing = (self.N + 1) - (self.M - start_idx)
+            last_row = self.full_ref[self.M - 1, :].reshape(1, -1)
             pad_rows = np.repeat(last_row, n_missing, axis=0)
             slice_np = np.vstack([available, pad_rows])
             self.get_logger().info(f"Near end of ref: padded {n_missing} rows with last ref point")
 
         z = slice_np
         zf = slice_np[-1, :]
-        self.get_logger().info(f"z.shape = {z.shape}, zf.shape = {zf.shape}")
+        t_ref_end = time.perf_counter()
 
-        # THIS IS NOT PASSED IN JOHNS NODE - But he doesnt have Rdu
+        # Step 3: LOCP update
+        t_update_start = time.perf_counter()
         self.locp.u0_prev.value = np.asarray(request.u0)
+        self.locp.update(self.A_d, self.B_d, self.d_d, x0, xk, 0, 0, z=z, zf=zf)
+        t_update_end = time.perf_counter()
 
-        try:
-            self.locp.update(self.A_d, self.B_d, self.d_d, x0, xk, 0, 0, z=z, zf=zf)
-            # self.locp.update(self.A_d, self.B_d, self.d_d, x0, None, 0, 0, z=z, zf=zf, u=u)
-            self.get_logger().info("locp.update() successful")
-        except Exception as e:
-            # Log the full traceback for better debugging
-            tb = traceback.format_exc()
-            self.get_logger().error(f"Exception during locp.update: {e}\n{tb}")
+        # Step 4: Solve
+        t_solve_start = time.perf_counter()
+        Jstar, success, solver_stats = self.locp.solve()
+        t_solve_end = time.perf_counter()
+        elapsed_time = t_solve_start - t_solve_end
+        self.get_logger().info(f"[SOLVE] LOCP solve success={success}, J*={Jstar:.4f}, elapsed_time={elapsed_time:.4f} s")
 
-        try:
-            start_time = time.time()
-            Jstar, success, solver_stats = self.locp.solve()
-            elapsed_time = time.time() - start_time
-            self.get_logger().info(f"[SOLVE] LOCP solve success={success}, J*={Jstar:.4f}, elapsed_time={elapsed_time:.4f} s")
-        except Exception as e:
-            self.get_logger().error(f"Exception during solve: {e}")
-            success = False
-
+        # Step 5: Post-process
+        t_post_start = time.perf_counter()
         if success:
-            try:
-                self.get_logger().debug('{:.3f} s from LOCP solve'.format(solver_stats.solve_time))
-            except Exception:
-                self.get_logger().debug('Solver succeeded but no solve_time available.')
             self.xopt, self.uopt, _ = self.locp.get_solution()
-            self.get_logger().debug(f"xopt.shape = {self.xopt.shape}, uopt.shape = {self.uopt.shape}")
         else:
-            self.get_logger().debug('No solution found, extending previous solution')
-            self.xopt = np.concatenate((self.xopt[1:, :], np.expand_dims(self.xopt[-1, :], axis=0)), axis=0)
-            self.uopt = np.concatenate((self.uopt[1:, :], np.expand_dims(self.uopt[-1, :], axis=0)), axis=0)
+            self.xopt = np.concatenate((self.xopt[1:], [self.xopt[-1]]), axis=0)
+            self.uopt = np.concatenate((self.uopt[1:], [self.uopt[-1]]), axis=0)
 
         self.topt = t0 + self.dt * np.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
@@ -381,16 +365,21 @@ class Koopman_MPCSolverNode(Node):
         response.uopt = jnp2arr(self.uopt)
 
         try:
-            response.solve_time = solver_stats.solve_time
-        except Exception:
-            response.solve_time = 0.0
-
-        try:
             response.zopt = jnp2arr(z)
-            self.get_logger().debug(f"response.zopt.shape = {np.array(z).shape}")
         except Exception as e:
             self.get_logger().error(f"Failed to assign response.zopt: {e}")
             response.zopt = []
 
-        self.get_logger().debug("Response packaged and sent back.")
+        t_post_end = time.perf_counter()
+
+        # Timing summary
+        self.get_logger().info(
+            f"Timing — encode: {t_encode_end - t_encode_start:.4f}s, "
+            f"ref: {t_ref_end - t_ref_start:.4f}s, "
+            f"update: {t_update_end - t_update_start:.4f}s, "
+            f"solve: {t_solve_end - t_solve_start:.4f}s, "
+            f"post: {t_post_end - t_post_start:.4f}s, "
+            f"TOTAL: {t_post_end - total_start:.4f}s"
+            )
+
         return response
