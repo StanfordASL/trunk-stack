@@ -43,14 +43,14 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "trajectory": {
-                "type": "eight",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
+                "type": "pacman_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
                 "duration": 20.0,  # Duration of the simulation in seconds
-                "speed": 1.5,  # Angular speed (rad/s)
+                "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.05,  # [m]  For "circle" and "pacman"
-                    "amplitude": 0.03,  # [m]  For "eight"
+                    "radius": 0.07,  # [m]  For "circle" and "pacman"
+                    "amplitude": 0.05,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
                 }
