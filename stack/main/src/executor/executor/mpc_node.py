@@ -30,11 +30,16 @@ config = {
 def _check_control_inputs_jit(u_opt):
     """
     JIT-safe core function to clip control inputs.
-    """
-    scale = 0.9
+    
+    scale = 1.0
     tip_range = 80 * scale
     mid_range = 50 * scale
     base_range = 30 * scale
+    """
+
+    tip_range = 80
+    mid_range = 50
+    base_range = 30
 
     u1, u2, u3, u4, u5, u6 = u_opt
 
@@ -94,12 +99,12 @@ class MPCNode(Node):
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 2),                                     # number of control inputs
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
-            ('n_delay', 1),     # ssm: 3                             # number of delays applied to observations
+            ('n_delay', 3),     # ssm: 3                             # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
-        self.koopman_mpc = True
+        self.koopman_mpc = False
 
         self.debug = self.get_parameter('debug').value
         self.n_z = self.get_parameter('n_z').value

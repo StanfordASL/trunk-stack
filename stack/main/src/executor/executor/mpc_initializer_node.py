@@ -28,21 +28,21 @@ class MPCInitializerNode(Node):
 
         config = {
             "trajectory": {
-                "type": "circle_with_ramp",
+                "type": "eight",
                 "duration": 20.0,  # Duration of the simulation in seconds
-                "speed": 0.5,  # Angular speed (rad/s)
+                "speed": 1.5,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.05,  # [m]  For "circle" and "pacman"
-                    "amplitude": 0.03,  # [m]  For "eight"
+                    "radius": 0.08,  # [m]  For "circle" and "pacman"
+                    "amplitude": 0.05,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth
                 },
                 "dt": 0.02
             },
-            "model_type": "koopman",  # Options: ssm or koopman
-            "model": "koopman_real_trunk_perf3"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
+            "model_type": "ssm",  # Options: ssm or koopman
+            "model": "origin_ssm_baseline(1)"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
         }
 
         if config["model_type"] == "koopman":
@@ -63,10 +63,10 @@ class MPCInitializerNode(Node):
         traj_config = config["trajectory"]
         self.model_name = config["model"]
 
-        """
+        
         # Works for ssm
         # MPC constraints
-        U = HyperRectangle([0.4]*2, [-0.4]*2)
+        U = HyperRectangle([0.9]*2, [-0.9]*2)
         dU = HyperRectangle([0.05]*2, [-0.05]*2)
         
         # MPC cost:
@@ -93,6 +93,7 @@ class MPCInitializerNode(Node):
         R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 0.05 * jnp.eye(self.model.n_u)
         N = 2
+        """
         
 
         gusto_config = GuSTOConfig(
