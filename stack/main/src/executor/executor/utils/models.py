@@ -10,6 +10,8 @@ from functools import partial
 from .ssm import DelaySSM, generate_ssm_predictions
 from .residual import ResidualBr, PolyBr
 from .misc import trajectories_delay_embedding, trajectories_derivatives, RK4_step, update_parameter, compute_rmse, sample_truncated_normal
+from sklearn.metrics import r2_score
+from numpy.linalg import lstsq
 
 
 class ReducedOrderModel:
@@ -370,6 +372,94 @@ class KoopmanSSMR(ReducedOrderModel):
                    g_decode=g_decode,
                    delays=int(data["delays"]),
                    scale=scale)
+
+    @classmethod
+    def from_data(cls, states, controls, d, deg):
+        """
+        Instantiate the KoopmanSSMR model from loaded data (states and controls).
+
+        Arguments:
+        d: number of delays
+        deg: polynomial degree
+        """
+        n_y = states[0].shape[1]  # Number of observations
+        n_u = controls[0].shape[1]  # Number of control inputs
+        n_zeta = n_y * (d + 1) + n_u * d  # Dimension of delay-stack
+
+        # Create polynomial lift function based on degree and state dimension
+        powers = cls._monomial_powers(n_zeta, deg)
+        poly_lift = cls._lift_from_powers(powers)
+
+        x_list, y_list, u_list, yraw_list = [], [], [], []
+
+        # Iterate through the data and build delay-stacked zeta
+        for y_traj, u_traj in zip(states, controls):
+            zetas = []
+            for k in range(d, len(y_traj)):
+                zetas.append(np.hstack([  # [y_k, y_{k-1}, u_{k-1}]
+                    y_traj[k],
+                    *(y_traj[k - j - 1] for j in range(d)),
+                    *(u_traj[k - j - 1] for j in range(d))
+                ]))
+            zetas = np.asarray(zetas)  # (T-d, n_zeta)
+
+            phi_k = poly_lift(zetas)  # (T-d, n_lib)
+            phi_kp1 = poly_lift(zetas[1:])  # Shift forward by one step
+            u_k = u_traj[d:-1]  # (T-d-1, n_u)
+            y_k = y_traj[d:-1]  # for fitting C
+
+            x_list.append(phi_k[:-1])  # Align shapes
+            y_list.append(phi_kp1)
+            u_list.append(u_k)
+            yraw_list.append(y_k)
+
+        x = np.vstack(x_list)  # (N, n_lib)
+        y = np.vstack(y_list)  # (N, n_lib)
+        u = np.vstack(u_list)  # (N, n_u)
+        yraw = np.vstack(yraw_list)
+
+        # Least-squares fitting for A_d, B_d
+        z = np.hstack([x, u])  # shape (N, n_lib + n_u)
+        ab, *_ = lstsq(z, y, rcond=None)  # (n_lib + n_u, n_lib)
+        a_d = ab[:x.shape[1]].T  # (n_lib, n_lib)
+        b_d = ab[x.shape[1]:].T  # (n_lib, n_u)
+
+        # Least-squares fitting for C and H
+        c, *_ = lstsq(x, yraw, rcond=None)  # (n_lib, n_y)ᵀ => (n_y, n_lib)
+        c = c.T
+        performance_dim = 3  # Hardcoded for the moment
+        h = c[:performance_dim]
+
+        # Scaling factors (mean and std)
+        y_mean, y_std = yraw.mean(0), yraw.std(0) + 1e-8
+        u_mean, u_std = u.mean(0), u.std(0) + 1e-8
+        scale = (y_mean, y_std)
+
+        # Create an instance of KoopmanSSMR
+        koopman_model = cls(a_d, b_d, c, h,
+                            g_encode=poly_lift,
+                            delays=d,
+                            scale=None)
+
+        # Print some diagnostics
+        f = a_d.shape[0]  # lifted dimension
+        print(f"\n◼  Lifted state dimension  F = {f}")
+
+        # 1) R² on the training samples (one-step prediction in lifted space)
+        y_pred = x @ a_d.T + u @ b_d.T
+        r2 = r2_score(y, y_pred)
+        print(f"◼  Training R² (lifted one-step) = {r2: .3f}")
+
+        # 2) Spectral radius of A_d (largest |eigenvalue|)
+        rho = np.max(np.abs(np.linalg.eigvals(a_d)))
+        print(f"◼  Spectral radius ρ(A_d) = {rho: .3f}")
+
+        # Optional sanity assertion: make sure R² is not negative
+        if r2 < 0.0:
+            raise ValueError("Learned Koopman model has R² < 0. "
+                             "Check data preprocessing / feature library.")
+
+        return koopman_model
 
 
 class ParametricSSMR(ReducedOrderModel):
