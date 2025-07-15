@@ -17,8 +17,6 @@ logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
 
-run_on_pauls_computer = False
-
 
 class MPCInitializerNode(Node):
     """
@@ -43,7 +41,7 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "trajectory": {
-                "type": "pacman_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
+                "type": "circle",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
                 "duration": 20.0,  # Duration of the simulation in seconds
                 "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
@@ -59,10 +57,7 @@ class MPCInitializerNode(Node):
                 "perf_var_dim": 3,
                 "also_embedd_u": True
             },
-            # "model": "first_mpc_model_real_trunk.pkl"
-            # "model": "real_origin_faster_v2.pkl"
-            # "model": "real_model_60.pkl"
-            "model": "best_51_v3.pkl"
+            "model": "first_slow_assm_model"
         }
 
         mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
@@ -70,10 +65,7 @@ class MPCInitializerNode(Node):
         self.debug = self.get_parameter('debug').value
         self.model_name = config["model"]
 
-        if run_on_pauls_computer:
-            self.data_dir = os.getenv('TRUNK_DATA', '/Users/paulleonardwolff/Desktop/trunk-stack/stack/main/data')
-        else:
-            self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Load the model
         self._load_model()
