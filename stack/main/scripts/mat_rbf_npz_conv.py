@@ -2,6 +2,7 @@ import os
 import scipy.io
 import numpy as np
 
+
 def mat_to_npz_rbf(mat_filepath, npz_filepath):
     """
     Loads a .mat file containing U_select, W, epsilon, and case_rbf, and saves them as a .npz file.
@@ -24,7 +25,7 @@ def mat_to_npz_rbf(mat_filepath, npz_filepath):
         mat_data = scipy.io.loadmat(mat_filepath)
 
         # Verify that required variables exist in the .mat file
-        required_vars = ['U_select', 'W', 'epsilon', 'case_rbf']
+        required_vars = ['U_select', 'WU', 'epsilon', 'case_rbf']
         missing_vars = [var for var in required_vars if var not in mat_data]
         if missing_vars:
             print(f"Error: The following required variables are missing in the .mat file: {missing_vars}")
@@ -32,7 +33,7 @@ def mat_to_npz_rbf(mat_filepath, npz_filepath):
 
         # Extract the required variables
         U_select = mat_data['U_select']
-        W = mat_data['W']
+        W = mat_data['WU']
         epsilon = mat_data['epsilon']
         case_rbf = mat_data['case_rbf']
 
@@ -52,15 +53,16 @@ def mat_to_npz_rbf(mat_filepath, npz_filepath):
         print(f"Error during conversion: {str(e)}")
         return None
 
-# Example usage
-if __name__ == "__main__":
-    # Example file paths (replace with your actual file paths)
-    mat_file = "path/to/your/input.mat"  # Update this path
-    npz_file = "path/to/your/output.npz"  # Update this path
 
-    # Convert the .mat file to .npz
-    result = mat_to_npz_rbf(mat_file, npz_file)
-    if result:
-        print(f"Conversion completed: {result}")
-    else:
-        print("Conversion failed.")
+def main():
+    model_name = 'first_crit_mani_rbf'
+    data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+    mat_filepath = os.path.join(data_dir, f'models/slow_assm/{model_name}.mat')
+    npz_filepath = os.path.join(data_dir, f'models/slow_assm/{model_name}.npz')
+    saved_path = mat_to_npz_rbf(mat_filepath, npz_filepath)
+    data = np.load(saved_path)
+    print('Keys: ', list(data.keys()))
+
+
+if __name__ == '__main__':
+    main()
