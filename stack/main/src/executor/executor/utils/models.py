@@ -2,18 +2,11 @@
 Reduced order models of controlled systems.
 """
 import os
-import sys
-import executor.utils.model_classes.control_origin_ssm as patched_module
-import executor.utils.model_classes.mappings as patched_module2
-sys.modules['model_classes.control_origin_ssm'] = patched_module
-sys.modules['model_classes.mappings'] = patched_module2
-sys.path.append(os.path.join(os.path.dirname(__file__)))
-
 import pickle
 import jax
 import jax.numpy as jnp
 from functools import partial
-from .misc import trajectories_delay_embedding, trajectories_derivatives, RK4_step, compute_rmse
+from .misc import trajectories_delay_embedding, trajectories_derivatives, RK4_step, compute_rmse, rbf_eval
 
 
 class ReducedOrderModel:
@@ -56,6 +49,25 @@ class ReducedOrderModel:
         Linear transformation from the state, x, to the performance variable, z.
         """
         raise NotImplementedError
+
+
+
+class SlowAdiabaticSSM(ReducedOrderModel):
+    """
+    Adiabatic SSM model with critical manifold.
+    """
+    def __init__(self, model_path, manifold_path):
+        self.model_path = model_path
+        self.manifold_path = manifold_path
+        
+        # Load the model from the specified path
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"The model file {model_path} does not exist.")
+        with open(model_path, "rb") as f:
+
+        # Load the critical manifold from the specified path
+        
+
 
 
 class Residual_dynamics:
