@@ -5,9 +5,11 @@ import os
 import pickle
 import jax
 import jax.numpy as jnp
+import numpy as np
 from functools import partial
-from .misc import trajectories_delay_embedding, trajectories_derivatives, RK4_step, compute_rmse, rbf_eval
-
+from .misc import trajectories_delay_embedding, trajectories_derivatives, RK4_step, compute_rmse
+from .ssm import DelaySSM
+from .critical_manifold import CriticalManifold
 
 class ReducedOrderModel:
     """
@@ -37,9 +39,9 @@ class ReducedOrderModel:
         """
         raise NotImplementedError
 
-    def performance_mapping(self, x):
+    def performance_mapping(self, x, u):
         """
-        Performance mapping maps the state, x, to the performance output, z.
+        Performance mapping maps the state, x (and potentially controls u), to the performance output, z.
         """
         raise NotImplementedError
     
@@ -49,7 +51,6 @@ class ReducedOrderModel:
         Linear transformation from the state, x, to the performance variable, z.
         """
         raise NotImplementedError
-
 
 
 class SlowAdiabaticSSM(ReducedOrderModel):
@@ -64,10 +65,86 @@ class SlowAdiabaticSSM(ReducedOrderModel):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"The model file {model_path} does not exist.")
         with open(model_path, "rb") as f:
+            model_data = np.load(f)
+            self.ssm = DelaySSM(model_data=model_data)
+            self.obs_perf_matrix = model_data['obs_perf_matrix']
 
         # Load the critical manifold from the specified path
-        
+        if not os.path.exists(manifold_path):
+            raise FileNotFoundError(f"The manifold file {manifold_path} does not exist.")
+        with open(manifold_path, "rb") as f:
+            critical_manifold_data = np.load(f)
+            self.critical_manifold = CriticalManifold(critical_manifold_data)
 
+        n_x = self.ssm.dynamics_coeff.shape[0]
+        n_u, n_s = self.critical_manifold.n_u, self.critical_manifold.n_s
+        n_z, n_y = self.obs_perf_matrix.shape
+        self.n_s = n_s
+        super().__init__(n_x, n_u, n_y, n_z)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def continuous_dynamics(self, x, u):
+        """
+        Continuous dynamics of reduced system.
+        """
+        s = self.critical_manifold(u)
+        x_augm = jnp.concatenate([x, s])
+        return self.ssm.reduced_dynamics(x_augm)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def discrete_dynamics(self, x, u, dt=0.01):
+        """
+        Discrete-time dynamics of reduced system using RK4 integration.
+        """
+        return RK4_step(self.continuous_dynamics, x, u, dt)
+
+    def dynamics_step(self, x, u_dt):
+        """
+        Perform a single step of the reduced dynamics.
+        X is required to be augmented with the past reference values
+        """
+        u, dt = u_dt[:-1], u_dt[-1]
+        return self.discrete_dynamics(x, u, dt), x
+
+    @partial(jax.jit, static_argnums=(0,))
+    def rollout(self, x0, u, dt=0.01):
+        """
+        Rollout of the discrete-time dynamics model, with u being an array of length N.
+        Note that if u has length N, then the output will have length N+1.
+        x0 is in the reduced coordinates
+        """
+        u_dt = jnp.column_stack([u, jnp.full(u.shape[0], dt)])  # shape of u is (N, n_u)
+        final_state, xs = jax.lax.scan(self.dynamics_step, x0, u_dt)
+        return jnp.vstack([xs, final_state])
+
+    @partial(jax.jit, static_argnums=(0,))
+    def performance_mapping(self, x, u):
+        """
+        Performance mapping maps the state, x (and potentially controls u), to the performance output, z, through
+        z = C @ y = C @ w(x, u).
+        """
+        s = self.critical_manifold(u)
+        x_augm = jnp.concatenate([x, s])
+        return self.obs_perf_matrix @ self.decode(x_augm)
+
+    @property
+    def H(self):
+        """
+        Linear mapping from the state, x, to the performance variable, z.
+        """
+        raise AttributeError("SSMR uses a nonlinear performance mapping, hence H is not defined.")
+
+    def encode(self, y):
+        """
+        Encode the observations, y, into the reduced state, x.
+        """
+        return self.ssm.encode(y)
+
+    def decode(self, x_augm):
+        """
+        Decode the augmented reduced state, x_augm=[x, s], into the observations, y.
+        """
+        return self.ssm.decode(x_augm)
 
 
 class Residual_dynamics:
@@ -177,10 +254,10 @@ class control_SSMR(ReducedOrderModel):
         final_state, xs = jax.lax.scan(self.dynamics_step, x0, u_dt)
         return jnp.vstack([xs, final_state])
 
-    def performance_mapping(self, x):
+    def performance_mapping(self, x, u):
         """
         Performance mapping maps the state, x, to the performance output, z, through
-        z = C @ y = C @ w(x).
+        z = C @ y = C @ w(x, u).
         """
         return self.obs_perf_matrix @ self.decode(x)
 

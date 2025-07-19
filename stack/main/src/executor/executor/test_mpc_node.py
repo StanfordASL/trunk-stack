@@ -43,26 +43,13 @@ class TestMPCNode(Node):
     def __init__(self):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
-            ('debug', False),                               # False or True (print debug messages)
-            ('results_name', 'pauls_second_test')            # name of the results file
+            ('debug', False),                                # False or True (print debug messages)
+            ('results_name', 'first_slow_aSSM')              # name of the results file
         ])
 
-        config = {
-            "delay_embedding": {
-                "perf_var_dim": 3,
-                "also_embedd_u": True
-            },
-            "model": "first_mpc_model_real_trunk.pkl"
-        }
-
-        self.delay_config = config["delay_embedding"]
-
         self.debug = self.get_parameter('debug').value
-        self.model_name = config["model"]
-
+        self.model_name = "adiabatic/first_slow_aSSM.npz"
         self.results_name = self.get_parameter('results_name').value
-        # self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
-
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         # Load the model

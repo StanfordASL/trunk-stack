@@ -42,11 +42,11 @@ def mat_to_npz(mat_filepath, npz_filepath, perf_var="tip_3D"):
     """
     mat_data = scipy.io.loadmat(mat_filepath)
 
-    encoder_coeff, encoder_exp = mat_data['Vfinal'], mat_data['exps_V']
-    decoder_coeff, decoder_exp = mat_data['M'], mat_data['exps']
-    dynamics_coeff, dynamics_exp = mat_data['R'], mat_data['exps_r']
+    dynamics_coeff, dynamics_exp = mat_data['R'], mat_data['exps_r']  # (n_x, ...) & (..., n_x)
+    decoder_coeff, decoder_exp = mat_data['M'], mat_data['exps']  # (n_y, ...) & (..., n_x)
+    encoder_coeff, encoder_exp = mat_data['Vfinal'], mat_data['exps_V']  # (n_x, ...) & (..., n_y)
 
-    n_y = encoder_coeff.shape[1]
+    n_y = decoder_coeff.shape[0]
     if perf_var == "tip_2D":
         n_z = 2
     elif perf_var == "tip_3D":

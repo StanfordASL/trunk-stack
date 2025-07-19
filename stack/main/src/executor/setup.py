@@ -21,7 +21,7 @@ setup(
     include_package_data=True,
     package_data={'executor': ['*.yaml']},
     license='TODO: License declaration',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'data_collection_node = executor.data_collection_node:main',

@@ -60,8 +60,8 @@ class GuSTO:
     (https://osqp.org/docs/interfaces/solver_settings.html)
     """
     def __init__(self, model, config, x0, u_init, x_init,
-                 z=None, u=None, zf=None, U=None, X=None, Xf=None, dU=None,
-                 **kwargs):
+                z=None, u=None, zf=None, U=None, X=None, Xf=None, dU=None,
+                **kwargs):
         self.model = model
 
         # Extract configuration parameters
@@ -86,14 +86,13 @@ class GuSTO:
         self.x_k = None  # previous state
         self.u_k = None  # previous input
         self.locp_solve_time = None  # time spent in LOCP solve
-        self.gusto_solve_time = None  # time spent for whole gusto solve call
 
         # LOCP problem
         if self.verbose == 2:
             locp_verbose = True
         else:
             locp_verbose = False
-
+        
         # Check if performance mapping is linear
         try:
             self.H = self.model.H
@@ -126,23 +125,25 @@ class GuSTO:
         # Timing information to be stored
         t0 = time.time()
         t_locp = 0.0
-        #t_overhead = time.time()
 
         itr = 0
         self.x_k = x_init
         self.u_k = u_init
-
+        
         # Grab Jacobians for first solve
         A_d, B_d, d_d = self._get_dynamics_linearizations(self.x_k[:-1], self.u_k)
 
         if self.nonlinear_perf_mapping:
-            H_d, c_d = self._get_perf_mapping_linearizations(self.x_k)
+            # We also need an extended version of u_k if the performance mapping depends on u
+            # this is a the same as u_k but with the last element repeated
+            self.u_k_ext = jnp.concatenate((self.u_k, jnp.expand_dims(self.u_k[-1, :], axis=0)), axis=0)
+            H_d, I_d, c_d = self._get_perf_mapping_linearizations(self.x_k, self.u_k_ext)
         else:
-            H_d, c_d = None, None
+            H_d, I_d, c_d = None, None, None
 
-        #t_jac = time.time()
-        #if self.verbose >= 2:
-        #    print('DEBUG: Jacobians computed in {:.4f} seconds'.format(t_jac - t0))
+        t_jac = time.time()
+        if self.verbose >= 2:
+            print('DEBUG: Jacobians computed in {:.4f} seconds'.format(t_jac - t0))
 
         new_solution = True
         Jstar_prev = jnp.inf
@@ -158,55 +159,40 @@ class GuSTO:
             print('|   J   | TR_viol |  rho_k  |  X_viol |   x-x_k |  delta  |  omega |')
             print('--------------------------------------------------------------------')
 
-        #t_overhead = time.time() - t_overhead
-        #print('DEBUG: Overhead time for GuSTO initialization: {:.4f} seconds'.format(t_overhead))
-
-        #t_while = time.perf_counter()
         while self._is_valid_iteration(itr) and not converged and omega <= self.omega_max:
-            #t0_locp_update = time.perf_counter()
-            
             rho_k = -1
             max_violation = -1
             dsol = -1
             delta_cur = delta  # just for printing
             omega_cur = omega  # just for printing
-            
+
             # Update the LOCP with new parameters and solve
             if new_solution:
-                self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, cd=c_d)
+                self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, Id=I_d, cd=c_d)
                 new_solution = False
             else:
-                self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, cd=c_d, full=False)
+                self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, Id=I_d, cd=c_d, full=False)
 
             if self.verbose >= 2:
                 print('DEBUG: Routines pre-solve computed in {:.4f} seconds'.format(time.time() - t0))
-            #t0_locp_update = time.perf_counter() - t0_locp_update
-            #print('DEBUG: LOCP update time: {:.4f} seconds'.format(t0_locp_update))
 
             # Solve the LOCP
-            #t0_locp = time.perf_counter()
             Jstar, success, stats = self.locp.solve()
-            #t0_locp = time.perf_counter() - t0_locp
-            #print('DEBUG: LOCP solve time: {:.4f} seconds'.format(t0_locp))
-
-            #t_get_solution = time.perf_counter()
 
             if not success:
                 print('Iteration {} of problem cannot be solved, see solver status for more information'.format(itr))
                 self.xopt = jnp.copy(self.x_k)
                 self.uopt = jnp.copy(self.u_k)
                 if self.nonlinear_perf_mapping:
-                    self.zopt = self.model.performance_mapping(self.xopt.T).T
+                    self.uopt_ext = jnp.copy(self.u_k_ext)
+                    self.zopt = self.model.performance_mapping(self.xopt.T, self.uopt_ext.T).T
                 else:
                     self.zopt = jnp.transpose(self.H @ self.xopt.T)
                 return
- 
+
             t_locp += stats.solve_time
             x_next, u_next, _ = self.locp.get_solution()
-            #t_get_solution = time.perf_counter() - t_get_solution
-            #print('DEBUG: LOCP solution extraction time: {:.4f} seconds'.format(t_get_solution))
 
-            #t_trust_region = time.perf_counter()
             # Check if trust region is satisfied
             e_tr, tr_satisfied = self._is_in_trust_region(self.x_k, x_next, delta)
 
@@ -258,12 +244,12 @@ class GuSTO:
 
                     # Record that a new solution as been found
                     new_solution = True
-            
+
             else:
                 omega = self.gamma_fail * omega
 
             if self.verbose >= 2:
-                print('DEBUG: Trust region + LOCP computed in {:.4f} seconds'.format(time.perf_counter() - t0))
+                print('DEBUG: Trust region + LOCP computed in {:.4f} seconds'.format(time.time() - t0))
 
             itr += 1
 
@@ -278,10 +264,6 @@ class GuSTO:
                     print('{:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {}'.format(
                         Jstar, e_tr, rho_k, max_violation, dsol, delta_cur, omega_cur, itr))
 
-            #t_trust_region = time.perf_counter() - t_trust_region
-            #print('DEBUG: Trust region check time: {:.4f} seconds'.format(t_trust_region))
-
-            #t_recompute = time.perf_counter()
             # If valid solution, update and recompute dynamics
             if new_solution:
                 self.x_k = x_next.copy()
@@ -290,16 +272,13 @@ class GuSTO:
                     A_d, B_d, d_d = self._get_dynamics_linearizations(self.x_k[:-1], self.u_k)
 
                     if self.nonlinear_perf_mapping:
-                        H_d, c_d = self._get_perf_mapping_linearizations(self.x_k)
+                        # We also need an extended version of u_k if the performance mapping depends on u
+                        # this is a the same as u_k but with the last element repeated
+                        self.u_k_ext = jnp.concatenate((self.u_k, jnp.expand_dims(self.u_k[-1, :], axis=0)), axis=0)
+                        H_d, I_d, c_d = self._get_perf_mapping_linearizations(self.x_k, self.u_k_ext)
                     else:
-                        H_d, c_d = None, None
+                        H_d, I_d, c_d = None, None, None
 
-            #t_recompute = time.perf_counter() - t_recompute
-            #print('DEBUG: Dynamics recomputed in {:.4f} seconds'.format(t_recompute))
-
-        #t_while = time.perf_counter() - t_while
-        #print('DEBUG: GuSTO while loop time: {:.4f} seconds'.format(t_while))
-        
         t_gusto = time.time() - t0
         if omega > self.omega_max:
             print('omega > omega_max, solution did not converge')
@@ -312,14 +291,14 @@ class GuSTO:
         self.xopt = jnp.copy(self.x_k)
         self.uopt = jnp.copy(self.u_k)
         if self.nonlinear_perf_mapping:
-            self.zopt = self.model.performance_mapping(self.xopt.T).T
+            self.uopt_ext = jnp.copy(self.u_k_ext)
+            self.zopt = self.model.performance_mapping(self.xopt.T, self.uopt_ext.T).T
         else:
             self.zopt = jnp.transpose(self.H @ self.xopt.T)
         self.locp_solve_time = t_locp
-        self.gusto_solve_time = t_gusto
 
     def get_solution(self):
-        return self.xopt, self.uopt, self.zopt, self.gusto_solve_time  # self.locp_solve_time
+        return self.xopt, self.uopt, self.zopt, self.locp_solve_time
 
     def _extract_config(self, config):
         """
@@ -350,10 +329,8 @@ class GuSTO:
         Check if the new state is within the trust region of the previous state.
         """
         max_diff = jnp.max(jnp.linalg.norm(jnp.multiply(self.x_scale, x - x_k), ord=jnp.inf, axis=1))
-
         def outside_region(_):
             return max_diff, False
-
         def inside_region(_):
             return 0.0, True
         return jax.lax.cond(max_diff - delta > self.epsilon, outside_region, inside_region, operand=None)
@@ -376,7 +353,6 @@ class GuSTO:
 
         def outside_threshold(_):
             return max_violation, False
-
         def inside_threshold(_):
             return max_violation, True
 
@@ -387,49 +363,14 @@ class GuSTO:
         """
         Compute the model accuracy for the given state and control inputs.
         """
-
-        def rewrite_augmented(x_tilde, u_current):
-            """
-            Rewrites the augmented state and control quantities.
-            """
-            if self.model.ssm.specified_params["embedding_up_to"] == 0:
-                u_ref_ext = jnp.vstack([jnp.zeros((self.model.n_y - u_current.shape[0], 1)),
-                                        -self.model.ssm.lam @ u_current.reshape(-1, 1)]).flatten()
-                return x_tilde, u_ref_ext
-            else:
-                x_part = x_tilde[:self.model.n_x]
-                u_past = x_tilde[self.model.n_x:]
-                u_past_shifted = u_past.reshape(-1, self.model.n_u)
-
-                # Recreate an extended control signal u_ref_ext in the same way as in discrete_dynamics:
-                u_ref_ext = jnp.vstack(
-                    [jnp.vstack([jnp.zeros((len(self.model.ssm.specified_params["measured_rows"]), 1)),
-                                 -self.model.ssm.lam @ u_current.reshape(-1, 1)])] +
-                    [jnp.vstack([jnp.zeros((len(self.model.ssm.specified_params["measured_rows"]), 1)),
-                                 -self.model.ssm.lam @ u_past_shifted[i].reshape(-1, 1)])
-                     for i in range(0, u_past_shifted.shape[0],
-                                    (1 + self.model.ssm.specified_params["shift_steps"]))]).flatten()
-
-                return x_part, u_ref_ext
-
         def body_fn(i, state):
             error, approx = state
-            # Compute the dynamics of the nominal trajectory using the rewritten quantities:
-            x_k_part, u_k_ref_ext = rewrite_augmented(x_k[i, :], u_k[i, :])
-            # Compute the Jacobians at the nominal point (with respect to the original augmented inputs).
-            Ak, Bk = jax.jacfwd(self.model.continuous_dynamics, argnums=(0, 1))(
-                x_k_part, u_k_ref_ext
-            )
-            x_part, u_ref_ext = rewrite_augmented(x[i, :], u[i, :])
-
-            # Compute the true dynamics and the approximated ones:
-            f = self.model.continuous_dynamics(x_part, u_ref_ext)
-            fk = self.model.continuous_dynamics(x_k_part, u_k_ref_ext)
-
-            f_approx = fk + Ak @ (x_part - x_k_part) + Bk @ (u_ref_ext - u_k_ref_ext)
-
-            error += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale[:self.model.n_x], f - f_approx), 2)
-            approx += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale[:self.model.n_x], f_approx), 2)
+            fk = self.model.continuous_dynamics(x_k[i, :], u_k[i, :])
+            Ak, Bk = jax.jacfwd(self.model.continuous_dynamics, argnums=(0, 1))(x_k[i, :], u_k[i, :])
+            f = self.model.continuous_dynamics(x[i, :], u[i, :])
+            f_approx = fk + Ak @ (x[i, :] - x_k[i, :]) + Bk @ (u[i, :] - u_k[i, :])
+            error += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale, f - f_approx), 2)
+            approx += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale, f_approx), 2)
             return error, approx
 
         error, approx = jax.lax.fori_loop(0, x.shape[0] - 1, body_fn, (0.0, 0.0))
@@ -449,14 +390,14 @@ class GuSTO:
 
     @partial(jax.jit, static_argnums=(0,))
     @partial(jax.vmap, in_axes=(None, 0))
-    def _perform_perf_mapping_linearization(self, x):
+    def _perform_perf_mapping_linearization(self, x, u):
         """
         Obtain the affine performance mappings at each point along trajectory in a list.
         """
         g = self.model.performance_mapping
-        H = jax.jacfwd(g)(x)
-        c = g(x) - H @ x
-        return H, c
+        H, I = jax.jacfwd(g, argnums=(0, 1))(x, u)
+        c = g(x, u) - H @ x - I @ u
+        return H, I, c
 
     def _get_dynamics_linearizations(self, x, u):
         """
@@ -468,12 +409,12 @@ class GuSTO:
         else:
             return self._perform_dynamics_linearization(x, u)
 
-    def _get_perf_mapping_linearizations(self, x):
+    def _get_perf_mapping_linearizations(self, x, u):
         """
         Wrapper method that calls self.model.get_perf_mapping_linearizations if it exists,
         otherwise it calls the local method _perform_perf_mapping_linearization.
         """
         if hasattr(self.model, 'get_perf_mapping_linearizations') and callable(getattr(self.model, 'get_perf_mapping_linearizations')):
-            return self.model.get_perf_mapping_linearizations(x)
+            return self.model.get_perf_mapping_linearizations(x, u)
         else:
-            return self._perform_perf_mapping_linearization(x)
+            return self._perform_perf_mapping_linearization(x, u)

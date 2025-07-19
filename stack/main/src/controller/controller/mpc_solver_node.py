@@ -68,12 +68,6 @@ class MPCSolverNode(Node):
                  U=None, dU=None, **kwargs):
         self.model = model
 
-        shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
-        num_delay = self.model.ssm.specified_params["embedding_up_to"]
-        pad_length = self.model.ssm.specified_params["num_u"] * ((1 + shift) * num_delay - shift)
-        self.u_ref_init = jnp.zeros((pad_length,))
-        print("dt is: ", dt)
-
         if dt is not None:
             self.dt = dt
         elif dt is None and t is not None:
@@ -85,13 +79,6 @@ class MPCSolverNode(Node):
         self.ref_traj = ref_traj
         self.u = u
 
-        """
-        if z is not None and z.ndim == 2:
-            self.z_interp = interp1d(t, z, axis=0, bounds_error=False, fill_value=(z[0, :], z[-1, :]))
-
-        if u is not None and u.ndim == 2:
-            self.u_interp = interp1d(t, u, axis=0, bounds_error=False, fill_value=(u[0, :], u[-1, :]))
-        """
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
@@ -124,50 +111,29 @@ class MPCSolverNode(Node):
         """
         t0 = request.t0
 
-        # 1) Compute the reference’s final time based on its length and dt
+        # Compute the reference’s final time based on its length and dt
         full_ref = np.array(self.ref_traj.eval())  # shape = (M, n_z)
         M = full_ref.shape[0]
         T_final = (M - 1) * self.dt
 
-        # 2) If t0 is beyond the last valid reference time, return done=True immediately
+        # If t0 is beyond the last valid reference time, return done=True immediately
         if t0 > T_final:
             response.done = True
             return response
         else:
             response.done = False
 
-        # 3) Reconstruct y0 from the delayed embedding
-        y0_np = np.array(request.y0)  # purely for debugging or sanity checks
-        print("Received request.y0 of shape:", y0_np.shape)
+        # Get y0 and encode it
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
-
-        num_blocks = self.model.ssm.specified_params["embedding_up_to"] + 1
-        block_size = self.model.n_y // num_blocks
-        y0_blocks = y0.reshape((num_blocks, block_size))
-
-        state_part = y0_blocks[:, : (block_size - self.model.n_u)]
-        u_part = y0_blocks[:, (block_size - self.model.n_u):]
-
-        y0_scaled = jnp.concatenate([state_part, u_part], axis=1)
-        y0 = y0_scaled.reshape((self.model.n_y,))
-
         x0 = self.model.encode(y0)
 
-        # 4) Recover previous control
+        # Recover previous control
         if self.u_prev0 is None:
             self.u_prev0 = np.zeros((self.model.n_u,))
         else:
             self.u_prev0 = np.array(request.u0)
 
-        # 5) Update u_ref_init by shifting in the previous input
-        if self.u_ref_init.shape[0] >= self.model.n_u:
-            self.u_ref_init = jnp.concatenate(
-                [self.u_prev0, self.u_ref_init[:-self.model.n_u]],
-                axis=0
-            )
-        x0_aug = jnp.concatenate([x0, self.u_ref_init], axis=0)
-
-        # 6) Build ref_window of length (N+1) rows, padding with the last row if we run out
+        # Build ref_window of length (N+1) rows, padding with the last row if we run out
         start_idx = int(t0 / self.dt)
         end_idx = start_idx + (self.N + 1)
 
@@ -207,22 +173,21 @@ class MPCSolverNode(Node):
         self.u_init = u_init_temp
         self.x_init = x_init_temp
 
-        # 8) Update the LOCP parameter for previous input
-        # print("Shape of self.u_prev0:", self.u_prev0.shape)
+        # Update the LOCP parameter for previous input
         self.gusto.locp.u0_prev.value = self.u_prev0
 
-        # 9) Solve GuSTO with the (possibly padded) reference
+        # Solve GuSTO with the (possibly padded) reference
         self.gusto.solve(
-            x0_aug,
+            x0,
             self.u_init,
             self.x_init,
             z=ref_window,
             zf=ref_final
         )
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
-        xopt_extracted = self.xopt[:, : self.model.n_x]
+        xopt_extracted = self.xopt[:, :self.model.n_x]
 
-        # 10) Package the response
+        # Package the response
         self.topt = t0 + self.dt * jnp.arange(self.N + 1)
         response.t = jnp2arr(self.topt)
         response.xopt = jnp2arr(xopt_extracted)
@@ -231,35 +196,3 @@ class MPCSolverNode(Node):
         response.solve_time = t_solve
 
         return response
-
-    def get_target(self, t0):
-        """
-        Returns z, zf, u arrays for GuSTO solve.
-        """
-        t = t0 + self.dt * jnp.arange(self.N + 1)
-
-        # Get target z terms for cost function
-        if self.z is not None:
-            if self.z.ndim == 2:
-                z = self.z_interp(t)
-            else:
-                z = self.z.reshape(1, -1).repeat(self.N + 1)
-        else:
-            z = None
-
-        # Get target zf term for cost function 
-        if z is not None:
-            zf = z[-1, :]
-        else:
-            zf = None
-
-        # Get target u terms for cost function
-        if self.u is not None:
-            if self.u.ndim == 2:
-                u = self.u_interp(t)
-            else:
-                u = self.u.reshape(1, -1).repeat(self.N)
-        else:
-            u = None
-
-        return z, zf, u

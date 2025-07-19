@@ -4,6 +4,7 @@ LOCP (Linear Optimal Control Problem) implementation, adopted from original GuST
 
 import time
 import scipy.sparse as sp
+import jax
 import jax.numpy as jnp
 import cvxpy as cp
 import numpy as np
@@ -92,10 +93,11 @@ class LOCP:
             self.dd = cp.Parameter(self.N * self.n_x)
 
             # Adding observer linearization parameters here. Expect parameters to be None
-            # If dynamics class has nonlinear_perf_mapping = False. In this case this class should
+            # if dynamics class has nonlinear_perf_mapping = False. In this case this class should
             # use self.H as shown above. This seems to be different from when not warm_starting
             if self.nonlinear_perf_mapping:
                 self.Hd = [cp.Parameter((self.n_z, self.n_x)) for i in range(self.N + 1)]
+                self.Id = [cp.Parameter((self.n_z, self.n_u)) for i in range(self.N + 1)]
                 self.cd = cp.Parameter((self.N + 1) * self.n_z)
 
             self.x0 = cp.Parameter(self.n_x)
@@ -137,15 +139,13 @@ class LOCP:
                 for j in range(self.N):
                     self.Ad[j].value = np.asarray(Ad[j])
                     self.Bd[j].value = np.asarray(Bd[j])
+                self.dd.value = np.ravel(np.asarray(dd))
 
                 if self.nonlinear_perf_mapping:
                     for j in range(self.N + 1):
                         self.Hd[j].value = np.asarray(kwargs.get('Hd')[j])
-
-                self.dd.value = np.ravel(np.asarray(dd))
-                if self.nonlinear_perf_mapping:
-                    cd = kwargs.get('cd')
-                    self.cd.value = np.ravel(np.asarray(cd))
+                        self.Id[j].value = np.asarray(kwargs.get('Id')[j])
+                    self.cd.value = np.ravel(np.asarray(kwargs.get('cd')))
 
                 self.xk.value = np.asarray(xk)
                 self.x0.value = np.asarray(x0)
@@ -182,6 +182,7 @@ class LOCP:
             # Observer params here
             if self.nonlinear_perf_mapping:
                 self.Hd = np.asarray(kwargs.get('Hd'))
+                self.Id = np.asarray(kwargs.get('Id'))
                 self.cd = np.asarray(kwargs.get('cd'))
 
             self._problem_setup()
@@ -247,20 +248,33 @@ class LOCP:
             Qzfull = sp.csc_matrix(block_diag(*Qz_list))
 
         if self.nonlinear_perf_mapping:
+            if self.warm_start:
+                Hdfull = self._build_block_diag(self.Hd, self.n_z, self.n_x, self.N + 1)
+                Idfull = self._build_block_diag(self.Id, self.n_z, self.n_u, self.N + 1)
+            else:
+                Hdfull = block_diag(*[self.Hd[j] for j in range(self.N + 1)])
+                Idfull = block_diag(*[self.Id[j] for j in range(self.N + 1)])
             cdfull = np.reshape(self.cd, ((self.N+1)*self.n_z,)) if isinstance(self.cd, list) else \
                 reshape(self.cd, ((self.N+1)*self.n_z,))
+            # We also need an extended version of u if the performance mapping depends on u
+            # this is a the same as u but with the last element repeated
+            print("self.u type:", type(self.u))
+            print("self.u shape:", getattr(self.u, 'shape', 'no shape'))
+            print("self.u value:", self.u)
+            print("self.n_u:", self.n_u)
 
-            if self.warm_start:
-                Hfull = []
-                for j in range(self.N + 1):
-                    cur = [np.zeros((self.n_z, self.n_x))] * (self.N + 1)
-                    cur[j] = self.Hd[j]
-                    Hfull.append(cur)
-                Hfull = cp.bmat(Hfull)
-            else:
-                Hfull = block_diag(*[self.Hd[j] for j in range(self.N + 1)])
+            # Force both to be proper arrays
+            u_array = np.atleast_1d(self.u)
+            u_last = np.atleast_1d(self.u)[-self.n_u:]
 
-            J += cp.quad_form(Hfull @ self.x + cdfull - self.z, Qzfull)
+            print("u_array shape:", u_array.shape)
+            print("u_last shape:", u_last.shape)
+            print(self.u.value)
+            u_ext = np.concatenate([self.u.value, self.u.value[-self.n_u:]])
+            print("u_ext shape:", u_ext.shape)
+            u_ext=0
+
+            J += cp.quad_form(Hdfull @ self.x + Idfull @ u_ext + cdfull - self.z, Qzfull)
         else:
             Hfull = block_diag(*[self.H for _ in range(self.N + 1)])
             J += cp.quad_form(Hfull @ self.x - self.z, Qzfull)
@@ -291,19 +305,8 @@ class LOCP:
 
         # Dynamics constraints
         if self.warm_start:
-            Adfull = []
-            for j in range(self.N):
-                cur = [np.zeros((self.n_x, self.n_x))] * self.N
-                cur[j] = self.Ad[j]
-                Adfull.append(cur)
-            Adfull = cp.bmat(Adfull)
-
-            Bdfull = []
-            for j in range(self.N):
-                cur = [np.zeros((self.n_x, self.n_u))] * self.N
-                cur[j] = self.Bd[j]
-                Bdfull.append(cur)
-            Bdfull = cp.bmat(Bdfull)
+            Adfull = self._build_block_diag_bmat(self.Ad, self.n_x, self.n_x, self.N)
+            Bdfull = self._build_block_diag_bmat(self.Bd, self.n_x, self.n_u, self.N)
         else:
             Adfull = block_diag(*self.Ad)
             Bdfull = block_diag(*self.Bd)
@@ -331,22 +334,18 @@ class LOCP:
             dUbfull = np.tile(self.dU.b, self.N - 1)
             constr += [dUAfull @ (self.u[self.n_u:] - self.u[:-self.n_u]) <= dUbfull]
 
-        # Added this constraint
+        # dU constraint for the first input
         if self.dU is not None:
             constr += [self.dU.A @ (self.u[:self.n_u] - self.u0_prev) <= self.dU.b]
 
         # State constraints
         if self.X is not None:
+            # NOTE: might require updating if y depends on u
             if self.nonlinear_perf_mapping:
                 cdfull = np.reshape(self.cd, ((self.N + 1) * self.n_z,)) if isinstance(self.cd, list) else \
                     reshape(self.cd, ((self.N + 1) * self.n_z,))
                 if self.warm_start:
-                    Hfull = []
-                    for j in range(self.N):
-                        cur = [np.zeros((self.n_z, self.n_x))] * self.N
-                        cur[j] = self.Hd[j + 1]
-                        Hfull.append(cur)
-                    Hfull = cp.bmat(Hfull)
+                    Hfull = self._build_block_diag(self.Hd, self.n_z, self.n_x, self.N)
                 else:
                     Hfull = block_diag(*[self.Hd[j + 1] for j in range(self.N)])
 
@@ -368,3 +367,14 @@ class LOCP:
         constr += [self.x[:self.n_x] == self.x0]
 
         return constr
+
+    def _build_block_diag(self, params, n_rows, n_cols, N):
+        """
+        Helper to build block diagonal matrix from CVXPY parameters.
+        """
+        blocks = []
+        for j in range(N):
+            cur = [np.zeros((n_rows, n_cols))] * N
+            cur[j] = params[j]
+            blocks.append(cur)
+        return cp.bmat(blocks)
