@@ -258,21 +258,8 @@ class LOCP:
                 reshape(self.cd, ((self.N+1)*self.n_z,))
             # We also need an extended version of u if the performance mapping depends on u
             # this is a the same as u but with the last element repeated
-            print("self.u type:", type(self.u))
-            print("self.u shape:", getattr(self.u, 'shape', 'no shape'))
-            print("self.u value:", self.u)
-            print("self.n_u:", self.n_u)
-
-            # Force both to be proper arrays
-            u_array = np.atleast_1d(self.u)
-            u_last = np.atleast_1d(self.u)[-self.n_u:]
-
-            print("u_array shape:", u_array.shape)
-            print("u_last shape:", u_last.shape)
-            print(self.u.value)
-            u_ext = np.concatenate([self.u.value, self.u.value[-self.n_u:]])
-            print("u_ext shape:", u_ext.shape)
-            u_ext=0
+            u_last = self.u[-self.n_u:]
+            u_ext = cp.hstack([self.u, u_last])
 
             J += cp.quad_form(Hdfull @ self.x + Idfull @ u_ext + cdfull - self.z, Qzfull)
         else:
@@ -305,8 +292,8 @@ class LOCP:
 
         # Dynamics constraints
         if self.warm_start:
-            Adfull = self._build_block_diag_bmat(self.Ad, self.n_x, self.n_x, self.N)
-            Bdfull = self._build_block_diag_bmat(self.Bd, self.n_x, self.n_u, self.N)
+            Adfull = self._build_block_diag(self.Ad, self.n_x, self.n_x, self.N)
+            Bdfull = self._build_block_diag(self.Bd, self.n_x, self.n_u, self.N)
         else:
             Adfull = block_diag(*self.Ad)
             Bdfull = block_diag(*self.Bd)

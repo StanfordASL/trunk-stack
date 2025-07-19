@@ -389,7 +389,7 @@ class GuSTO:
         return A, B, d
 
     @partial(jax.jit, static_argnums=(0,))
-    @partial(jax.vmap, in_axes=(None, 0))
+    @partial(jax.vmap, in_axes=(None, 0, 0))
     def _perform_perf_mapping_linearization(self, x, u):
         """
         Obtain the affine performance mappings at each point along trajectory in a list.
