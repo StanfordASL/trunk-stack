@@ -46,6 +46,11 @@ def mat_to_npz(mat_filepath, npz_filepath, perf_var="tip_3D"):
     decoder_coeff, decoder_exp = mat_data['M'], mat_data['exps']  # (n_y, ...) & (..., n_x)
     encoder_coeff, encoder_exp = mat_data['Vfinal'], mat_data['exps_V']  # (n_x, ...) & (..., n_y)
 
+    # Print all shape information (check manually if they're correct)
+    print(f"dynamics_coeff shape: {dynamics_coeff.shape}, dynamics_exp shape: {dynamics_exp.shape}")
+    print(f"decoder_coeff shape: {decoder_coeff.shape}, decoder_exp shape: {decoder_exp.shape}")
+    print(f"encoder_coeff shape: {encoder_coeff.shape}, encoder_exp shape: {encoder_exp.shape}")
+
     n_y = decoder_coeff.shape[0]
     if perf_var == "tip_2D":
         n_z = 2
