@@ -91,7 +91,6 @@ class MPCSolverNode(Node):
 
         self.u_prev0 = None
         # Also force JIT-compilation of encoder mapping and conversions
-        print(self.model.ssm.encoder_coeff)
         self.model.encode(jnp.zeros(self.model.n_y))
 
         # Initialize the ROS node

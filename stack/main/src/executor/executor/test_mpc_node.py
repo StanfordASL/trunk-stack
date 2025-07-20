@@ -12,27 +12,40 @@ import rclpy                                             # type: ignore
 from rclpy.node import Node                              # type: ignore
 from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
-from .utils.models import control_SSMR
+from .utils.models import SlowAdiabaticSSM
 
 
 @jax.jit
-def check_control_inputs(u_opt, u_opt_previous):
+def check_control_inputs(u_opt, u_previous=None):
     """
     Check control inputs for safety constraints, rejecting vector norms that are too large.
     """
-    tip_range, mid_range, base_range = 81, 51, 31
 
+    tip_range, mid_range, base_range = 80, 50, 30
+
+    """
+    scale = 1.0
+    tip_range *= scale
+    mid_range *= scale
+    base_range *= scale
+    """
+
+    # u2, u4 = u_opt[0], u_opt[1]
     u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
 
-    # First we clip to max and min values
-    u1 = jnp.clip(u1, -tip_range, tip_range)
-    u6 = jnp.clip(u6, -tip_range, tip_range)
-    u2 = jnp.clip(u2, -mid_range, mid_range)
-    u4 = jnp.clip(u5, -mid_range, mid_range)
+    # First we clip to max and min values FOR SAVETY ONLY SEND 0 RIGHT NOW
+    u2 = jnp.clip(u2, -tip_range, tip_range)
+    u4 = jnp.clip(u4, -tip_range, tip_range)
+
+    u1 = jnp.clip(u1, -mid_range, mid_range)
+    u6 = jnp.clip(u6, -mid_range, mid_range)
+
     u3 = jnp.clip(u3, -base_range, base_range)
-    u5 = jnp.clip(u4, -base_range, base_range)
+    u5 = jnp.clip(u5, -base_range, base_range)
+
+    # Check the constraint: if the constraint is met, then keep previous control command
     u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
-    
+
     return u_opt
 
 
@@ -47,14 +60,56 @@ class TestMPCNode(Node):
             ('results_name', 'first_slow_aSSM')              # name of the results file
         ])
 
-        self.debug = self.get_parameter('debug').value
-        self.model_name = "adiabatic/first_slow_aSSM.npz"
-        self.results_name = self.get_parameter('results_name').value
+        # TODO: eventually move this to a config file (e.g., YAML or JSON)
+        # so that results have a corresponding config file and can be reproduced
+        config = {
+            "mpc": {
+                "Q_rows": [0, 1],
+                "Qz": 700.0,
+                "Qzf": 2000.0,
+                "R": 0.0,
+                "Rdu": 16.0,
+                "U_constraint": 0.9,
+                "dU_constraint": 0.4,
+                "N": 10,
+                "dt": 0.02
+            },
+            "trajectory": {
+                "type": "circle",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
+                "duration": 20.0,  # Duration of the simulation in seconds
+                "speed": 0.5,  # Angular speed (rad/s)
+                "include_velocity": False,
+                "parameters": {
+                    "center": [0.0, 0.0],  # Center of the (x,y) trajectory
+                    "radius": 0.07,  # [m]  For "circle" and "pacman"
+                    "amplitude": 0.05,  # [m]  For "eight"
+                    "z_level": 0.0,  # [m]  Constant z-coordinate
+                    "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
+                }
+            },
+            "delay_embedding": {
+                "num_delay": 3,
+                "also_embedd_u": False
+            },
+            "model": "adiabatic/first_slow_aSSM.npz",
+            "critical_manifold": "adiabatic/first_crit_mani_rbf.npz"
+        }
+
+        mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
+
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.debug = self.get_parameter('debug').value
+        self.results_name = self.get_parameter('results_name').value
+        self.model_name = config["model"]
+        self.manifold_name = config["critical_manifold"]
 
         # Load the model
         self._load_model()
-        self.n_delay = self.model.ssm.specified_params["embedding_up_to"]  # self.model.n_y // self.model.n_z - 1
+
+        # Number of delay embeddings
+        self.n_delay = self.delay_config["num_delay"]
+        if self.n_delay is None:
+            self.n_delay = self.model.n_y // 3 - 1  # NOTE: this assumes observations are just 3D (x, y, z), no velocities
 
         # Initialize the CSV file
         self.results_file = os.path.join(self.data_dir, f"trajectories/test_mpc/{self.results_name}.csv")
@@ -89,18 +144,10 @@ class TestMPCNode(Node):
         # Initialize by calling mpc callback function
         self.mpc_executor_callback()
 
-        embedding_up_to = self.model.ssm.specified_params["embedding_up_to"]
-        shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
-        pad_length = self.model.n_u * ((1 + shift) * embedding_up_to - shift)
-        self.u_ref_init = jnp.zeros((pad_length,))
-
-        x0_red_u_init = jnp.concatenate([jnp.zeros(self.model.n_x), self.u_ref_init], axis=0)
         # JIT compile couple of functions
         check_control_inputs(jnp.zeros(self.model.n_u), self.uopt_previous)
-        
-        self.model.rollout(x0_red_u_init, jnp.zeros((1, self.model.n_u)))
-
-        self.model.decode(jnp.zeros(self.model.n_x))
+        self.model.rollout(jnp.zeros(self.model.n_x), jnp.zeros((1, self.model.n_u)))
+        self.model.decode(jnp.zeros(self.model.n_x+self.model.n_s))
 
         # Create timer to execute MPC at fixed frequency
         self.controller_period = 0.04
@@ -119,9 +166,11 @@ class TestMPCNode(Node):
         Load the learned (non-autonomous) dynamics model of the system.
         """
         model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}')
+        manifold_path = os.path.join(self.data_dir, f'models/ssm/{self.manifold_name}')
 
         # Load the model
-        self.model = control_SSMR(self.delay_config, model_path)
+        self.model = SlowAdiabaticSSM(model_path, manifold_path)
+
         print(f'---- Model loaded: {self.model_name}')
         print('Dimensions:')
         print('     n_x:', self.model.n_x)
@@ -141,7 +190,8 @@ class TestMPCNode(Node):
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations(eps_noise=0)
             # self.latest_y should be the delay embedded state vector
-            print(f"(DEBUG) latest_y shape = {self.latest_y.shape}")
+            if self.debug:
+                print(f"(DEBUG) latest_y shape = {self.latest_y.shape}")
             self.send_request(self.t0, self.latest_y, self.uopt_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
@@ -150,9 +200,11 @@ class TestMPCNode(Node):
         Send request to MPC solver.
         """
         self.req.t0 = t0
-        print("Sending request with y0 shape:", y0.shape)  # Debugging line
+        if self.debug:
+            print("Sending request with y0 shape:", y0.shape)
         self.req.y0 = jnp2arr(y0)
-        print("Shape of u0:", u0.shape)  # Debugging line
+        if self.debug:
+            print("Shape of u0:", u0.shape)
         self.req.u0 = jnp2arr(u0)
         self.future = self.mpc_client.call_async(self.req)
 
@@ -175,9 +227,11 @@ class TestMPCNode(Node):
                 
                 # We do not execute the control inputs here but it's still being checked
                 safe_control_inputs = check_control_inputs(jnp.array(uopt[:self.model.n_u]), self.uopt_previous)
-                print("Shape of safe_control_inputs:", safe_control_inputs.shape)  # Debugging line
-                self.uopt_previous = safe_control_inputs[np.array([2, 4])]  # HERE
-                print("Shape of self.uopt_previous:", self.uopt_previous.shape)
+                if self.debug:
+                    print("Shape of safe_control_inputs:", safe_control_inputs.shape)
+                self.uopt_previous = safe_control_inputs
+                if self.debug:
+                    print("Shape of self.uopt_previous:", self.uopt_previous.shape)
 
                 # Save the predicted observations and control inputs
                 if self.latest_y is not None:
@@ -196,23 +250,13 @@ class TestMPCNode(Node):
         # Figure out what predictions to use for observations update
         idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
 
-        if self.u_ref_init.shape[0] >= self.model.n_u:
-            self.u_ref_init = jnp.concatenate([self.uopt[0], self.u_ref_init[:-self.model.n_u]], axis=0)
-
-        print("Shape of uopt:", self.uopt.shape)  # Shape is correct
-        print("Shape of x0:", self.x0.shape)
-        x0_aug = jnp.concatenate([self.x0, self.u_ref_init], axis=0)
-        # x_predicted = self.model.rollout(self.x0, self.uopt)
-        x_predicted = self.model.rollout(x0_aug, self.uopt)
-        y_predicted = self.model.decode(x_predicted.T).T
-
-        print(f"(DEBUG) model.n_z = {self.model.n_z}, model.n_y = {self.model.n_y}")
-        print(f"(DEBUG) y_predicted.shape = {y_predicted.shape}")
-        print(f"(DEBUG) idx0 = {idx0}")
-
-        y_centered_tip = y_predicted[:idx0+1, :8]  # 8 is hardcoded for the measured state dimension
+        if self.debug:
+            print("Shape of uopt:", self.uopt.shape)
+            print("Shape of x0:", self.x0.shape)
+        x_predicted = self.model.rollout(self.x0, self.uopt)
+        y_centered_tip = self.model.performance_mapping(x_predicted[:-1].T, self.uopt.T).T
+        y_centered_tip = y_centered_tip[:idx0+1]
         N_new_obs = y_centered_tip.shape[0]
-        print(f"(DEBUG) N_new_obs = {N_new_obs}")
 
         # Add noise to simulate real experiment
         y_tip_noisy = y_centered_tip + eps_noise * jax.random.normal(key=self.rnd_key, shape=y_centered_tip.shape)
@@ -221,26 +265,24 @@ class TestMPCNode(Node):
         if self.latest_y is None:
             # At initialization use current obs. as delay embedding
             self.latest_y = jnp.tile(y_tip_noisy[-1:].squeeze(), (self.n_delay+1))
-            print(f"(DEBUG) First‐time latest_y length = {self.latest_y.shape[0]}")
+            if self.debug:
+                print(f"(DEBUG) First‐time latest_y length = {self.latest_y.shape[0]}")
             self.start_time = self.clock.now().nanoseconds / 1e9
         else:
             # Note the different ordering of MPC horizon and delay embeddings which requires the flipping
             if N_new_obs > self.n_delay + 1:
                 # If we have more than self.n_delay + 1 new observations, we only keep the last self.n_delay + 1
                 self.latest_y = jnp.flip(y_tip_noisy[-(self.n_delay+1):].T, 1).T.flatten()
-                print(f"(DEBUG) N_new_obs >= num_blocks, latest_y length = {self.latest_y.shape[0]}")
+                if self.debug:
+                    print(f"(DEBUG) N_new_obs >= num_blocks, latest_y length = {self.latest_y.shape[0]}")
             else:
-                print("shape of y_tip_noisy:", y_tip_noisy.shape)
                 num_blocks = self.n_delay + 1
                 block_size = self.model.n_y // num_blocks
                 # Otherwise we concatenate the new observations with the old ones
                 new_block = y_tip_noisy[-N_new_obs:, :].reshape(-1)
                 old_needed = num_blocks - N_new_obs
-                old_part = self.latest_y[: old_needed * block_size]
-                self.latest_y= jnp.concatenate([new_block, old_part])
-                #self.latest_y = jnp.concatenate([jnp.flip(y_tip_noisy.T, 1).T.flatten(),
-                #                                 self.latest_y[:(self.n_delay + 1 - N_new_obs) * self.model.n_z]])
-                print(f"(DEBUG) N_new_obs < num_blocks, latest_y length = {self.latest_y.shape}")
+                old_part = self.latest_y[:old_needed * block_size]
+                self.latest_y = jnp.concatenate([new_block, old_part])
 
     def initialize_csv(self):
         """
