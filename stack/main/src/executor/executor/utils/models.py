@@ -81,13 +81,16 @@ class SlowAdiabaticSSM(ReducedOrderModel):
         n_z, n_y = self.obs_perf_matrix.shape
         self.n_s = n_s
         super().__init__(n_x, n_u, n_y, n_z)
+        
+        # Find center of critical manifold
+        self.s0 = self.critical_manifold(jnp.zeros(self.n_u))
 
     @partial(jax.jit, static_argnums=(0,))
     def continuous_dynamics(self, x, u):
         """
         Continuous dynamics of reduced system.
         """
-        s = self.critical_manifold(u)
+        s = self.critical_manifold(u) - self.s0
         x_augm = jnp.concatenate([x, s])
         return self.ssm.reduced_dynamics(x_augm)
 

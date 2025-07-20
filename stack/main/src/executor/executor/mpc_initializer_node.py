@@ -33,12 +33,12 @@ class MPCInitializerNode(Node):
         config = {
             "mpc": {
                 "Q_rows": [0, 1],
-                "Qz": 1000.0,
-                "Qzf": 1000.0,
+                "Qz": 10.0,
+                "Qzf": 10.0,
                 "R": 0.0,
-                "Rdu": 0.000000,
-                "U_constraint": 0.9,
-                "dU_constraint": 0.4,
+                "Rdu": 1.0,
+                "U_constraint": "none",
+                "dU_constraint": "none",
                 "N": 10,
                 "dt": 0.02
             },

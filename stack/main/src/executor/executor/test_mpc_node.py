@@ -1,9 +1,8 @@
 import os
 import csv
-import jax
-import jax.numpy as jnp
+import jax                  # type: ignore
+import jax.numpy as jnp     # type: ignore   
 import logging
-import numpy as np
 
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
@@ -11,7 +10,7 @@ jax.config.update("jax_enable_x64", True)
 import rclpy                                             # type: ignore
 from rclpy.node import Node                              # type: ignore
 from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
-from interfaces.srv import ControlSolver
+from interfaces.srv import ControlSolver                 # type: ignorexw
 from .utils.models import SlowAdiabaticSSM
 
 
