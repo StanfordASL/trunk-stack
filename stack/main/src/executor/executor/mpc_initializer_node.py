@@ -2,8 +2,8 @@ import os
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 
-import jax
-import jax.numpy as jnp
+import jax                          # type: ignore
+import jax.numpy as jnp             # type: ignore
 import logging
 
 from controller.mpc.gusto import GuSTOConfig                # type: ignore
@@ -33,10 +33,10 @@ class MPCInitializerNode(Node):
         config = {
             "mpc": {
                 "Q_rows": [0, 1],
-                "Qz": 700.0,
-                "Qzf": 2000.0,
+                "Qz": 1000.0,
+                "Qzf": 1000.0,
                 "R": 0.0,
-                "Rdu": 16.0,
+                "Rdu": 0.000000,
                 "U_constraint": 0.9,
                 "dU_constraint": 0.4,
                 "N": 10,

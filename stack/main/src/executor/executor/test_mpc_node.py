@@ -63,30 +63,6 @@ class TestMPCNode(Node):
         # TODO: eventually move this to a config file (e.g., YAML or JSON)
         # so that results have a corresponding config file and can be reproduced
         config = {
-            "mpc": {
-                "Q_rows": [0, 1],
-                "Qz": 700.0,
-                "Qzf": 2000.0,
-                "R": 0.0,
-                "Rdu": 16.0,
-                "U_constraint": 0.9,
-                "dU_constraint": 0.4,
-                "N": 10,
-                "dt": 0.02
-            },
-            "trajectory": {
-                "type": "circle",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
-                "duration": 20.0,  # Duration of the simulation in seconds
-                "speed": 0.5,  # Angular speed (rad/s)
-                "include_velocity": False,
-                "parameters": {
-                    "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.07,  # [m]  For "circle" and "pacman"
-                    "amplitude": 0.05,  # [m]  For "eight"
-                    "z_level": 0.0,  # [m]  Constant z-coordinate
-                    "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
-                }
-            },
             "delay_embedding": {
                 "num_delay": 3,
                 "also_embedd_u": False
@@ -95,7 +71,7 @@ class TestMPCNode(Node):
             "critical_manifold": "adiabatic/first_crit_mani_rbf.npz"
         }
 
-        mpc_config, traj_config, self.delay_config = config["mpc"], config["trajectory"], config["delay_embedding"]
+        self.delay_config = config["delay_embedding"]
 
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
         self.debug = self.get_parameter('debug').value
