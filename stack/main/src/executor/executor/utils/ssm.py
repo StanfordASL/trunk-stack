@@ -29,7 +29,7 @@ class DelaySSM:
                  encoder: dict=None,             # encoder coefficients and exponents
                  ts=None,                        # time array
                  dt=None,                        # time step
-                 model_data=None):               # model data (load if exists)
+                 model_data=None):               # model data (load if provided)
         if model_data is not None:
             self.dynamics_coeff = jnp.array(model_data['dynamics_coeff'])
             self.dynamics_exp = jnp.array(model_data['dynamics_exp'])
