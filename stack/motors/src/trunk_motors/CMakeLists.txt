@@ -27,6 +27,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(
+  DIRECTORY trunk_motors/motor_utils
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # Install launch files
 install(DIRECTORY trunk_motors/launch/
   DESTINATION share/${PROJECT_NAME}/launch
