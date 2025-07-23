@@ -19,12 +19,6 @@ from controller.mpc_solver_node import jnp2arr              # type: ignore
 from interfaces.msg import AllMotorsControl, TrunkRigidBodies
 from interfaces.srv import ControlSolver
 
-from .actuator import Actuator
-
-
-config = {
-    "actuator_lambda": [[-5.0, 0.0], [0.0, -5.5]]
-}
 
 @jax.jit
 def _check_control_inputs_jit(u_opt):
@@ -53,7 +47,7 @@ def _check_control_inputs_jit(u_opt):
     return jnp.array([u1, u2, u3, u4, u5, u6])
 
 
-def check_control_inputs(u_opt, u_previous=None):
+def check_control_inputs(u_opt):
     """
     Wrapper that prints when clipping happens, while calling JIT-safe core logic.
     """
@@ -66,26 +60,6 @@ def check_control_inputs(u_opt, u_previous=None):
             print(f"[WARNING] u{i+1} was clipped from {float(u_opt[i]):.3f} to {float(u_opt_clipped[i]):.3f}")
 
     return u_opt_clipped
-
-
-@jax.jit
-def u2_to6u_mapping(u2, u4):
-    # angle and radius
-    teta = jnp.arctan2(u4, u2)
-    r_scaling = jnp.hypot(u2, u4)
-
-    # compute the six raw legs
-    u3 = r_scaling * jnp.cos(teta - jnp.pi / 3)
-    u5 = r_scaling * jnp.sin(teta - jnp.pi / 3)
-    u1 = -r_scaling * jnp.sin(teta - jnp.pi / 6)
-    u6 = -r_scaling * jnp.cos(teta - jnp.pi / 6)
-
-    # stack into a vector and apply your per‐leg weights
-    raw = jnp.stack([u1, u2, u3, u4, u5, u6])
-    weights = jnp.array([50, 80, 30, 80, 30, 50], dtype=raw.dtype)
-    scaled = raw * weights
-
-    return scaled
 
 
 class MPCNode(Node):
@@ -103,8 +77,6 @@ class MPCNode(Node):
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
-
-        self.koopman_mpc = False
 
         self.debug = self.get_parameter('debug').value
         self.n_z = self.get_parameter('n_z').value
@@ -170,8 +142,6 @@ class MPCNode(Node):
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
-        if self.koopman_mpc:
-            self.latest_y_koopman = None
 
         self.actuator_dynamics = None
 
@@ -189,8 +159,7 @@ class MPCNode(Node):
         self.mpc_callback()
 
         # JIT compile this functions
-        u6_init = u2_to6u_mapping(*self.u_previous)
-        check_control_inputs(u6_init, self.u_previous)
+        check_control_inputs(self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
         self.controller_period = 0.02
@@ -239,9 +208,6 @@ class MPCNode(Node):
         else:
             self.latest_y = jnp.concatenate([block, self.latest_y[:-self.n_obs]])
 
-        if self.koopman_mpc:
-            self.latest_y_koopman = jnp.concatenate([self.latest_y, self.u_previous])  # augment the last applied input 
-
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
 
     def execute_buffer_callback(self):
@@ -271,16 +237,11 @@ class MPCNode(Node):
         if self.finished:
             return
         
-        if self.koopman_mpc:
-            y_latest = self.latest_y_koopman
-        else:
-            y_latest = self.latest_y
+
+        y_latest = self.latest_y
 
         if not self.initialized:
-            if self.koopman_mpc:
-                self.y0 = jnp.zeros(self.n_y + self.n_u)
-            else:
-                self.y0 = jnp.zeros(self.n_y)
+            self.y0 = jnp.zeros(self.n_y)
             self.send_request(0.0, self.y0, self.u_previous, wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
@@ -341,14 +302,8 @@ class MPCNode(Node):
         """
         print(f"Publishing control inputs: {control_inputs}")
 
-        if self.actuator_dynamics is None:
-            self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"],
-                                              current_time=self.clock.now().nanoseconds / 1e9)
 
-        real_control_inputs = self.actuator_dynamics(new_time=self.clock.now().nanoseconds / 1e9, new_u=control_inputs)
-
-        control_inputs_6 = u2_to6u_mapping(*real_control_inputs)
-        safe_control_inputs_6 = check_control_inputs(control_inputs_6)
+        safe_control_inputs_6 = check_control_inputs(control_inputs)
         print(f"Publishing safe and scaled control inputs: {safe_control_inputs_6}")
 
         control_message = AllMotorsControl()

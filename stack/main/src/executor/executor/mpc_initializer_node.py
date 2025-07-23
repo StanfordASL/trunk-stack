@@ -11,7 +11,7 @@ jax.config.update("jax_enable_x64", True)
 
 from controller.mpc.gusto import GuSTOConfig                # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
-from .utils.models import SSMR, KoopmanSSMR
+from .utils.models import SSMR
 from .utils.misc import HyperRectangle
 from .reference_generator import ReferenceTrajectoryGenerator
 
@@ -41,14 +41,9 @@ class MPCInitializerNode(Node):
                 },
                 "dt": 0.02
             },
-            "model_type": "ssm",  # Options: ssm or koopman
-            "model": "origin_ssm_baseline(1)"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
+            "model_type": "ssm",  # Options: ssm¡
+            "model": "origin_ssm_baseline(1)"  # origin_ssm_baseline(1)
         }
-
-        if config["model_type"] == "koopman":
-            koopman = True
-        else:
-            koopman = False
 
         self.debug = self.get_parameter('debug').value
         self.model_name = config["model"]  # self.get_parameter('model_name').value
@@ -77,23 +72,6 @@ class MPCInitializerNode(Node):
         R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 16.0 * jnp.eye(self.model.n_u)
         N = 10
-    
-        """
-
-        # Works for Koopman
-        # MPC constraints
-        U = HyperRectangle([0.4]*2, [-0.4]*2)
-        dU = HyperRectangle([0.05]*2, [-0.05]*2)
-        
-        # MPC cost:
-        Qz = 1.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
-        Qz = Qz.at[2, 2].set(0)
-        Qzf = 20.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z) # 30 gave oscillations 
-        Qzf = Qzf.at[2, 2].set(0)
-        R = 0.0 * jnp.eye(self.model.n_u)
-        R_du = 0.05 * jnp.eye(self.model.n_u)
-        N = 2
-        """
         
 
         gusto_config = GuSTOConfig(
@@ -113,7 +91,7 @@ class MPCInitializerNode(Node):
 
         x0 = jnp.zeros(self.model.n_x)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=times, dt=dt, ref_traj=self.ref_traj, U=U,
-                                                   dU=dU, koopman=koopman, solver="CLARABEL")  # change to osqp for koopman, CLARABEL otherwise
+                                                   dU=dU, solver="CLARABEL")  # According to Paul, use CLARABEL for SSM models, and OSQP for Koopman
 
     def _load_model(self, model_type):
         """
@@ -123,9 +101,6 @@ class MPCInitializerNode(Node):
         if model_type == "ssm":
             model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
             self.model = SSMR(model_path=model_path)
-        elif model_type == "koopman":
-            model_path = os.path.join(self.data_dir, f'models/koopman/{self.model_name}.npz')
-            self.model = KoopmanSSMR.from_file(model_path)
         else:
             KeyError(f"The requested model type {model_type} was not recognized.")
         

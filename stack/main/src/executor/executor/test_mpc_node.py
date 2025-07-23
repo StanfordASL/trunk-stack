@@ -10,7 +10,7 @@ import rclpy                                             # type: ignore
 from rclpy.node import Node                              # type: ignore
 from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
-from .utils.models import SSMR, KoopmanSSMR
+from .utils.models import SSMR
 import numpy as np
 
 
@@ -43,25 +43,16 @@ class TestMPCNode(Node):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'koopman_real_trunk_perf3'),     # 'koopman_real_trunk_perf3' ,  'origin_ssm_baseline(1)', 'ssmr_200g' (what model to use)
-            ('results_name', 'test_experiment_koopman')             # name of the results file
+            ('model_name', 'origin_ssm_baseline(1)'),       # 'origin_ssm_baseline(1)', 'ssmr_200g' (what model to use)
+            ('results_name', 'test_experiment')             # name of the results file
         ])
-
-        model_type = "koopman"
 
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
         self.results_name = self.get_parameter('results_name').value
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
-        # Load the model
-
-        if model_type == "koopman":
-            self.koopman = True
-        else:
-            self.koopman = False
-
-        self._load_model(model_type)
+        self._load_model("ssm") #TODO: Make sure this is correct @Patrick
         num_measurements = 6
         self.n_delay = int(self.model.n_y // num_measurements - 1)
 
@@ -86,7 +77,6 @@ class TestMPCNode(Node):
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
-        self.latest_y_koopman = None
 
         # Maintain previous control inputs
         self.uopt_previous = jnp.zeros(self.model.n_u)
@@ -124,9 +114,6 @@ class TestMPCNode(Node):
         if model_type == "ssm":
             model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
             self.model = SSMR(model_path=model_path)
-        elif model_type == "koopman":
-            model_path = os.path.join(self.data_dir, f'models/koopman/{self.model_name}.npz')
-            self.model = KoopmanSSMR.from_file(model_path)
         else:
             KeyError(f"The requested model type {model_type} was not recognized.")
 
@@ -148,10 +135,7 @@ class TestMPCNode(Node):
         else:
             self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
             self.update_observations(eps_noise=0)
-            if self.koopman:
-                send_y = self.latest_y_koopman
-            else:
-                send_y = self.latest_y
+            send_y = self.latest_y
             self.send_request(self.t0, send_y, self.uopt_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
@@ -205,7 +189,7 @@ class TestMPCNode(Node):
         # Get index based on current time
         idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
 
-        # Rollout predicted states and decode to preself.latest_y_koopmandicted observations
+        # Rollout predicted states and decode to preself.latest_y_koopmandicted observations TODO: FIX COMMENT?
         x_predicted = self.model.rollout(self.x0, self.uopt)
         y_predicted = self.model.decode(x_predicted.T).T
 
@@ -238,11 +222,6 @@ class TestMPCNode(Node):
 
         # Normalize shape
         self.latest_y = self.latest_y.reshape(-1)
-
-        # === NEW: Augment observations with previous inputs for Koopman MPC ===
-        if self.koopman:
-            # Assuming self.u_previous contains the previous control input(s), shape (n_u,) or (N, n_u)
-            self.latest_y_koopman = jnp.concatenate([self.latest_y, self.uopt[0].reshape(-1)])  # self.uopt_previous
 
         # Update current time
         self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
