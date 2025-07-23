@@ -125,7 +125,7 @@ class TestMPCNode(Node):
         self.model.decode(jnp.zeros(self.model.n_x+self.model.n_s))
 
         # Create timer to execute MPC at fixed frequency
-        self.controller_period = 0.04
+        self.controller_period = 0.03
         self.mpc_exec_timer = self.create_timer(
             self.controller_period,
             self.mpc_executor_callback

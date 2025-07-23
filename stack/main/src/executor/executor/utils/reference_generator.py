@@ -124,7 +124,8 @@ class ReferenceTrajectoryGenerator:
             theta = self.traj_speed * t
             x = self.center[0] + amplitude * np.sin(theta)
             y = self.center[1] + amplitude * np.sin(2 * theta)
-            pos = np.array([x, y, self.z_level])
+            # pos = np.array([x, y, self.z_level])
+            pos = np.array([x, self.z_level, y])
             if self.include_velocity:
                 # Derivatives: dx/dt = amplitude * traj_speed * cos(theta),
                 #              dy/dt = 2 * amplitude * traj_speed * cos(2*theta)

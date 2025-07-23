@@ -32,7 +32,7 @@ class MPCInitializerNode(Node):
         # so that results have a corresponding config file and can be reproduced
         config = {
             "mpc": {
-                "Q_rows": [0, 1],
+                "Q_rows": [0, 1, 2],
                 "Qz": 10.0,
                 "Qzf": 10.0,
                 "R": 0.0,
@@ -40,11 +40,11 @@ class MPCInitializerNode(Node):
                 "U_constraint": "none",
                 "dU_constraint": "none",
                 "N": 10,
-                "dt": 0.02
+                "dt": 0.01
             },
             "trajectory": {
-                "type": "circle",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
-                "duration": 20.0,  # Duration of the simulation in seconds
+                "type": "eight",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
+                "duration": 5,  # Duration of the simulation in seconds
                 "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
@@ -124,7 +124,7 @@ class MPCInitializerNode(Node):
         else:
             du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
 
-        x0 = jnp.zeros(self.model.n_x)  # initial state (assumed zero for now)
+        x0 = 0.1 * jnp.ones(self.model.n_x)  # initial state (assumed zero for now)
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0, t=self.times, dt=mpc_config["dt"],
                                                    ref_traj=self.ref_traj, U=u, dU=du, solver="CLARABEL")  # Was GUROBI
 
