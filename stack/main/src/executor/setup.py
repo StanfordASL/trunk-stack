@@ -18,7 +18,6 @@ setup(
     maintainer_email='asl@todo.todo',
     description='TODO: Package description',
     license='TODO: License declaration',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'data_collection_node = executor.data_collection_node:main',
