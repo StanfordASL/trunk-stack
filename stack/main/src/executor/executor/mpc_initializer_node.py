@@ -60,8 +60,10 @@ class MPCInitializerNode(Node):
         
         # Works for ssm
         # MPC constraints
-        U = HyperRectangle([0.9]*2, [-0.9]*2)
-        dU = HyperRectangle([0.05]*2, [-0.05]*2)
+        # U = HyperRectangle([0.9]*2, [-0.9]*2)
+        # dU = HyperRectangle([0.05]*2, [-0.05]*2)
+        U = None
+        dU = None
         
         # MPC cost:
         Qz = 700.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)

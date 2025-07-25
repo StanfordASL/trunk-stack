@@ -42,9 +42,9 @@ class TestMPCNode(Node):
     def __init__(self):
         super().__init__('run_experiment_node')
         self.declare_parameters(namespace='', parameters=[
-            ('debug', False),                               # False or True (print debug messages)
-            ('model_name', 'origin_ssm_baseline(1)'),       # 'origin_ssm_baseline(1)', 'ssmr_200g' (what model to use)
-            ('results_name', 'test_experiment')             # name of the results file
+            ('debug', False),                                 # False or True (print debug messages)
+            ('model_name', 'ssmr_orth_baseline'),             # 'origin_ssm_baseline', 'ssmr_200g' (what model to use)
+            ('results_name', 'patrick-hugo_ssmr_baseline')    # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -53,8 +53,9 @@ class TestMPCNode(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack-ssmr/stack/main/data')
 
         self._load_model("ssm")
-        num_measurements = 6
-        self.n_delay = int(self.model.n_y // num_measurements - 1)
+        self.n_delay = 3
+        if self.n_delay is None:
+            self.n_delay = self.model.n_y // 3 - 1  # NOTE: this assumes observations are just 3D (x, y, z), no velocities
 
         # Initialize the CSV file
         self.results_file = os.path.join(self.data_dir, f"trajectories/test_mpc/{self.results_name}.csv")
@@ -191,10 +192,12 @@ class TestMPCNode(Node):
 
         # Rollout predicted states and decode to preself.latest_y_koopmandicted observations TODO: FIX COMMENT?
         x_predicted = self.model.rollout(self.x0, self.uopt)
-        y_predicted = self.model.decode(x_predicted.T).T
-
+        # y_predicted = self.model.decode(x_predicted.T).T
         # Slice predicted tip observations up to idx0
-        y_centered_tip = y_predicted[:idx0+1, :6]
+        # y_centered_tip = y_predicted[:idx0+1, :6]
+
+        y_centered_tip = self.model.performance_mapping(x_predicted.T).T
+        y_centered_tip = y_centered_tip[:idx0+1]
 
         # Number of new observations available
         N_new_obs = y_centered_tip.shape[0]
