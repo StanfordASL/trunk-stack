@@ -315,7 +315,6 @@ class Koopman_MPCSolverNode(Node):
         # Set xk to warm-started state trajectory
         xk = x_init_temp
 
-
         t_encode_end = time.perf_counter()
 
         # Step 2: Reference trajectory slicing
