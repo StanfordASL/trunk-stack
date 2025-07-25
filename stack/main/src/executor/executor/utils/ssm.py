@@ -332,3 +332,27 @@ def generate_ssm_predictions(ssm, trajs, ts=None, dt=None):
         ys = ssm.decode(xs)
         ssm_predictions = ssm_predictions.at[i, :, N_obs_delay+1:].set(ys[:N_input_states, :])
     return ssm_predictions
+
+
+def generate_ssmr_predictions(ssmr, trajs, ts, u_func=None, rnd_key=None, us=None):
+    """
+    Generate tip positions as predicted by SSMR model for entire trajectories.
+    """
+    # Either provide the control inputs or the control function
+    if us is None and u_func is None:
+        raise ValueError("Either control inputs or control function must be provided.")
+
+    N_trajs = len(trajs)
+    us = u_func(ts, N_trajs, rnd_key) if us is None else us
+    N_input_states = trajs.shape[1]
+    ssmr_predictions = jnp.zeros_like(trajs)
+    N_obs_delay = ssmr.ssm.N_obs_delay
+    for i, traj in enumerate(trajs):
+        # Assume first (N_obs_delay + 1) observations are known
+        ssmr_predictions = ssmr_predictions.at[i, :, :N_obs_delay+1].set(traj[:, :N_obs_delay+1])
+        y0 = jnp.flip(traj[:, :N_obs_delay+1], 1).T.flatten()
+        x0 = ssmr.ssm.encode(y0)
+        xs = ssmr.rollout(x0, us[i, :, N_obs_delay+1:].T)[:-1].T  # exclude the last, (N+1)th, state 
+        ys = ssmr.ssm.decode(xs)
+        ssmr_predictions = ssmr_predictions.at[i, :, N_obs_delay+1:].set(ys[:N_input_states, :])  # select the non-delayed predictions
+    return ssmr_predictions

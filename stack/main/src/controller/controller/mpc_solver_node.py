@@ -81,26 +81,13 @@ class MPCSolverNode(Node):
         # Define target values
         self.ref_traj = ref_traj
         self.u = u
-        """
-        if z is not None and z.ndim == 2:
-            self.z_interp = interp1d(t, z, axis=0,
-                                     bounds_error=False, fill_value=(z[0, :], z[-1, :]))
-
-        if u is not None and u.ndim == 2:
-            self.u_interp = interp1d(t, u, axis=0,
-                                     bounds_error=False, fill_value=(u[0, :], u[-1, :]))
-        """
 
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
-
-        z = jnp.array(self.ref_traj.eval())[:self.N+1]
-        zf = self.ref_traj.eval()[-1]
-
-        self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1], # u=u,
-                           zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)  # X=X, Xf=Xf,
+        self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1],
+                           zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)
 
         self.xopt, self.uopt, _, _ = self.gusto.get_solution()
         self.topt = self.dt * jnp.arange(self.N + 1)

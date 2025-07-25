@@ -58,22 +58,25 @@ class ReducedOrderModel:
 
 class SSMR(ReducedOrderModel):
     """
-    SSMR model combining a delay SSM with a residual dynamics model.
+    SSMR model combining a SSM model with a residual dynamics model.
     """
-    def __init__(self, delay_ssm=None, residual_dynamics=None, obs_perf_matrix=None, model_path=None):
+    def __init__(self, ssm=None, residual_dynamics=None, obs_perf_matrix=None, model_path=None, model_type='delay_ssm'):
         if model_path is not None:
             model_data = np.load(model_path)
-            delay_ssm = DelaySSM(model_data=model_data)
+            if model_type == 'delay_ssm':
+                ssm = DelaySSM(model_data=model_data)
+            elif model_type == 'opt_ssm':
+                ssm = OptSSM(model_data=model_data)
             residual_dynamics = ResidualBr(model_data=model_data)
             obs_perf_matrix = model_data['obs_perf_matrix']
-        n_x = delay_ssm.SSMDim
+        n_x = ssm.SSMDim
         n_u = residual_dynamics.n_u
         n_z, n_y = obs_perf_matrix.shape
         
         super().__init__(n_x, n_u, n_y, n_z)
 
         # Autonomous dynamics model
-        self.delay_ssm = delay_ssm
+        self.ssm = ssm
 
         # Residual dynamics model
         self.residual_dynamics = residual_dynamics
@@ -85,7 +88,7 @@ class SSMR(ReducedOrderModel):
         """
         Continuous dynamics of reduced system.
         """
-        return self.delay_ssm.reduced_dynamics(x) + self.residual_dynamics(x, u)
+        return self.ssm.reduced_dynamics(x) + self.residual_dynamics(x, u)
 
     @partial(jax.jit, static_argnums=(0,))
     def discrete_dynamics(self, x, u, dt=0.01):
@@ -116,7 +119,7 @@ class SSMR(ReducedOrderModel):
         Performance mapping maps the state, x, to the performance output, z, through
         z = C @ y = C @ w(x).
         """
-        return self.obs_perf_matrix @ self.delay_ssm.decode(x)
+        return self.obs_perf_matrix @ self.ssm.decode(x)
     
     @property
     def H(self):
@@ -129,27 +132,27 @@ class SSMR(ReducedOrderModel):
         """
         Encode the observations, y, into the reduced state, x.
         """
-        return self.delay_ssm.encode(y)
+        return self.ssm.encode(y)
     
     def decode(self, x):
         """
         Decode the reduced state, x, into the observations, y.
         """
-        return self.delay_ssm.decode(x)
+        return self.ssm.decode(x)
     
     def save_model(self, path):
         """
         Save the SSMR model to a file.
         """
         np.savez(path,
-                 dynamics_coeff=self.delay_ssm.dynamics_coeff,
-                 dynamics_exp=self.delay_ssm.dynamics_exp,
-                 encoder_coeff=self.delay_ssm.encoder_coeff,
-                 encoder_exp=self.delay_ssm.encoder_exp,
-                 decoder_coeff=self.delay_ssm.decoder_coeff,
-                 decoder_exp=self.delay_ssm.decoder_exp,
-                 B_r_coeff=self.residual_dynamics.learned_B_r.B_r_coeff,
-                 obs_perf_matrix=self.obs_perf_matrix)
+                 dynamics_coeff = self.ssm.dynamics_coeff,
+                 dynamics_exp = self.ssm.dynamics_exp,
+                 encoder_coeff = self.ssm.encoder_coeff,
+                 encoder_exp = self.ssm.encoder_exp,
+                 decoder_coeff = self.ssm.decoder_coeff,
+                 decoder_exp = self.ssm.decoder_exp,
+                 B_r_coeff = self.residual_dynamics.learned_B_r.B_r_coeff,
+                 obs_perf_matrix = self.obs_perf_matrix)
 
 
 class ParametricSSMR(ReducedOrderModel):

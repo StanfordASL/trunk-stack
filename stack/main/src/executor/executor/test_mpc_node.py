@@ -50,9 +50,9 @@ class TestMPCNode(Node):
         self.debug = self.get_parameter('debug').value
         self.model_name = self.get_parameter('model_name').value
         self.results_name = self.get_parameter('results_name').value
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack-ssmr/stack/main/data')
 
-        self._load_model("ssm") #TODO: Make sure this is correct @Patrick
+        self._load_model("ssm")
         num_measurements = 6
         self.n_delay = int(self.model.n_y // num_measurements - 1)
 
