@@ -29,6 +29,15 @@ cd ~/Documents/trunk-stack-ssmr/stack/motors/
 colcon build
 source install/setup.bash
 ros2 launch trunk_motors launch_motors.py
+exec bash
+"
+
+
+# Terminal 5: mocap driver
+gnome-terminal -- bash -c "
+source /opt/ros/humble/setup.bash
+cd ~/Documents/trunk-stack-ssmr/stack/main/
+exec bash
 "
 
 
@@ -37,3 +46,5 @@ ros2 launch trunk_motors launch_motors.py
 cd ~/Documents/trunk-stack-ssmr/stack/main/
 colcon build
 source install/setup.bash
+ros2 run executor mpc_node
+
