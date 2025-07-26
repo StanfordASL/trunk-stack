@@ -12,7 +12,7 @@ import rclpy                                             # type: ignore
 from rclpy.node import Node                              # type: ignore
 from controller.mpc_solver_node import jnp2arr, arr2jnp  # type: ignore
 from interfaces.srv import ControlSolver
-from .utils.models import control_SSMR
+from .utils.models import control_SSMR, control_SSMR_simplified_ref_vec
 
 run_on_pauls_computer = False
 
@@ -106,16 +106,22 @@ class TestMPCNode(Node):
         # Initialize by calling mpc callback function
         self.mpc_executor_callback()
 
-        embedding_up_to = self.model.ssm.specified_params["embedding_up_to"]
-        shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
-        pad_length = self.model.n_u * ((1 + shift) * embedding_up_to - shift)
-        self.u_ref_init = jnp.zeros((pad_length,))
+        # CHANGED
+        # embedding_up_to = self.model.ssm.specified_params["embedding_up_to"]
+        # shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
+        # pad_length = self.model.n_u * ((1 + shift) * embedding_up_to - shift)
+        # self.u_ref_init = jnp.zeros((pad_length,))
 
-        x0_red_u_init = jnp.concatenate([jnp.zeros(self.model.n_x), self.u_ref_init], axis=0)
+        # x0_red_u_init = jnp.concatenate([jnp.zeros(self.model.n_x), self.u_ref_init], axis=0)
+        x0_red = jnp.zeros(self.model.n_x)
+
         # JIT compile couple of functions
         check_control_inputs(jnp.zeros(self.model.n_u), self.uopt_previous)
         
-        self.model.rollout(x0_red_u_init, jnp.zeros((1, self.model.n_u)))
+        # CHANGED
+        # self.model.rollout(x0_red_u_init, jnp.zeros((1, self.model.n_u)))
+
+        self.model.rollout(x0_red, jnp.zeros((1, self.model.n_u)))
 
         self.model.decode(jnp.zeros(self.model.n_x))
 
@@ -138,7 +144,10 @@ class TestMPCNode(Node):
         model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}')
 
         # Load the model
-        self.model = control_SSMR(self.delay_config, model_path)
+        # CHANGED
+        # self.model = control_SSMR(self.delay_config, model_path)
+        self.model = control_SSMR_simplified_ref_vec(self.delay_config, model_path)
+
         print(f'---- Model loaded: {self.model_name}')
         print('Dimensions:')
         print('     n_x:', self.model.n_x)
@@ -213,19 +222,23 @@ class TestMPCNode(Node):
         # Figure out what predictions to use for observations update
         idx0 = jnp.searchsorted(self.topt, self.t0, side='right')
 
-        if self.u_ref_init.shape[0] >= self.model.n_u:
-            self.u_ref_init = jnp.concatenate([self.uopt[0], self.u_ref_init[:-self.model.n_u]], axis=0)
+        # CHANGED
+        # if self.u_ref_init.shape[0] >= self.model.n_u:
+        #    self.u_ref_init = jnp.concatenate([self.uopt[0], self.u_ref_init[:-self.model.n_u]], axis=0)
 
-        print("Shape of uopt:", self.uopt.shape)  # Shape is correct
-        print("Shape of x0:", self.x0.shape)
-        x0_aug = jnp.concatenate([self.x0, self.u_ref_init], axis=0)
+        # print("Shape of uopt:", self.uopt.shape)  # Shape is correct
+        # print("Shape of x0:", self.x0.shape)
+        # x0_aug = jnp.concatenate([self.x0, self.u_ref_init], axis=0)
         # x_predicted = self.model.rollout(self.x0, self.uopt)
-        x_predicted = self.model.rollout(x0_aug, self.uopt)
+        # x_predicted = self.model.rollout(x0_aug, self.uopt)
+
+        x_predicted = self.model.rollout(self.x0, self.uopt)
         y_predicted = self.model.decode(x_predicted.T).T
 
-        print(f"(DEBUG) model.n_z = {self.model.n_z}, model.n_y = {self.model.n_y}")
-        print(f"(DEBUG) y_predicted.shape = {y_predicted.shape}")
-        print(f"(DEBUG) idx0 = {idx0}")
+        # CHANGED
+        # print(f"(DEBUG) model.n_z = {self.model.n_z}, model.n_y = {self.model.n_y}")
+        # print(f"(DEBUG) y_predicted.shape = {y_predicted.shape}")
+        # print(f"(DEBUG) idx0 = {idx0}")
 
         y_centered_tip = y_predicted[:idx0+1, :8]  # 8 is hardcoded for the measured state dimension
         N_new_obs = y_centered_tip.shape[0]
