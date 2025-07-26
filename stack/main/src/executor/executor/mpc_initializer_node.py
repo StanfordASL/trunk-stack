@@ -29,8 +29,8 @@ class MPCInitializerNode(Node):
         config = {
             "trajectory": {
                 "type": "circle",
-                "duration": 20.0,  # Duration of the simulation in seconds
-                "speed": 0.5,  # Angular speed (rad/s)
+                "duration": 30.0,  # Duration of the simulation in seconds
+                "speed": 0.62831853071,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
@@ -53,14 +53,14 @@ class MPCInitializerNode(Node):
         self._load_model(config["model_type"])
 
         # Generate reference trajectory
-        dt = 0.01
+        dt = config["trajectory"]["dt"]
 
         traj_config = config["trajectory"]
         self.model_name = config["model"]
         
         # Works for ssm
         # MPC constraints
-        # U = HyperRectangle([0.9]*2, [-0.9]*2)
+        U = HyperRectangle([-45, -70, -25, -70, -25, -45], [45, 70, 25, 70, 25, 45])  # HyperRectangle([-0.05]*2, [0.05]*2)
         # dU = HyperRectangle([0.05]*2, [-0.05]*2)
         U = None
         dU = None
@@ -70,9 +70,9 @@ class MPCInitializerNode(Node):
         Qz = Qz.at[2, 2].set(0)
         Qzf = 2000.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
-        R = 0.0 * jnp.eye(self.model.n_u)
-        R_du = 16.0 * jnp.eye(self.model.n_u)
-        N = 7
+        R = jnp.diag(jnp.array([0.1, 0., 0.2, 0., 0.2, 0.1])) * 0.000005
+        R_du = jnp.diag(jnp.array([0.2, 0.1, 0.3, 0.1, 0.3, 0.2])) * 0.1
+        N = 10
         
         gusto_config = GuSTOConfig(
             Qz=Qz,

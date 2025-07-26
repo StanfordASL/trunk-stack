@@ -71,11 +71,11 @@ class MPCNode(Node):
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # print debug messages
             ('n_z', 3),                                     # number of performance vars
-            ('n_u', 2),                                     # number of control inputs
-            ('n_obs', 6),                                   # 2D, 3D or 6D observations
+            ('n_u', 6),                                     # number of control inputs
+            ('n_obs', 3),                                   # 2D, 3D or 6D observations
             ('n_delay', 3),     # ssm: 3                             # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
-            ('results_name', 'test_experiment')             # name of the results file
+            ('results_name', 'baseline_experiment')         # name of the results file
         ])
 
         self.debug = self.get_parameter('debug').value
@@ -87,7 +87,7 @@ class MPCNode(Node):
         self.results_name = self.get_parameter('results_name').value
 
         # Initialize the CSV file
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack-ssmr/stack/main/data')
         self.results_file = os.path.join(self.data_dir, f"trajectories/closed_loop/{self.results_name}.csv")
         self.initialize_csv()
 
@@ -97,17 +97,17 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.0  
+        self.alpha_smooth = 0.9  
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
         self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.09535884857177734, -0.1082666888833046, 0.10464410483837128,
-                                        0.09557773104906082, -0.20486007630825043, 0.10213401371240616,
-                                        0.0971750413775444, -0.3174373507499695, 0.100])
-        
+        self.rest_position = jnp.array([0.09631796926259995, -0.10834808647632599, 0.10455387085676193,
+                                        0.0982208102941513, -0.20485961437225342, 0.10390538722276688,
+                                        0.09986338764429092, -0.31786394119262695, 0.1057036817073822])
+
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
@@ -143,8 +143,6 @@ class MPCNode(Node):
         # Maintain current observations because of the delay embedding
         self.latest_y = None
 
-        self.actuator_dynamics = None
-
         # Maintain previous control inputs
         self.u_previous = jnp.zeros(self.n_u)
         self.clock = self.get_clock()
@@ -169,7 +167,7 @@ class MPCNode(Node):
                     callback_group=self.callback_group)
         
         # Timer for executing buffered controls
-        self.buffer_execution_period = 0.02  # same as dt in MPC
+        self.buffer_execution_period = 0.01  # same as dt in MPC
         self.buffer_timer = self.create_timer(
             self.buffer_execution_period,
             self.execute_buffer_callback,
@@ -188,16 +186,18 @@ class MPCNode(Node):
         if self.debug:
             self.get_logger().info(f'Received mocap data: {msg.positions}.')
 
-        # 1) flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
+        # Flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
         y_new = jnp.array([coord for pos in msg.positions for coord in (pos.x, pos.y, pos.z)])
         y_centered = y_new - self.rest_position
 
-        perm_idx = jnp.array([6, 8, 7, 3, 5, 4, 0, 2, 1])
-        y_reordered = y_centered[perm_idx]
-        # then take only the first 6 entries (body 3 then 2)
-        y_observables = y_reordered[:6]
+        # Take last three elements as tip positions
+        y_tip = y_centered[-3:]
 
-        # 4) form your block the same way
+        # Flip final two elements as we trained model with z up, not y up
+        idx_flip = jnp.array([0, 2, 1])
+        y_observables = y_tip[idx_flip]
+
+        # Form your block the same way
         block = y_observables
 
         # Update the current observations, including delay embeddings
@@ -219,7 +219,6 @@ class MPCNode(Node):
                 return
 
             control_inputs = self.control_buffer[self.buffer_index]
-            # safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
             self.smooth_control_inputs = (1 - self.alpha_smooth) * control_inputs + self.alpha_smooth * self.smooth_control_inputs
 
             if self.debug:
@@ -227,7 +226,7 @@ class MPCNode(Node):
 
             self.buffer_index += 1
 
-        self.publish_control_inputs(self.smooth_control_inputs.tolist())
+        self.publish_control_inputs(self.smooth_control_inputs)
         self.u_previous = self.smooth_control_inputs
 
     def mpc_callback(self):
@@ -237,7 +236,6 @@ class MPCNode(Node):
         if self.finished:
             return
         
-
         y_latest = self.latest_y
 
         if not self.initialized:
@@ -301,7 +299,6 @@ class MPCNode(Node):
         Publish the control inputs.
         """
         print(f"Publishing control inputs: {control_inputs}")
-
 
         safe_control_inputs_6 = check_control_inputs(control_inputs)
         print(f"Publishing safe and scaled control inputs: {safe_control_inputs_6}")
