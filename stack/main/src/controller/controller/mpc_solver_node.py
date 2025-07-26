@@ -94,6 +94,7 @@ class MPCSolverNode(Node):
         """
         # Set up GuSTO and run first solve with a simple initial guess
         self.u_init = jnp.zeros((config.N, self.model.n_u))
+        
         self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
         self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1],

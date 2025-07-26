@@ -110,7 +110,13 @@ class control_SSMR_simplified_ref_vec(ReducedOrderModel):
         """
         Continuous dynamics of reduced system.
         """
-        return self.ssm.reduced_dynamics(x) + self.residual_dynamics(u)
+        # u_single = jnp.vstack([jnp.zeros((self.n_y - u.shape[0], 1)), -self.ssm.lam @ u.reshape(-1, 1)]).flatten()
+        u_single = jnp.squeeze(jnp.vstack([jnp.zeros((len(self.ssm.specified_params["measured_rows"]), 1)), -self.ssm.lam @ u.reshape(-1, 1)]))
+
+        # Tile the vector accordingly
+        u_ref_ext = jnp.tile(u_single, (self.ssm.specified_params["embedding_up_to"] + 1))
+
+        return self.ssm.reduced_dynamics(x) + self.residual_dynamics(u_ref_ext)
 
     @partial(jax.jit, static_argnums=(0,))
     def discrete_dynamics_helper(self, x, u, dt=0.01):
@@ -125,13 +131,9 @@ class control_SSMR_simplified_ref_vec(ReducedOrderModel):
         Simplifying the calculation of the control reference vector.
         Directly passing the delay embedded u to the vector.
         """
-        u_single = jnp.vstack([jnp.zeros((self.n_y - u.shape[0], 1)), -self.ssm.lam @ u.reshape(-1, 1)]).flatten()
+        return self.discrete_dynamics_helper(x_tilde, u, dt)
 
-        # Tile the vector accordingly
-        u_ref_ext = jnp.tile(u_single, self.ssm.specified_params["embedding_up_to"])
-
-        return self.discrete_dynamics_helper(x_tilde, u_ref_ext, dt)
-
+    @partial(jax.jit, static_argnums=(0,))
     def dynamics_step(self, x, u_dt):
         """
         Perform a single step of the reduced dynamics.
@@ -185,7 +187,7 @@ class control_SSMR_simplified_ref_vec(ReducedOrderModel):
         raise NotImplementedError
 
 
-class control_SSMR_(ReducedOrderModel):
+class control_SSMR(ReducedOrderModel):
     """
     SSMR model combining a delay SSM with a residual dynamics model.
     """

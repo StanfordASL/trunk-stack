@@ -8,7 +8,7 @@ import logging
 
 from controller.mpc.gusto import GuSTOConfig                # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
-from .utils.models import control_SSMR
+from .utils.models import control_SSMR, control_SSMR_simplified_ref_vec
 from .utils.misc import HyperRectangle
 from .delay_embedded_state import DelayEmbeddedState
 from .reference_generator import ReferenceTrajectoryGenerator
@@ -43,13 +43,13 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "trajectory": {
-                "type": "pacman_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
+                "type": "circle_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman", "pacman_with_ramp", "flower"
                 "duration": 20.0,  # Duration of the simulation in seconds
                 "speed": 0.5,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.07,  # [m]  For "circle" and "pacman"
+                    "radius": 0.05,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.05,  # [m]  For "eight"
                     "z_level": 0.0,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
@@ -162,7 +162,9 @@ class MPCInitializerNode(Node):
         model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}')
 
         # Load the model
-        self.model = control_SSMR(self.delay_config, model_path)
+        # CHANGED
+        # self.model = control_SSMR(self.delay_config, model_path)
+        self.model = control_SSMR_simplified_ref_vec(self.delay_config, model_path)
         print(f'---- Model loaded: {self.model_name}')
         print('Dimensions:')
         print('     n_x:', self.model.n_x)
