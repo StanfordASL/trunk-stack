@@ -185,7 +185,7 @@ class control_SSMR_simplified_ref_vec(ReducedOrderModel):
         raise NotImplementedError
 
 
-class control_SSMR_(ReducedOrderModel):
+class control_SSMR(ReducedOrderModel):
     """
     SSMR model combining a delay SSM with a residual dynamics model.
     """
