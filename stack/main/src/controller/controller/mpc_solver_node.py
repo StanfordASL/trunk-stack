@@ -159,13 +159,14 @@ class MPCSolverNode(Node):
         else:
             self.u_prev0 = np.array(request.u0)
 
+        # CHANGED
         # 5) Update u_ref_init by shifting in the previous input
-        if self.u_ref_init.shape[0] >= self.model.n_u:
-            self.u_ref_init = jnp.concatenate(
-                [self.u_prev0, self.u_ref_init[:-self.model.n_u]],
-                axis=0
-            )
-        x0_aug = jnp.concatenate([x0, self.u_ref_init], axis=0)
+        # if self.u_ref_init.shape[0] >= self.model.n_u:
+        #     self.u_ref_init = jnp.concatenate(
+        #        [self.u_prev0, self.u_ref_init[:-self.model.n_u]],
+        #        axis=0
+        #    )
+        # x0_aug = jnp.concatenate([x0, self.u_ref_init], axis=0)
 
         # 6) Build ref_window of length (N+1) rows, padding with the last row if we run out
         start_idx = int(t0 / self.dt)
@@ -213,7 +214,9 @@ class MPCSolverNode(Node):
 
         # 9) Solve GuSTO with the (possibly padded) reference
         self.gusto.solve(
-            x0_aug,
+            # CHANGED
+            # x0_aug,
+            x0,
             self.u_init,
             self.x_init,
             z=ref_window,

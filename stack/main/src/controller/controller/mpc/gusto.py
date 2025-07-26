@@ -387,6 +387,25 @@ class GuSTO:
         """
         Compute the model accuracy for the given state and control inputs.
         """
+        def body_fn(i, state):
+            error, approx = state
+            fk = self.model.continuous_dynamics(x_k[i, :], u_k[i, :])
+            Ak, Bk = jax.jacfwd(self.model.continuous_dynamics, argnums=(0, 1))(x_k[i, :], u_k[i, :])
+            f = self.model.continuous_dynamics(x[i, :], u[i, :])
+            f_approx = fk + Ak @ (x[i, :] - x_k[i, :]) + Bk @ (u[i, :] - u_k[i, :])
+            error += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale, f - f_approx), 2)
+            approx += self.dt * jnp.linalg.norm(jnp.multiply(self.f_scale, f_approx), 2)
+            return error, approx
+
+        error, approx = jax.lax.fori_loop(0, x.shape[0] - 1, body_fn, (0.0, 0.0))
+        rho_k = error / (J + approx)
+        return rho_k
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _compute_accuracy_specialised(self, x_k, u_k, x, u, J):
+        """
+        Compute the model accuracy for the given state and control inputs.
+        """
 
         def rewrite_augmented(x_tilde, u_current):
             """

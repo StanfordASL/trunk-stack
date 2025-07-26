@@ -66,7 +66,126 @@ class Residual_dynamics:
         return self.basis.T @ delayed_ref_vec
 
 
-class control_SSMR(ReducedOrderModel):
+class control_SSMR_simplified_ref_vec(ReducedOrderModel):
+    """
+    SSMR model combining a delay SSM with a residual dynamics model.
+    """
+
+    def __init__(self, delay_config, ssm_path):
+
+        model_file_path = ssm_path
+
+        # Check if the file exists
+        if not os.path.exists(model_file_path):
+            print(f"Error: The file {model_file_path} does not exist.")
+            exit(1)
+
+        # Load the saved model from the pickle file.
+        with open(model_file_path, "rb") as f:
+            ssm = pickle.load(f)
+
+        # Autonomous dynamics model
+        self.ssm = ssm
+
+        # Residual dynamics model
+        self.residual_dynamics = Residual_dynamics(ssm.SSM_basis)
+
+        # Observation-performance matrix maps the observations, y, to the performance variable, z
+        perf_var_dim = delay_config["perf_var_dim"] * (1 + ssm.specified_params["include_velocity"])
+        meas_var_dim = len([x - 1 for x in ssm.specified_params["measured_rows"] if x <= 18])
+        obs_perf_matrix = jnp.zeros((perf_var_dim, (meas_var_dim * (1 + int(ssm.specified_params["include_velocity"]))
+                                                    + (ssm.specified_params["num_u"] * int(delay_config["also_embedd_u"])))
+                                    * (1 + int(ssm.specified_params["embedding_up_to"]))))
+
+        self.obs_perf_matrix = obs_perf_matrix.at[:perf_var_dim, :perf_var_dim].set(jnp.eye(perf_var_dim))
+
+        n_x = ssm.SSM_basis.shape[1]  # n_x: reduced state dimension
+        n_u = ssm.specified_params["num_u"]  # n_u: number control variables
+        n_z, n_y = obs_perf_matrix.shape  # n_z: number performance varliables; n_y: full state dimension
+
+        super().__init__(n_x, n_u, n_y, n_z)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def continuous_dynamics(self, x, u):
+        """
+        Continuous dynamics of reduced system.
+        """
+        return self.ssm.reduced_dynamics(x) + self.residual_dynamics(u)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def discrete_dynamics_helper(self, x, u, dt=0.01):
+        """
+        Discrete-time dynamics of reduced system using RK4 integration.
+        """
+        return RK4_step(self.continuous_dynamics, x, u, dt)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def discrete_dynamics(self, x_tilde, u, dt=0.01):
+        """
+        Simplifying the calculation of the control reference vector.
+        Directly passing the delay embedded u to the vector.
+        """
+        u_single = jnp.vstack([jnp.zeros((self.n_y - u.shape[0], 1)), -self.ssm.lam @ u.reshape(-1, 1)]).flatten()
+
+        # Tile the vector accordingly
+        u_ref_ext = jnp.tile(u_single, self.ssm.specified_params["embedding_up_to"])
+
+        return self.discrete_dynamics_helper(x_tilde, u_ref_ext, dt)
+
+    def dynamics_step(self, x, u_dt):
+        """
+        Perform a single step of the reduced dynamics.
+        X is required to be augmented with the past reference values
+        """
+        u, dt = u_dt[:-1], u_dt[-1]
+        return self.discrete_dynamics(x, u, dt), x
+
+    @partial(jax.jit, static_argnums=(0,))
+    def rollout(self, x0, u, dt=0.01):
+        """
+        Rollout of the discrete-time dynamics model, with u being an array of length N.
+        Note that if u has length N, then the output will have length N+1.
+        x0 is in the reduced coordinates
+        """
+        u_dt = jnp.column_stack([u, jnp.full(u.shape[0], dt)])  # shape of u is (N, n_u)
+        final_state, xs = jax.lax.scan(self.dynamics_step, x0, u_dt)
+        return jnp.vstack([xs, final_state])
+
+    def performance_mapping(self, x):
+        """
+        Performance mapping maps the state, x, to the performance output, z, through
+        z = C @ y = C @ w(x).
+        """
+        return self.obs_perf_matrix @ self.decode(x)
+
+    @property
+    def H(self):
+        """
+        Linear mapping from the state, x, to the performance variable, z.
+        """
+        raise AttributeError("SSMR uses a nonlinear performance mapping, hence H is not defined.")
+
+    def encode(self, y):
+        """
+        Encode the observations, y, into the reduced state, x.
+        """
+        return self.ssm.encode(y)
+
+    def decode(self, x):
+        """
+        Decode the reduced state, x, into the observations, y.
+        """
+        red_coordinates = x[:self.n_x]
+        return self.ssm.decode(red_coordinates)
+
+    def save_model(self, path):
+        """
+        Save the SSMR model to a file.
+        """
+        raise NotImplementedError
+
+
+class control_SSMR_(ReducedOrderModel):
     """
     SSMR model combining a delay SSM with a residual dynamics model.
     """
