@@ -147,10 +147,16 @@ class MPCNode(Node):
         print(f"n_y: {self.n_y}, n_obs: {self.n_obs}, n_delay: {self.n_delay}, block_size: {self.block_size}")
         assert self.n_y == 40, "wrong n_y calculated"
 
-        # Settled positions of the rigid bodies      
-        self.rest_position = jnp.array([0.09535884857177734, -0.1082666888833046, 0.10464410483837128,
-                                        0.09557773104906082, -0.20486007630825043, 0.10213401371240616,
-                                        0.0971750413775444, -0.3174373507499695, 0.100])
+        # Settled positions of the rigid bodies    
+        # Old rest position for trunk motors  
+        # self.rest_position = jnp.array([0.09535884857177734, -0.1082666888833046, 0.10464410483837128,
+         #                               0.09557773104906082, -0.20486007630825043, 0.10213401371240616,
+         #                               0.0971750413775444, -0.3174373507499695, 0.100])
+        
+        # New rest position for trunk motors
+        self.rest_position = jnp.array([0.09633971005678177, -0.10842441767454147, 0.10407043248414993,
+                                        0.0982653796672821, -0.20503439009189606, 0.10381951928138733,
+                                        0.1018466129899025, -0.31803247332572937, 0.10494980216026306])
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
@@ -249,7 +255,7 @@ class MPCNode(Node):
         perm_idx = jnp.array([6, 8, 7, 3, 5, 4, 0, 2, 1])
         y_reordered = y_centered[perm_idx]
         # then take only the first 6 entries (body 3 then 2)
-        y_observables = y_reordered[:6]
+        y_observables = y_reordered[:6]  
 
         # 3) pick your two motor‐angles as before
         if self.angle_callback_received:
