@@ -11,7 +11,10 @@ from sklearn.utils.extmath import randomized_svd
 from scipy.linalg import orth
 import numpy as np
 import sympy as sp
-from .misc import trajectories_delay_embedding, trajectories_derivatives
+from .misc import trajectories_delay_embedding, trajectories_derivatives, polynomial_features
+import cvxpy as cp
+import pyomo.environ as pyo
+from itertools import combinations_with_replacement
 
 
 class DelaySSM:
@@ -277,6 +280,223 @@ class DelaySSM:
             q_dot = sp.symbols(r'\dot{q}_' + str(dim))
             equations.append(sp.Eq(q_dot, polynomial))
         return equations
+
+
+class OptSSM:
+    """
+    Delay SSM model with optimal (oblique) projection.
+    """
+    def __init__(self,
+                aut_trajs_obs=None,             # observed trajectories
+                t_split=None,                   # split time from transient to on-manifold
+                SSMDim: int=None,               # dimension of SSM
+                SSMOrder: int=None,             # expansion order encoding/decoding
+                ROMOrder: int=None,             # expansion order of reduced dynamics
+                N_delay: int=None,              # number of delays
+                ts=None,                        # time array
+                ipopt_executable=None,          # path to IPOPT executable
+                verbose=False):                 # verbosity
+        self.SSMDim = SSMDim
+        self.SSMOrder = SSMOrder
+        self.ROMOrder = ROMOrder
+        self.N_delay = N_delay
+        self.N_obs_delay = N_delay  # NOTE: we do not reparameterize here
+        self.t_split = t_split
+
+        # Split the data
+        Y_transient, Y_dot_transient, Y_mani, Y_dot_mani = self._split_data(aut_trajs_obs, ts, t_split)
+
+        # Do SVD on data close to manifold
+        self.V_n_svd, _, _ = randomized_svd(np.asarray(Y_mani), n_components=SSMDim)
+
+        # Create optimization model using transient data
+        ipopt_model = self._create_optimization_model(np.array(Y_transient), np.array(Y_dot_transient))
+
+        # Solve optimization problem
+        self.V_n_opt, _, _ = self._solve_with_ipopt(ipopt_model, executable=ipopt_executable, verbose=verbose)
+
+        # Regress R on data close to manifold
+        self.R_opt = self._regress_reduced_dynamics(Y_mani, Y_dot_mani, verbose=verbose)
+
+        # Regress W_nl on data close to manifold
+        self.W_nl_opt = self._regress_parameterization_map(Y_mani, verbose=verbose)
+
+    def _split_data(self, aut_trajs_obs, ts, t_split):
+        """
+        Split data into transient and on-manifold.
+        """
+        dt = ts[1] - ts[0]
+        i_cutoff = int(t_split / dt)
+
+        # Transient data
+        ts_transient = ts[:i_cutoff]
+        aut_trajs_transient = aut_trajs_obs[:, :, :i_cutoff]
+        aut_trajs_transient_delay = np.array(trajectories_delay_embedding(aut_trajs_transient, self.N_delay, skips=0))
+        p = aut_trajs_transient_delay.shape[1]
+        Y_transient = aut_trajs_transient_delay.transpose(1, 0, 2).reshape(p, -1)  # p x N_traj*len(t) := p x N
+        Y_dot_transient = trajectories_derivatives(aut_trajs_transient_delay, ts_transient)
+        Y_dot_transient = Y_dot_transient.transpose(1, 0, 2).reshape(p, -1)  # p x N_traj*len(t) := p x N
+
+        # Steady data
+        ts_mani = ts[i_cutoff:]
+        aut_trajs_mani = aut_trajs_obs[:, :, i_cutoff:]
+        aut_trajs_mani_delay = np.array(trajectories_delay_embedding(aut_trajs_mani, self.N_delay, skips=0))
+        p = aut_trajs_mani_delay.shape[1]
+        Y_mani = aut_trajs_mani_delay.transpose(1, 0, 2).reshape(p, -1)  # p x N_traj*len(t) := p x N
+        Y_dot_mani = trajectories_derivatives(aut_trajs_mani_delay, ts_mani)
+        Y_dot_mani = Y_dot_mani.transpose(1, 0, 2).reshape(p, -1)  # p x N_traj*len(t) := p x N
+        return Y_transient, Y_dot_transient, Y_mani, Y_dot_mani
+
+    def _create_optimization_model(self, Y, Y_dot, reg=1e-6):
+        """
+        Creates a Pyomo concrete model for the optimization problem.
+        """
+        p, N = Y.shape
+        
+        # Calculate polynomial feature indices
+        poly_terms = []
+        # Add linear terms
+        poly_terms.extend([(i,) for i in range(self.SSMDim)])
+        # Add higher order terms up to degree n_r
+        for degree in range(2, self.ROMOrder + 1):
+            poly_terms.extend(combinations_with_replacement(range(self.SSMDim), degree))
+        m_r = len(poly_terms)
+        
+        model = pyo.ConcreteModel()
+        
+        # Sets
+        model.p = pyo.RangeSet(0, p-1)
+        model.n = pyo.RangeSet(0, self.SSMDim-1)
+        model.N = pyo.RangeSet(0, N-1)
+        model.m_r = pyo.RangeSet(0, m_r-1)
+        
+        # Variables
+        model.V_n = pyo.Var(model.p, model.n)
+        model.R = pyo.Var(model.n, model.m_r)
+        
+        # Initialize variables
+        V_n_init = self.V_n_svd @ np.linalg.inv(self.V_n_svd.T @ self.V_n_svd)
+        for i in model.p:
+            for j in model.n:
+                model.V_n[i,j] = V_n_init[i,j]
+        
+        # Affine constraints on V_n (V_n_svd.T @ V_n = I)
+        def affine_constraint_rule(model, i, j):
+            return sum(self.V_n_svd[k,i] * model.V_n[k,j] for k in model.p) == (1.0 if i==j else 0.0)
+        model.affine_constraints = pyo.Constraint(model.n, model.n, rule=affine_constraint_rule)
+        
+        # Define VnY = V_n^T * Y as helper variables
+        model.VnY = pyo.Var(model.n, model.N)
+        def VnY_rule(model, i, j):
+            return model.VnY[i,j] == sum(model.V_n[k,i] * Y[k,j] for k in model.p)
+        model.VnY_constraint = pyo.Constraint(model.n, model.N, rule=VnY_rule)
+        
+        # Define Vn_dotY = V_n^T * Y_dot as helper variables
+        model.Vn_dotY = pyo.Var(model.n, model.N)
+        def Vn_dotY_rule(model, i, j):
+            return model.Vn_dotY[i,j] == sum(model.V_n[k,i] * Y_dot[k,j] for k in model.p)
+        model.Vn_dotY_constraint = pyo.Constraint(model.n, model.N, rule=Vn_dotY_rule)
+        
+        # Helper variables for polynomial terms
+        model.Phi = pyo.Var(model.m_r, model.N)
+        def phi_rule(model, k, j):
+            return model.Phi[k,j] == pyo.prod(model.VnY[idx,j] for idx in poly_terms[k])
+        model.phi_constraint = pyo.Constraint(model.m_r, model.N, rule=phi_rule)
+        
+        # Objective function using pure Pyomo expressions
+        def obj_rule(model):
+            residual_term = sum(
+                (model.Vn_dotY[i,j] - sum(model.R[i,k] * model.Phi[k,j] for k in model.m_r))**2
+                for i in model.n for j in model.N
+            )
+            reg_term = reg * sum(model.R[i,j]**2 for i in model.n for j in model.m_r)
+            return residual_term + reg_term
+        
+        model.objective = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
+        
+        return model
+    
+    def _solve_with_ipopt(self, model, executable=None, verbose=False):
+        """
+        Solves the optimization model using IPOPT.
+        """
+        if executable is not None:
+            solver = pyo.SolverFactory('ipopt', executable=executable)
+        else:
+            solver = pyo.SolverFactory('ipopt')
+        if not solver.available():
+            raise RuntimeError(
+                "IPOPT solver is not available. Please install it using "
+                "`conda install -c conda-forge ipopt` and make sure it's on your PATH."
+            )
+        solver.options['max_iter'] = 500
+        solver.options['tol'] = 1e-6
+        results = solver.solve(model, tee=verbose)
+
+        # Extract optimal values
+        V_n_opt = jnp.array([[pyo.value(model.V_n[i,j]) for j in model.n] for i in model.p])
+        R_opt = jnp.array([[pyo.value(model.R[i,j]) for j in model.m_r] for i in model.n])
+        
+        return V_n_opt, R_opt, results
+    
+    def _regress_reduced_dynamics(self, Y, Y_dot, verbose=False):
+        """
+        Regress reduced dynamics.
+        """
+        m_r = polynomial_features(jnp.zeros(self.SSMDim), self.ROMOrder, 1).shape[1]
+        R = cp.Variable((self.SSMDim, m_r))
+        objective = cp.Minimize(cp.sum_squares(self.V_n_opt.T @ Y_dot - R @ polynomial_features(Y.T @ self.V_n_opt, self.ROMOrder, 1).T) + 1e-6 * cp.sum_squares(R))
+        problem = cp.Problem(objective)
+        problem.solve()
+        if verbose:
+            print('R optimization status: ', problem.status)
+        return jnp.array(R.value)
+    
+    def _regress_parameterization_map(self, Y, verbose=False):
+        """
+        Regress parameterization map.
+        """
+        p = Y.shape[0]
+        m_w = polynomial_features(Y.T @ self.V_n_opt, self.SSMOrder, 2).shape[1]
+        W_nl = cp.Variable((p, m_w))
+        objective = cp.Minimize(cp.sum_squares(Y - self.V_n_svd @ self.V_n_opt.T @ Y - W_nl @ polynomial_features(Y.T @ self.V_n_opt, self.SSMOrder, 2).T) + 1e-8 * cp.sum_squares(W_nl))
+        constraints = [self.V_n_opt.T @ W_nl == jnp.zeros((self.SSMDim, m_w))]
+        problem = cp.Problem(objective, constraints)
+        problem.solve()
+        if verbose:
+            print('W_nl optimization status: ', problem.status)
+        return jnp.array(W_nl.value)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reduced_dynamics(self, x):
+        """
+        Evaluate the continuous-time dynamics of the reduced system, with batch dimension last.
+        """
+        x_dot = self.R_opt @ polynomial_features(x.T, self.ROMOrder, 1).T
+        return x_dot.squeeze()
+
+    @partial(jax.jit, static_argnums=(0,))
+    def simulate_reduced(self, x0, t):
+        """
+        Simulate the reduced system.
+        """
+        return odeint(lambda x, _: self.reduced_dynamics(x), x0, t).T
+
+    @partial(jax.jit, static_argnums=(0,))
+    def decode(self, x):
+        """
+        Decode from reduced state to observation, with batch dimension last.
+        """ 
+        y = self.V_n_svd @ x + self.W_nl_opt @ polynomial_features(x.T, self.SSMOrder, 2).T.squeeze()
+        return y
+
+    @partial(jax.jit, static_argnums=(0,))
+    def encode(self, y):
+        """
+        Encode from observation to reduced state, with batch dimension last.
+        """
+        x = self.V_n_opt.T @ y
+        return x
 
 
 def get_residual_labels(ssm, trajs, ts, u_func=None, rnd_key=jax.random.PRNGKey(0), us=None):
