@@ -84,6 +84,8 @@ class GuSTO:
         self.x_k = None  # previous state
         self.u_k = None  # previous input
         self.locp_solve_time = None  # time spent in LOCP solve
+        self.gusto_solve_time = None  # time spent for whole gusto solve call
+
 
         # LOCP problem
         if self.verbose == 2:
@@ -109,6 +111,213 @@ class GuSTO:
         self.solve(x0, u_init, x_init, z, zf, u)
 
     def solve(self, x0, u_init, x_init, z=None, zf=None, u=None):
+        """
+        Solve the GuSTO problem with the given initial conditions and desired trajectories.
+
+        :x0: initial condition jnp.array
+        :u_init: control initial guess (N, n_u)
+        :x_init: state initial guess (N+1, n_x)
+        :z: (optional) desired tracking trajectory for objective function (N+1, n_z)
+        :zf: (optional) desired terminal state for objective function (n_z,)
+        :u: (optional) desired control for objective function (N, n_z)
+        """
+
+        # Timing information to be stored
+        t0 = time.time()
+        t_locp = 0.0
+        t_overhead = time.time()
+
+        itr = 0
+        self.x_k = x_init
+        self.u_k = u_init
+
+        # Grab Jacobians for first solve
+        A_d, B_d, d_d = self._get_dynamics_linearizations(self.x_k[:-1], self.u_k)
+
+        if self.nonlinear_perf_mapping:
+            H_d, c_d = self._get_perf_mapping_linearizations(self.x_k)
+        else:
+            H_d, c_d = None, None
+
+        #t_jac = time.time()
+        #if self.verbose >= 2:
+        #    print('DEBUG: Jacobians computed in {:.4f} seconds'.format(t_jac - t0))
+
+        new_solution = True
+        Jstar_prev = jnp.inf
+        delta_prev = jnp.inf
+        omega_prev = jnp.inf
+
+        converged = False
+
+        delta = self.delta0
+        omega = self.omega0
+
+        if self.verbose >= 1:
+            print('|   J   | TR_viol |  rho_k  |  X_viol |   x-x_k |  delta  |  omega |')
+            print('--------------------------------------------------------------------')
+
+        t_overhead = time.time() - t_overhead
+        print('DEBUG: Overhead time for GuSTO initialization: {:.4f} seconds'.format(t_overhead))
+
+        t_while = time.perf_counter()
+        while self._is_valid_iteration(itr) and not converged and omega <= self.omega_max:
+            t0_locp_update = time.perf_counter()
+            
+            rho_k = -1
+            max_violation = -1
+            dsol = -1
+            delta_cur = delta  # just for printing
+            omega_cur = omega  # just for printing
+            
+            # Update the LOCP with new parameters and solve
+            if new_solution:
+                self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, cd=c_d)
+                new_solution = False
+            else:
+                self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, cd=c_d, full=False)
+
+            if self.verbose >= 2:
+                print('DEBUG: Routines pre-solve computed in {:.4f} seconds'.format(time.time() - t0))
+            t0_locp_update = time.perf_counter() - t0_locp_update
+            print('DEBUG: LOCP update time: {:.4f} seconds'.format(t0_locp_update))
+
+            # Solve the LOCP
+            t0_locp = time.perf_counter()
+            Jstar, success, stats = self.locp.solve()
+            t0_locp = time.perf_counter() - t0_locp
+            print('DEBUG: LOCP solve time: {:.4f} seconds'.format(t0_locp))
+
+            t_get_solution = time.perf_counter()
+
+            if not success:
+                print('Iteration {} of problem cannot be solved, see solver status for more information'.format(itr))
+                self.xopt = jnp.copy(self.x_k)
+                self.uopt = jnp.copy(self.u_k)
+                if self.nonlinear_perf_mapping:
+                    self.zopt = self.model.performance_mapping(self.xopt.T).T
+                else:
+                    self.zopt = jnp.transpose(self.H @ self.xopt.T)
+                return
+ 
+            t_locp += stats.solve_time
+            x_next, u_next, _ = self.locp.get_solution()
+            t_get_solution = time.perf_counter() - t_get_solution
+            print('DEBUG: LOCP solution extraction time: {:.4f} seconds'.format(t_get_solution))
+
+            t_trust_region = time.perf_counter()
+            # Check if trust region is satisfied
+            e_tr, tr_satisfied = self._is_in_trust_region(self.x_k, x_next, delta)
+
+            if tr_satisfied:
+                rho_k = self._compute_accuracy(self.x_k, self.u_k, x_next, u_next, Jstar)
+
+                # Nudge Gusto out of first iteration since it gets stuck
+                if rho_k > self.rho and itr != 1:
+                    delta = self.beta_fail * delta
+                else:
+                    """
+                    First modification to GuSTO: if delta and omega are constant for two solves in a row,
+                    yet the reported cost of the optimizer increases, decrease delta
+                    """
+                    if delta_prev == delta and omega_prev == omega and Jstar_prev <= Jstar:
+                        delta = self.beta_fail * delta
+                    delta_prev = delta
+                    Jstar_prev = Jstar
+                    omega_prev = omega
+
+                    """
+                    Second modification to GuSTO: remove delta increases for good model accuracy
+                    """
+                    # if rho_k < self.rho0:
+                    #     delta = np.minimum(self.beta_succ * delta, self.delta0)
+                    # else:
+                    #     delta = delta
+
+                    # Computes g2
+                    max_violation, X_satisfied = self._state_constraints_violated(x_next)
+
+                    """
+                    Third modification to GuSTO: remove decreases of omega for satisifed X (creates oscillations)
+                    """
+                    # if X_satisfied:
+                    #     omega = self.omega0
+                    # else:
+                    #     omega = self.gamma_fail * omega
+
+                    if not X_satisfied:
+                        omega = self.gamma_fail * omega
+
+                    # Check for convergence
+                    dsol, converged = self._is_converged(self.x_k, x_next, u_next)
+
+                    # Optional: Enforce state constraints are satisfied upon convergence
+                    if not X_satisfied:
+                        converged = False
+
+                    # Record that a new solution as been found
+                    new_solution = True
+            
+            else:
+                omega = self.gamma_fail * omega
+
+            if self.verbose >= 2:
+                print('DEBUG: Trust region + LOCP computed in {:.4f} seconds'.format(time.perf_counter() - t0))
+
+            itr += 1
+
+            if self.verbose >= 1:
+                if rho_k < 0.0:
+                    print('{:.2e}, {:.2e}, {}, {}, {}, {:.2e}, {:.2e}, {}'.format(
+                        Jstar, e_tr, '-' * 8, '-' * 8, '-' * 8, delta_cur, omega_cur, itr))
+                elif max_violation < 0.0:
+                    print('{:.2e}, {:.2e}, {:.2e}, {}, {}, {:.2e}, {:.2e}, {}'.format(
+                        Jstar, e_tr, rho_k, '-' * 8, '-' * 8, delta_cur, omega_cur, itr))
+                else:
+                    print('{:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {:.2e}, {}'.format(
+                        Jstar, e_tr, rho_k, max_violation, dsol, delta_cur, omega_cur, itr))
+
+            t_trust_region = time.perf_counter() - t_trust_region
+            print('DEBUG: Trust region check time: {:.4f} seconds'.format(t_trust_region))
+
+            t_recompute = time.perf_counter()
+            # If valid solution, update and recompute dynamics
+            if new_solution:
+                self.x_k = x_next.copy()
+                self.u_k = u_next.copy()
+                if self.max_gusto_iters >= 1:
+                    A_d, B_d, d_d = self._get_dynamics_linearizations(self.x_k[:-1], self.u_k)
+
+                    if self.nonlinear_perf_mapping:
+                        H_d, c_d = self._get_perf_mapping_linearizations(self.x_k)
+                    else:
+                        H_d, c_d = None, None
+
+            t_recompute = time.perf_counter() - t_recompute
+            print('DEBUG: Dynamics recomputed in {:.4f} seconds'.format(t_recompute))
+
+        t_while = time.perf_counter() - t_while
+        print('DEBUG: GuSTO while loop time: {:.4f} seconds'.format(t_while))
+        
+        t_gusto = time.time() - t0
+        if omega > self.omega_max:
+            print('omega > omega_max, solution did not converge')
+        if not self._is_valid_iteration(itr-1):
+            print('Max iterations, solution did not converge')
+        else:
+            print('Solved in {} iterations/{:.3f} seconds, with {:.3f} s from LOCP solve'.format(itr, t_gusto, t_locp))
+
+        # Save optimal solution
+        self.xopt = jnp.copy(self.x_k)
+        self.uopt = jnp.copy(self.u_k)
+        if self.nonlinear_perf_mapping:
+            self.zopt = self.model.performance_mapping(self.xopt.T).T
+        else:
+            self.zopt = jnp.transpose(self.H @ self.xopt.T)
+        self.locp_solve_time = t_locp
+        self.gusto_solve_time = t_gusto
+    
+    def solve_fast(self, x0, u_init, x_init, z=None, zf=None, u=None):
         """
         Solve the GuSTO problem with the given initial conditions and desired trajectories.
 
@@ -288,7 +497,7 @@ class GuSTO:
         self.locp_solve_time = t_locp
 
     def get_solution(self):
-        return self.xopt, self.uopt, self.zopt, self.locp_solve_time
+        return self.xopt, self.uopt, self.zopt, self.gusto_solve_time
 
     def _extract_config(self, config):
         """
