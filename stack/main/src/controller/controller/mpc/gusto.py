@@ -162,8 +162,13 @@ class GuSTO:
         print('DEBUG: Overhead time for GuSTO initialization: {:.4f} seconds'.format(t_overhead))
 
         t_while = time.perf_counter()
-        while self._is_valid_iteration(itr) and not converged and omega <= self.omega_max:
+        count_iterations = 0
+
+        while not converged and omega <= self.omega_max:
+        # while self._is_valid_iteration(itr) and not converged and omega <= self.omega_max:
+        # while count_iterations < 1:
             t0_locp_update = time.perf_counter()
+            count_iterations += 1
             
             rho_k = -1
             max_violation = -1
@@ -181,15 +186,16 @@ class GuSTO:
             if self.verbose >= 2:
                 print('DEBUG: Routines pre-solve computed in {:.4f} seconds'.format(time.time() - t0))
             t0_locp_update = time.perf_counter() - t0_locp_update
-            print('DEBUG: LOCP update time: {:.4f} seconds'.format(t0_locp_update))
 
             # Solve the LOCP
             t0_locp = time.perf_counter()
+            print('DEBUG: LOCP update time: {:.4f} seconds'.format(t0_locp_update))
             Jstar, success, stats = self.locp.solve()
             t0_locp = time.perf_counter() - t0_locp
+            
+            t_get_solution = time.perf_counter()
             print('DEBUG: LOCP solve time: {:.4f} seconds'.format(t0_locp))
 
-            t_get_solution = time.perf_counter()
 
             if not success:
                 print('Iteration {} of problem cannot be solved, see solver status for more information'.format(itr))
@@ -204,9 +210,10 @@ class GuSTO:
             t_locp += stats.solve_time
             x_next, u_next, _ = self.locp.get_solution()
             t_get_solution = time.perf_counter() - t_get_solution
-            print('DEBUG: LOCP solution extraction time: {:.4f} seconds'.format(t_get_solution))
+            
 
             t_trust_region = time.perf_counter()
+            print('DEBUG: LOCP solution extraction time: {:.4f} seconds'.format(t_get_solution))
             # Check if trust region is satisfied
             e_tr, tr_satisfied = self._is_in_trust_region(self.x_k, x_next, delta)
 
@@ -279,9 +286,10 @@ class GuSTO:
                         Jstar, e_tr, rho_k, max_violation, dsol, delta_cur, omega_cur, itr))
 
             t_trust_region = time.perf_counter() - t_trust_region
-            print('DEBUG: Trust region check time: {:.4f} seconds'.format(t_trust_region))
+            
 
             t_recompute = time.perf_counter()
+            print('DEBUG: Trust region check time: {:.4f} seconds'.format(t_trust_region))
             # If valid solution, update and recompute dynamics
             if new_solution:
                 self.x_k = x_next.copy()
@@ -295,9 +303,10 @@ class GuSTO:
                         H_d, c_d = None, None
 
             t_recompute = time.perf_counter() - t_recompute
-            print('DEBUG: Dynamics recomputed in {:.4f} seconds'.format(t_recompute))
 
         t_while = time.perf_counter() - t_while
+        print('DEBUG: Dynamics recomputed in {:.4f} seconds'.format(t_recompute))
+        print('DEBUG: GuSTO while loop took so many iterations: {}'.format(count_iterations))
         print('DEBUG: GuSTO while loop time: {:.4f} seconds'.format(t_while))
         
         t_gusto = time.time() - t0

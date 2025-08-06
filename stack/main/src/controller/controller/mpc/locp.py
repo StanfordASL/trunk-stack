@@ -212,10 +212,10 @@ class LOCP:
         """
         Extract the most recent solution from calling solve().
         """
-        x = jnp.reshape(self.x.value, (self.N + 1, self.n_x))
-        u = jnp.reshape(self.u.value, (self.N, self.n_u))
+        x = np.reshape(self.x.value, (self.N + 1, self.n_x))
+        u = np.reshape(self.u.value, (self.N, self.n_u))
         if self.tr_active:
-            s = jnp.asarray(self.st.value)
+            s = np.asarray(self.st.value)
         else:
             s = None
         return x, u, s

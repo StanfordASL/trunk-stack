@@ -105,7 +105,7 @@ class control_SSMR_simplified_ref_vec(ReducedOrderModel):
 
         super().__init__(n_x, n_u, n_y, n_z)
 
-    @partial(jax.jit, static_argnums=(0,))
+    # @partial(jax.jit, static_argnums=(0,))
     def continuous_dynamics(self, x, u):
         """
         Continuous dynamics of reduced system.
@@ -118,12 +118,6 @@ class control_SSMR_simplified_ref_vec(ReducedOrderModel):
 
         return self.ssm.reduced_dynamics(x) + self.residual_dynamics(u_ref_ext)
 
-    @partial(jax.jit, static_argnums=(0,))
-    def discrete_dynamics_helper(self, x, u, dt=0.01):
-        """
-        Discrete-time dynamics of reduced system using RK4 integration.
-        """
-        return RK4_step(self.continuous_dynamics, x, u, dt)
 
     @partial(jax.jit, static_argnums=(0,))
     def discrete_dynamics(self, x_tilde, u, dt=0.01):
@@ -131,9 +125,9 @@ class control_SSMR_simplified_ref_vec(ReducedOrderModel):
         Simplifying the calculation of the control reference vector.
         Directly passing the delay embedded u to the vector.
         """
-        return self.discrete_dynamics_helper(x_tilde, u, dt)
+        return RK4_step(self.continuous_dynamics, x_tilde, u, dt)
 
-    @partial(jax.jit, static_argnums=(0,))
+    # @partial(jax.jit, static_argnums=(0,))
     def dynamics_step(self, x, u_dt):
         """
         Perform a single step of the reduced dynamics.
