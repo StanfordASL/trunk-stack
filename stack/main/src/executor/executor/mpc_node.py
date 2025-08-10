@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import logging
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 
 import rclpy                                                # type: ignore
 from rclpy.node import Node                                 # type: ignore
@@ -31,9 +31,9 @@ def _check_control_inputs_jit(u_opt):
     base_range = 30 * scale
     """
 
-    tip_range = 80
-    mid_range = 50
-    base_range = 30
+    tip_range = 70
+    mid_range = 45
+    base_range = 25
 
     u1, u2, u3, u4, u5, u6 = u_opt
 
@@ -104,9 +104,9 @@ class MPCNode(Node):
         self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.09631796926259995, -0.10834808647632599, 0.10455387085676193,
-                                        0.0982208102941513, -0.20485961437225342, 0.10390538722276688,
-                                        0.09986338764429092, -0.31786394119262695, 0.1057036817073822])
+        self.rest_position = jnp.array([0.09693386405706406, -0.10843498259782791, 0.10442628711462021,
+                                        0.10069605708122253, -0.20488880574703217, 0.10299749672412872,
+                                        0.10354240983724594, -0.31802642345428467, 0.10256308317184448])
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
@@ -160,7 +160,7 @@ class MPCNode(Node):
         check_control_inputs(self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
-        self.controller_period = 0.02
+        self.controller_period = 0.01
         self.mpc_exec_timer = self.create_timer(
                     self.controller_period,
                     self.mpc_callback,

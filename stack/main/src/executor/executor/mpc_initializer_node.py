@@ -1,3 +1,4 @@
+import json
 import os
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
@@ -7,7 +8,7 @@ import jax.numpy as jnp
 import logging
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 
 from controller.mpc.gusto import GuSTOConfig                # type: ignore
 from controller.mpc_solver_node import run_mpc_solver_node  # type: ignore
@@ -64,15 +65,18 @@ class MPCInitializerNode(Node):
         # dU = HyperRectangle([0.05]*2, [-0.05]*2)
         U = None
         dU = None
+
+        # Load MPC config from JSON
+        mpc_config_path = '/home/trunk/Documents/trunk-stack-ssmr/stack/main/src/executor/executor/mpc_config.json'
+        with open(mpc_config_path, 'r') as f:
+            mpc_config = json.load(f)
         
         # MPC cost:
-        Qz = 700.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
-        Qz = Qz.at[2, 2].set(0)
-        Qzf = 2000.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
-        Qzf = Qzf.at[2, 2].set(0)
-        R = jnp.diag(jnp.array([0.1, 0., 0.2, 0., 0.2, 0.1])) * 0.000005
-        R_du = jnp.diag(jnp.array([0.2, 0.1, 0.3, 0.1, 0.3, 0.2])) * 0.1
-        N = 10
+        Qz = jnp.diag(jnp.array(mpc_config["Qz"]))
+        Qzf = jnp.diag(jnp.array(mpc_config["Qzf"]))
+        R = jnp.diag(jnp.array(mpc_config["R"])) * mpc_config["R_scale"]
+        R_du = jnp.diag(jnp.array(mpc_config["R_du"])) * mpc_config["R_du_scale"]
+        N = mpc_config["N"]
         
         gusto_config = GuSTOConfig(
             Qz=Qz,
