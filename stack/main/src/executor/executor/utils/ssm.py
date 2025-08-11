@@ -298,8 +298,8 @@ class OptSSM:
                 model_data=None,                # model data (load if exists)
                 verbose=False):                 # verbosity
         if model_data is not None:
-            self.SSMOrder = jnp.array(model_data['SSMOrder'])
-            self.ROMOrder = jnp.array(model_data['ROMOrder'])
+            self.SSMOrder = model_data['SSMOrder']
+            self.ROMOrder = model_data['ROMOrder']
             self.V_n_svd = jnp.array(model_data['V_n_svd'])
             self.V_n_opt = jnp.array(model_data['V_n_opt'])
             self.R_opt = jnp.array(model_data['R_opt'])
