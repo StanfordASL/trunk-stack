@@ -42,7 +42,7 @@ class MPCInitializerNode(Node):
                 },
                 "dt": 0.01
             },
-            "model_type": "ssm",
+            "model_type": "delay_ssm",  # for baselines, currently choose from {delay_ssm, opt_ssm}
             "model": "ssmr_orth_baseline"
         }
 
@@ -102,9 +102,9 @@ class MPCInitializerNode(Node):
         Load the learned (non-autonomous) dynamics model of the system.
         """
         # Load the model
-        if model_type == "ssm":
+        if "ssm" in model_type:
             model_path = os.path.join(self.data_dir, f'models/ssm/{self.model_name}.npz')
-            self.model = SSMR(model_path=model_path)
+            self.model = SSMR(model_path=model_path, model_type=model_type)
         else:
             KeyError(f"The requested model type {model_type} was not recognized.")
         
