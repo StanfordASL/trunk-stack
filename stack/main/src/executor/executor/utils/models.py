@@ -162,9 +162,11 @@ class SSMR(ReducedOrderModel):
                     V_n_svd = self.ssm.V_n_svd,
                     V_n_opt = self.ssm.V_n_opt,
                     R_opt = self.ssm.R_opt,
-                    W_nl_opt = self.W_nl_opt,
+                    W_nl_opt = self.ssm.W_nl_opt,
                     B_r_coeff = self.residual_dynamics.learned_B_r.B_r_coeff,
                     obs_perf_matrix = self.obs_perf_matrix)
+        else:
+            raise ValueError(f"Model type {self.model_type} not recognized. Supported types are 'delay_ssm' and 'opt_ssm'.")
 
 
 class ParametricSSMR(ReducedOrderModel):
