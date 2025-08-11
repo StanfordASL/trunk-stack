@@ -46,5 +46,5 @@ exec bash
 cd ~/Documents/trunk-stack-ssmr/stack/main/
 colcon build
 source install/setup.bash
-ros2 run executor mpc_node
+ros2 run executor mpc_initializer_node
 

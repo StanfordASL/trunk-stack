@@ -29,7 +29,7 @@ class MPCInitializerNode(Node):
 
         config = {
             "trajectory": {
-                "type": "circle",
+                "type": "circle_with_ramp",
                 "duration": 30.0,  # Duration of the simulation in seconds
                 "speed": 0.62831853071,  # Angular speed (rad/s)
                 "include_velocity": False,

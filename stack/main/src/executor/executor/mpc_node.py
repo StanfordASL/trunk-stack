@@ -1,6 +1,7 @@
 import os
 import csv
 from threading import Lock
+import time
 
 import jax
 import jax.numpy as jnp
@@ -97,17 +98,28 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.9  
+        self.alpha_smooth = 0.0  
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
         self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.09693386405706406, -0.10843498259782791, 0.10442628711462021,
-                                        0.10069605708122253, -0.20488880574703217, 0.10299749672412872,
-                                        0.10354240983724594, -0.31802642345428467, 0.10256308317184448])
+        self.rest_position = None
 
+        # Create publisher to execute found control inputs
+        self.controls_publisher = self.create_publisher(
+            AllMotorsControl,
+            '/all_motors_control',
+            QoSProfile(depth=3)
+        )
+
+        # Send zero input and wait
+
+        self.publish_control_inputs(jnp.zeros(self.n_u))
+        self.get_logger().info('Published zero control inputs to all motors.')
+        time.sleep(5)
+        self.get_logger().info('Published zero control inputs and waited for 10 seconds.')
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
@@ -132,13 +144,6 @@ class MPCNode(Node):
         
         # Request message definition
         self.req = ControlSolver.Request()
-
-        # Create publisher to execute found control inputs
-        self.controls_publisher = self.create_publisher(
-            AllMotorsControl,
-            '/all_motors_control',
-            QoSProfile(depth=3)
-        )
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
@@ -188,6 +193,11 @@ class MPCNode(Node):
 
         # Flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
         y_new = jnp.array([coord for pos in msg.positions for coord in (pos.x, pos.y, pos.z)])
+        self.get_logger().info(f'Flattened mocap data: {y_new}.')
+        
+        if self.rest_position is None:
+            self.rest_position = y_new
+            
         y_centered = y_new - self.rest_position
 
         # Take last three elements as tip positions
