@@ -192,7 +192,10 @@ class MPCNode(Node):
             self.get_logger().info(f'Received mocap data: {msg.positions}.')
 
         # Flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
-        y_new = jnp.array([coord for pos in msg.positions for coord in (pos.x, pos.y, pos.z)])
+        y_new = jnp.array([coord for pos in msg.positions for coord in (-pos.x, pos.y, -pos.z)])
+
+
+
         self.get_logger().info(f'Flattened mocap data: {y_new}.')
         
         if self.rest_position is None:
