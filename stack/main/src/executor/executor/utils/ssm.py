@@ -295,31 +295,41 @@ class OptSSM:
                 N_delay: int=None,              # number of delays
                 ts=None,                        # time array
                 ipopt_executable=None,          # path to IPOPT executable
+                model_data=None,                # model data (load if exists)
                 verbose=False):                 # verbosity
-        self.SSMDim = SSMDim
-        self.SSMOrder = SSMOrder
-        self.ROMOrder = ROMOrder
-        self.N_delay = N_delay
-        self.N_obs_delay = N_delay  # NOTE: we do not reparameterize here
-        self.t_split = t_split
+        if model_data is not None:
+            self.SSMOrder = jnp.array(model_data['SSMOrder'])
+            self.ROMOrder = jnp.array(model_data['ROMOrder'])
+            self.V_n_svd = jnp.array(model_data['V_n_svd'])
+            self.V_n_opt = jnp.array(model_data['V_n_opt'])
+            self.R_opt = jnp.array(model_data['R_opt'])
+            self.W_nl_opt = jnp.array(model_data['W_nl_opt'])
+            self.n_y, self.SSMDim = self.V_n_svd.shape
+        else:
+            self.SSMDim = SSMDim
+            self.SSMOrder = SSMOrder
+            self.ROMOrder = ROMOrder
+            self.N_delay = N_delay
+            self.N_obs_delay = N_delay  # NOTE: we do not reparameterize here
+            self.t_split = t_split
 
-        # Split the data
-        Y_transient, Y_dot_transient, Y_mani, Y_dot_mani = self._split_data(aut_trajs_obs, ts, t_split)
+            # Split the data
+            Y_transient, Y_dot_transient, Y_mani, Y_dot_mani = self._split_data(aut_trajs_obs, ts, t_split)
 
-        # Do SVD on data close to manifold
-        self.V_n_svd, _, _ = randomized_svd(np.asarray(Y_mani), n_components=SSMDim)
+            # Do SVD on data close to manifold
+            self.V_n_svd, _, _ = randomized_svd(np.asarray(Y_mani), n_components=SSMDim)
 
-        # Create optimization model using transient data
-        ipopt_model = self._create_optimization_model(np.array(Y_transient), np.array(Y_dot_transient))
+            # Create optimization model using transient data
+            ipopt_model = self._create_optimization_model(np.array(Y_transient), np.array(Y_dot_transient))
 
-        # Solve optimization problem
-        self.V_n_opt, _, _ = self._solve_with_ipopt(ipopt_model, executable=ipopt_executable, verbose=verbose)
+            # Solve optimization problem
+            self.V_n_opt, _, _ = self._solve_with_ipopt(ipopt_model, executable=ipopt_executable, verbose=verbose)
 
-        # Regress R on data close to manifold
-        self.R_opt = self._regress_reduced_dynamics(Y_mani, Y_dot_mani, verbose=verbose)
+            # Regress R on data close to manifold
+            self.R_opt = self._regress_reduced_dynamics(Y_mani, Y_dot_mani, verbose=verbose)
 
-        # Regress W_nl on data close to manifold
-        self.W_nl_opt = self._regress_parameterization_map(Y_mani, verbose=verbose)
+            # Regress W_nl on data close to manifold
+            self.W_nl_opt = self._regress_parameterization_map(Y_mani, verbose=verbose)
 
     def _split_data(self, aut_trajs_obs, ts, t_split):
         """

@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import copy
 from functools import partial
-from .ssm import DelaySSM, generate_ssm_predictions
+from .ssm import DelaySSM, OptSSM, generate_ssm_predictions
 from .residual import ResidualBr, PolyBr
 from .misc import trajectories_delay_embedding, trajectories_derivatives, RK4_step, update_parameter, compute_rmse, sample_truncated_normal
 from sklearn.metrics import r2_score
@@ -61,11 +61,12 @@ class SSMR(ReducedOrderModel):
     SSMR model combining a SSM model with a residual dynamics model.
     """
     def __init__(self, ssm=None, residual_dynamics=None, obs_perf_matrix=None, model_path=None, model_type='delay_ssm'):
+        self.model_type = model_type
         if model_path is not None:
             model_data = np.load(model_path)
-            if model_type == 'delay_ssm':
+            if self.model_type == 'delay_ssm':
                 ssm = DelaySSM(model_data=model_data)
-            elif model_type == 'opt_ssm':
+            elif self.model_type == 'opt_ssm':
                 ssm = OptSSM(model_data=model_data)
             residual_dynamics = ResidualBr(model_data=model_data)
             obs_perf_matrix = model_data['obs_perf_matrix']
@@ -144,15 +145,26 @@ class SSMR(ReducedOrderModel):
         """
         Save the SSMR model to a file.
         """
-        np.savez(path,
-                 dynamics_coeff = self.ssm.dynamics_coeff,
-                 dynamics_exp = self.ssm.dynamics_exp,
-                 encoder_coeff = self.ssm.encoder_coeff,
-                 encoder_exp = self.ssm.encoder_exp,
-                 decoder_coeff = self.ssm.decoder_coeff,
-                 decoder_exp = self.ssm.decoder_exp,
-                 B_r_coeff = self.residual_dynamics.learned_B_r.B_r_coeff,
-                 obs_perf_matrix = self.obs_perf_matrix)
+        if self.model_type == 'delay_ssm':
+            np.savez(path,
+                    dynamics_coeff = self.ssm.dynamics_coeff,
+                    dynamics_exp = self.ssm.dynamics_exp,
+                    encoder_coeff = self.ssm.encoder_coeff,
+                    encoder_exp = self.ssm.encoder_exp,
+                    decoder_coeff = self.ssm.decoder_coeff,
+                    decoder_exp = self.ssm.decoder_exp,
+                    B_r_coeff = self.residual_dynamics.learned_B_r.B_r_coeff,
+                    obs_perf_matrix = self.obs_perf_matrix)
+        elif self.model_type == 'opt_ssm':
+            np.savez(path,
+                    SSMOrder = self.ssm.SSMOrder,
+                    ROMOrder = self.ssm.ROMOrder,
+                    V_n_svd = self.ssm.V_n_svd,
+                    V_n_opt = self.ssm.V_n_opt,
+                    R_opt = self.ssm.R_opt,
+                    W_nl_opt = self.W_nl_opt,
+                    B_r_coeff = self.residual_dynamics.learned_B_r.B_r_coeff,
+                    obs_perf_matrix = self.obs_perf_matrix)
 
 
 class ParametricSSMR(ReducedOrderModel):
