@@ -75,7 +75,7 @@ class MPCNode(Node):
             ('n_u', 6),                                     # number of control inputs
             ('n_obs', 3),                                   # 2D, 3D or 6D observations
             ('n_delay', 3),     # ssm: 3                             # number of delays applied to observations
-            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
+            ('n_exec', 6),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'baseline_experiment')         # name of the results file
         ])
 
