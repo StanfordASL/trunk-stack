@@ -98,7 +98,7 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.0  
+        self.alpha_smooth = 0.9
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector

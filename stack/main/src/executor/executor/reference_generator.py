@@ -132,7 +132,8 @@ class ReferenceTrajectoryGenerator:
                 vy = 2 * amplitude * self.traj_speed * np.cos(2 * theta)
                 vz = 0.0
                 vel = np.array([vx, vy, vz])
-                return np.concatenate([pos, vel])
+                vel2 = np.zeros_like(vel) #Changed by patrick to ensure vel is not controlled
+                return np.concatenate([pos, vel2])
             else:
                 return pos
 

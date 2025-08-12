@@ -123,6 +123,7 @@ class MPCSolverNode(Node):
             response.done = False
         
         y0 = arr2jnp(request.y0, self.model.n_y, squeeze=True)
+        self.get_logger().info(f"y0: {y0}")
         x0 = self.model.encode(y0)
 
         start_idx = int(t0 / self.dt)
