@@ -29,9 +29,9 @@ class MPCInitializerNode(Node):
 
         config = {
             "trajectory": {
-                "type": "circle",
+                "type": "eight",
                 "duration": 30.0,  # Duration of the simulation in seconds
-                "speed": 0.62831853071,  # Angular speed (rad/s)
+                "speed": 0.62831853071 / 2,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
@@ -42,8 +42,8 @@ class MPCInitializerNode(Node):
                 },
                 "dt": 0.01
             },
-            "model_type": "delay_ssm",  # for baselines, currently choose from {delay_ssm, opt_ssm}
-            "model": "ssmr_orth_baseline"
+            "model_type": "opt_ssm",  # for baselines, currently choose from {delay_ssm, opt_ssm}
+            "model": "ssmr_opt_baseline"
         }
 
         self.debug = self.get_parameter('debug').value
