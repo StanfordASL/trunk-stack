@@ -214,6 +214,7 @@ class MPCSolverNode(Node):
         self.gusto.locp.u0_prev.value = self.u_prev0
 
         # 9) Solve GuSTO with the (possibly padded) reference
+
         self.gusto.solve(
             # CHANGED
             # x0_aug,
@@ -223,6 +224,7 @@ class MPCSolverNode(Node):
             z=ref_window,
             zf=ref_final
         )
+
         self.xopt, self.uopt, zopt, t_solve = self.gusto.get_solution()
         xopt_extracted = self.xopt[:, : self.model.n_x]
 

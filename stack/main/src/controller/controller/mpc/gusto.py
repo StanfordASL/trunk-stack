@@ -411,7 +411,7 @@ class GuSTO:
         return rho_k
 
     @partial(jax.jit, static_argnums=(0,))
-    def _compute_accuracy_specialised(self, x_k, u_k, x, u, J):
+    def _compute_accuracy_exact_case(self, x_k, u_k, x, u, J):
         """
         Compute the model accuracy for the given state and control inputs.
         """
