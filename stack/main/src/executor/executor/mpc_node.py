@@ -74,8 +74,8 @@ class MPCNode(Node):
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 6),                                     # number of control inputs
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
-            ('n_delay', 6),     # ssm: 3                             # number of delays applied to observations
-            ('n_exec', 6),                                  # number of control inputs to execute from MPC solution
+            ('n_delay', 3),     # ssm: 3                    # number of delays applied to observations
+            ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'baseline_experiment')         # name of the results file
         ])
 
@@ -115,7 +115,6 @@ class MPCNode(Node):
         )
 
         # Send zero input and wait
-
         self.publish_control_inputs(jnp.zeros(self.n_u))
         self.get_logger().info('Published zero control inputs to all motors.')
         time.sleep(5)
@@ -193,8 +192,6 @@ class MPCNode(Node):
 
         # Flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
         y_new = jnp.array([coord for pos in msg.positions for coord in (-pos.x, pos.y, -pos.z)])
-
-
 
         self.get_logger().info(f'Flattened mocap data: {y_new}.')
         
