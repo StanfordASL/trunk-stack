@@ -446,7 +446,7 @@ class DataCollectionNode(Node):
 
 class DataCollectionNode_feedback(Node):
     def __init__(self):
-        super().__init__('data_collection_node_feedback')
+        super().__init__('data_collection_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),  # False or True
             ('sample_size', 10),  # for checking settling condition and averaging (steady state)
@@ -491,7 +491,7 @@ class DataCollectionNode_feedback(Node):
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
         self.use_feedback = True
-        self.Lambda = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
+        self.Lambda = np.diag([-5.0, -5.5])
         self.G = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
         self.last_fb_time = None
         self.u = None
@@ -499,6 +499,15 @@ class DataCollectionNode_feedback(Node):
         self.fb_time_sum = 0.0  # seconds
         self.fb_time_count = 0
         self.fb_time_max = 0.0
+
+        # --- zero-calibration (average pos over ticks 100..120) ---
+        self.calib_start_tick = 100
+        self.calib_end_tick = 120
+        self.tick = 0
+        self.calib_accum = None
+        self.calib_count = 0
+        self.x_offset = None  # np.array, shape = n_state
+        self.calibrated = False
 
         if self.data_type == 'steady_state':
             control_input_csv_file = os.path.join(self.data_dir,
@@ -564,6 +573,13 @@ class DataCollectionNode_feedback(Node):
         pos_list = self.extract_positions(msg)
         return np.array([c for p in pos_list for c in (p.x, p.y, p.z)], dtype=float)
 
+    def _get_state_vector_calibrated(self, msg):
+        # returns calibrated x for control (subtract offset once available)
+        x = self._get_state_vector(msg)
+        if self.calibrated and self.x_offset is not None and self.x_offset.shape == x.shape:
+            x = x - self.x_offset
+        return x
+
     def _feedback_u(self, msg, u_ref):
         now = time.time()
         dt = (now - self.last_fb_time) if self.last_fb_time is not None else 0.0
@@ -575,7 +591,7 @@ class DataCollectionNode_feedback(Node):
         # start high-resolution timer for the integration work
         t0 = time.perf_counter()
 
-        x = self._get_state_vector(msg)
+        x = self._get_state_vector_calibrated(msg)
 
         # --- pull current 6D motor angles, then extract motors 2 & 4 (indices 1 and 3) ---
         num_actuators = 6  # adjust if needed
@@ -630,6 +646,34 @@ class DataCollectionNode_feedback(Node):
         return u_next_6  # publish this
 
     def listener_callback(self, msg):
+
+        # --- tick & calibration window ---
+        self.tick += 1
+
+        # initialize accumulator when we first enter the window
+        if self.tick == self.calib_start_tick:
+            x0 = self._get_state_vector(msg)
+            self.calib_accum = np.zeros_like(x0)
+            self.calib_count = 0
+
+        # accumulate raw states in [start..end]
+        if self.calib_start_tick <= self.tick <= self.calib_end_tick:
+            x_raw = self._get_state_vector(msg)
+            # (re)shape-safety in case n_state changes unexpectedly
+            if self.calib_accum is None or self.calib_accum.shape != x_raw.shape:
+                self.calib_accum = np.zeros_like(x_raw)
+                self.calib_count = 0
+            self.calib_accum += x_raw
+            self.calib_count += 1
+            # finalize at end tick
+            if self.tick == self.calib_end_tick:
+                self.x_offset = self.calib_accum / max(self.calib_count, 1)
+                self.calibrated = True
+                self.get_logger().info(
+                    f"[calib] x_offset set using ticks {self.calib_start_tick}-{self.calib_end_tick} "
+                    f"({self.calib_count} samples)"
+                )
+
         if not self.angle_callback_received:
             self.get_logger().info('Waiting for first motor angle message...')
             return
@@ -944,7 +988,8 @@ class DataCollectionNode_feedback(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    data_collection_node = DataCollectionNode()
+    # data_collection_node = DataCollectionNode()
+    data_collection_node = DataCollectionNode_feedback()
     rclpy.spin(data_collection_node)
     data_collection_node.destroy_node()
     rclpy.shutdown()
