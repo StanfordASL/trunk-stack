@@ -492,7 +492,12 @@ class DataCollectionNode_feedback(Node):
 
         self.use_feedback = True
         self.Lambda = np.diag([-5.0, -5.5])
-        self.G = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
+        #self.G = np.array([[-500.0, 0, 0, 0, 0, 0, 0, 0, 0], 
+        #                   [0, 0, 500.0, 0, 0, 0, 0, 0, 0]])
+        
+        self.G = np.array([[5000, 0, 0, 0, 0, 0, 0, 0, 0], 
+                           [0, 0, -5000, 0, 0, 0, 0, 0, 0]])
+        
         self.last_fb_time = None
         self.u = None
 
@@ -578,6 +583,8 @@ class DataCollectionNode_feedback(Node):
         x = self._get_state_vector(msg)
         if self.calibrated and self.x_offset is not None and self.x_offset.shape == x.shape:
             x = x - self.x_offset
+        else:
+            return np.zeros_like(x)
         return x
 
     def _feedback_u(self, msg, u_ref):
