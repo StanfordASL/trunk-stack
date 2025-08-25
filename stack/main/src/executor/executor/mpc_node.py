@@ -73,7 +73,7 @@ class MPCNode(Node):
             ('debug', False),                               # print debug messages
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 6),                                     # number of control inputs
-            ('n_obs', 6),                                   # 2D, 3D or 6D observations
+            ('n_obs', 3),                                   # 2D, 3D or 6D observations
             ('n_delay', 3),     # ssm: 3                    # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'baseline_experiment')         # name of the results file
@@ -201,10 +201,13 @@ class MPCNode(Node):
         y_centered = y_new - self.rest_position
 
         # Take last three elements as tip positions
-        y_tip = y_centered[-6:]
+        # y_tip = y_centered[-6:]
+        y_tip = y_centered[-3:]
 
         # Flip final two elements as we trained model with z up, not y up
-        idx_flip = jnp.array([0, 2, 1, 3, 5, 4])
+        idx_flip = jnp.array([0, 2, 1])
+        # idx_flip = jnp.array([0, 2, 1, 3, 5, 4])
+        
         y_observables = y_tip[idx_flip]
 
         # Form your block the same way
