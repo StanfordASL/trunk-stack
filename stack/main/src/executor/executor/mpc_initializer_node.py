@@ -41,7 +41,7 @@ class MPCInitializerNode(Node):
                 },
                 "dt": 0.02
             },
-            "model_type": "ssm",  # Options: ssm or koopman
+            "model_type": "koopman",  # Options: ssm or koopman
             "model": "origin_ssm_baseline(1)"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
         }
 
