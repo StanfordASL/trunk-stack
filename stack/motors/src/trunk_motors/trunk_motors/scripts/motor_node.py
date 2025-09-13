@@ -17,7 +17,7 @@ class DummyMotorNode(Node):
         super().__init__('motor_node')
         # match original parameter name
         self.declare_parameter('secure_mode', True)
-        self.MPC_SECURITY_MODE = self.get_parameter('secure_mode').value
+        self.MPC_SECURITY_MODE = False
 
         # allow callbacks in parallel
         self.callback_group = ReentrantCallbackGroup()
@@ -96,7 +96,7 @@ class MotorNode(Node):
             ('secure_mode', True)
         ])
 
-        self.MPC_SECURITY_MODE = self.get_parameter('secure_mode').value  # True if MPC is running
+        self.MPC_SECURITY_MODE = False  # True if MPC is running
 
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()

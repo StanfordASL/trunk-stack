@@ -28,9 +28,9 @@ class MPCInitializerNode(Node):
 
         config = {
             "trajectory": {
-                "type": "circle_with_ramp",
-                "duration": 20.0,  # Duration of the simulation in seconds
-                "speed": 0.5,  # Angular speed (rad/s)
+                "type": "eight",
+                "duration": 30.0,  # Duration of the simulation in seconds
+                "speed": 0.62831853071,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
@@ -42,7 +42,7 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "model_type": "koopman",  # Options: ssm or koopman
-            "model": "origin_ssm_baseline(1)"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
+            "model": "model1"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
         }
 
         if config["model_type"] == "koopman":
@@ -52,7 +52,7 @@ class MPCInitializerNode(Node):
 
         self.debug = self.get_parameter('debug').value
         self.model_name = config["model"]  # self.get_parameter('model_name').value
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack-ssmr/stack/main/data')
 
         # Load the model
         self._load_model(config["model_type"])
@@ -63,22 +63,6 @@ class MPCInitializerNode(Node):
         traj_config = config["trajectory"]
         self.model_name = config["model"]
 
-        
-        # Works for ssm
-        # MPC constraints
-        U = HyperRectangle([0.9]*2, [-0.9]*2)
-        dU = HyperRectangle([0.05]*2, [-0.05]*2)
-        
-        # MPC cost:
-        Qz = 700.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
-        Qz = Qz.at[2, 2].set(0)
-        Qzf = 2000.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
-        Qzf = Qzf.at[2, 2].set(0)
-        R = 0.0 * jnp.eye(self.model.n_u)
-        R_du = 16.0 * jnp.eye(self.model.n_u)
-        N = 10
-    
-        """
 
         # Works for Koopman
         # MPC constraints
@@ -88,12 +72,11 @@ class MPCInitializerNode(Node):
         # MPC cost:
         Qz = 1.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
         Qz = Qz.at[2, 2].set(0)
-        Qzf = 20.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z) # 30 gave oscillations 
+        Qzf = 30.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
         R = 0.0 * jnp.eye(self.model.n_u)
         R_du = 0.05 * jnp.eye(self.model.n_u)
         N = 2
-        """
         
 
         gusto_config = GuSTOConfig(

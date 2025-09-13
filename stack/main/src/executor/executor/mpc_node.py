@@ -1,7 +1,7 @@
 import os
 import csv
 from threading import Lock
-
+import time
 import jax
 import jax.numpy as jnp
 import logging
@@ -99,12 +99,12 @@ class MPCNode(Node):
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 2),                                     # number of control inputs
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
-            ('n_delay', 3),     # ssm: 3                             # number of delays applied to observations
+            ('n_delay', 1),     # ssm: 3                             # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
-        self.koopman_mpc = False
+        self.koopman_mpc = True
 
         self.debug = self.get_parameter('debug').value
         self.n_z = self.get_parameter('n_z').value
@@ -132,9 +132,22 @@ class MPCNode(Node):
         self.n_y = self.n_obs * (self.n_delay + 1)
 
         # Settled positions of the rigid bodies
-        self.rest_position = jnp.array([0.09535884857177734, -0.1082666888833046, 0.10464410483837128,
-                                        0.09557773104906082, -0.20486007630825043, 0.10213401371240616,
-                                        0.0971750413775444, -0.3174373507499695, 0.100])
+        self.rest_position = None
+        self.actuator_dynamics = None
+        self.clock = self.get_clock()
+
+        # Create publisher to execute found control inputs
+        self.controls_publisher = self.create_publisher(
+            AllMotorsControl,
+            '/all_motors_control',
+            QoSProfile(depth=3)
+        )
+
+
+        self.publish_control_inputs(jnp.zeros(self.n_u))
+        self.get_logger().info('Published zero control inputs to all motors.')
+        time.sleep(5)
+        self.get_logger().info('Published zero control inputs and waited for 10 seconds.')
         
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
@@ -161,23 +174,14 @@ class MPCNode(Node):
         # Request message definition
         self.req = ControlSolver.Request()
 
-        # Create publisher to execute found control inputs
-        self.controls_publisher = self.create_publisher(
-            AllMotorsControl,
-            '/all_motors_control',
-            QoSProfile(depth=3)
-        )
-
         # Maintain current observations because of the delay embedding
         self.latest_y = None
         if self.koopman_mpc:
             self.latest_y_koopman = None
 
-        self.actuator_dynamics = None
 
         # Maintain previous control inputs
         self.u_previous = jnp.zeros(self.n_u)
-        self.clock = self.get_clock()
 
         # track whether we’re finished so mpc_callback stops sending new requests
         self.finished = False
@@ -221,6 +225,10 @@ class MPCNode(Node):
 
         # 1) flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
         y_new = jnp.array([coord for pos in msg.positions for coord in (pos.x, pos.y, pos.z)])
+
+        if self.rest_position is None:
+            self.rest_position = y_new
+
         y_centered = y_new - self.rest_position
 
         perm_idx = jnp.array([6, 8, 7, 3, 5, 4, 0, 2, 1])

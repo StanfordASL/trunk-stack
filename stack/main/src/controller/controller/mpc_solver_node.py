@@ -205,6 +205,8 @@ class Koopman_MPCSolverNode(Node):
     def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None, U=None, X=None, Xf=None, dU=None, verbose=0, warm_start=True, **kwargs):
         
         self.model = model
+
+        print(f"Initializing Koopman MPC Solver Node with model n_x={self.model.n_x}, n_u={self.model.n_u}, n_y={self.model.n_y}")
         self.N = config.N
         self.Qz = config.Qz
         self.Qzf = config.Qzf
@@ -260,6 +262,7 @@ class Koopman_MPCSolverNode(Node):
         # --- Warm start: initial solve for JIT compilation ---
         print("[WARM START] Starting initial solve to trigger JIT compilation...")
         dummy_y = jnp.zeros(self.model.n_y)
+        print("dummy_y shape:", dummy_y.shape)
         dummy_x = self.model.encode(dummy_y)
         xk = jnp.tile(dummy_x.reshape(1, -1), (self.N + 1, 1))
         z_dummy = jnp.tile(jnp.zeros(self.H.shape[0]), (self.N + 1, 1))
@@ -305,7 +308,7 @@ class Koopman_MPCSolverNode(Node):
         n_remaining_u = self.N - idx0
         n_remaining_x = self.N + 1 - idx0
 
-        x_init_temp = self.xopt.copy()      # (N+1, n_x)
+        x_init_temp = np.array(self.xopt.copy())      # (N+1, n_x)
 
         for i in range(n_remaining_x):
             x_init_temp[i] = self.xopt[idx0 + i]
