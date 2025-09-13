@@ -87,6 +87,15 @@ def u2_to6u_mapping(u2, u4):
 
     return scaled
 
+@jax.jit
+def u6_to6u_mapping(u1, u2, u3, u4, u5, u6):
+    # stack into a vector and apply your per‐leg weights
+    raw = jnp.array([u1, u2, u3, u4, u5, u6])
+    weights = jnp.array([50, 80, 30, 80, 30, 50], dtype=raw.dtype)
+    scaled = raw * weights
+
+    return scaled
+
 
 class MPCNode(Node):
     """
@@ -97,7 +106,7 @@ class MPCNode(Node):
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # print debug messages
             ('n_z', 3),                                     # number of performance vars
-            ('n_u', 2),                                     # number of control inputs
+            ('n_u', 6),                                     # number of control inputs
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
             ('n_delay', 1),     # ssm: 3                             # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
@@ -125,7 +134,7 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.5
+        self.alpha_smooth = 0.97
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
@@ -193,7 +202,7 @@ class MPCNode(Node):
         self.mpc_callback()
 
         # JIT compile this functions
-        u6_init = u2_to6u_mapping(*self.u_previous)
+        u6_init = u6_to6u_mapping(*self.u_previous)
         check_control_inputs(u6_init, self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
@@ -259,7 +268,7 @@ class MPCNode(Node):
         with self.buffer_lock:
             if not self.control_buffer or self.buffer_index >= len(self.control_buffer):
                 return
-
+    
             control_inputs = self.control_buffer[self.buffer_index]
             # safe_control_inputs = check_control_inputs(control_inputs, self.u_previous)
             self.smooth_control_inputs = (1 - self.alpha_smooth) * control_inputs + self.alpha_smooth * self.smooth_control_inputs
@@ -269,6 +278,7 @@ class MPCNode(Node):
 
             self.buffer_index += 1
 
+        
         self.publish_control_inputs(self.smooth_control_inputs.tolist())
         self.u_previous = self.smooth_control_inputs
 
@@ -349,13 +359,8 @@ class MPCNode(Node):
         Publish the control inputs.
         """
 
-        if self.actuator_dynamics is None:
-            self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"],
-                                              current_time=self.clock.now().nanoseconds / 1e9)
 
-        real_control_inputs = self.actuator_dynamics(new_time=self.clock.now().nanoseconds / 1e9, new_u=control_inputs)
-
-        control_inputs_6 = u2_to6u_mapping(*real_control_inputs)
+        control_inputs_6 = u6_to6u_mapping(*control_inputs)
         safe_control_inputs_6 = check_control_inputs(control_inputs_6)
 
         control_message = AllMotorsControl()

@@ -1,7 +1,7 @@
 import os
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
-
+import numpy as np
 import jax
 import jax.numpy as jnp
 import logging
@@ -42,7 +42,7 @@ class MPCInitializerNode(Node):
                 "dt": 0.02
             },
             "model_type": "koopman",  # Options: ssm or koopman
-            "model": "model1"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
+            "model": "koopman-pat"  # origin_ssm_baseline(1) or koopman_real_trunk_perf3
         }
 
         if config["model_type"] == "koopman":
@@ -66,17 +66,17 @@ class MPCInitializerNode(Node):
 
         # Works for Koopman
         # MPC constraints
-        U = HyperRectangle([0.4]*self.model.n_u, [-0.4]*self.model.n_u)
-        dU = HyperRectangle([0.05]*self.model.n_u, [-0.05]*self.model.n_u)
+        U = HyperRectangle([0.99]*self.model.n_u, [-0.99]*self.model.n_u)
+        dU = HyperRectangle([0.5]*self.model.n_u, [-0.5]*self.model.n_u)
         
         # MPC cost:
         Qz = 1.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
         Qz = Qz.at[2, 2].set(0)
-        Qzf = 30.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
+        Qzf = 100.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
-        R = 0.0 * jnp.eye(self.model.n_u)
-        R_du = 0.05 * jnp.eye(self.model.n_u)
-        N = 2
+        R = jnp.array(np.diag([2,0,3,0,3,2])) * 0.00005 
+        R_du = jnp.array(np.diag([2,1,3,1,3,2])) * 0.005  # jnp.eye(self.model.n_u) * 0.01
+        N = 3
         
 
         gusto_config = GuSTOConfig(
