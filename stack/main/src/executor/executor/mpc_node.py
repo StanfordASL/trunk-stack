@@ -101,7 +101,7 @@ class MPCNode(Node):
             ('n_obs', 6),                                   # 2D, 3D or 6D observations
             ('n_delay', 1),     # ssm: 3                             # number of delays applied to observations
             ('n_exec', 2),                                  # number of control inputs to execute from MPC solution
-            ('results_name', 'test_experiment')             # name of the results file
+            ('results_name', 'test_experiment_pat')             # name of the results file
         ])
 
         self.koopman_mpc = True
@@ -115,7 +115,7 @@ class MPCNode(Node):
         self.results_name = self.get_parameter('results_name').value
 
         # Initialize the CSV file
-        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
+        self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack-ssmr/stack/main/data')
         self.results_file = os.path.join(self.data_dir, f"trajectories/closed_loop/{self.results_name}.csv")
         self.initialize_csv()
 
@@ -125,7 +125,7 @@ class MPCNode(Node):
         self.buffer_lock = Lock()
         
         # We perform smoothing to handle initial transients
-        self.alpha_smooth = 0.0  
+        self.alpha_smooth = 0.5
         self.smooth_control_inputs = jnp.zeros(self.n_u)
 
         # Size of observations vector
@@ -294,6 +294,7 @@ class MPCNode(Node):
             self.initialized = True
         elif y_latest is not None:
             self.y0 = y_latest
+            print(f"y0: {self.y0}")
             self.send_request(self.t0, self.y0, self.u_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
@@ -347,7 +348,6 @@ class MPCNode(Node):
         """
         Publish the control inputs.
         """
-        print(f"Publishing control inputs: {control_inputs}")
 
         if self.actuator_dynamics is None:
             self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"],
@@ -357,7 +357,6 @@ class MPCNode(Node):
 
         control_inputs_6 = u2_to6u_mapping(*real_control_inputs)
         safe_control_inputs_6 = check_control_inputs(control_inputs_6)
-        print(f"Publishing safe and scaled control inputs: {safe_control_inputs_6}")
 
         control_message = AllMotorsControl()
         control_message.motors_control = tuple(safe_control_inputs_6.tolist())
