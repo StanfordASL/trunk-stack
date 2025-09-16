@@ -28,9 +28,9 @@ class MPCInitializerNode(Node):
 
         config = {
             "trajectory": {
-                "type": "eight",
+                "type": "circle",
                 "duration": 60.0,  # Duration of the simulation in seconds
-                "speed": 0.62831853071/2,  # Angular speed (rad/s)
+                "speed": 0.62831853071,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
@@ -67,16 +67,16 @@ class MPCInitializerNode(Node):
         # Works for Koopman
         # MPC constraints
         U = HyperRectangle([0.99]*self.model.n_u, [-0.99]*self.model.n_u)
-        dU = HyperRectangle([0.5]*self.model.n_u, [-0.5]*self.model.n_u)
+        dU = HyperRectangle([1.5]*self.model.n_u, [-1.5]*self.model.n_u)
         
         # MPC cost:
         Qz = 1.0 * jnp.eye(3)  # jnp.eye(self.model.n_z)
         Qz = Qz.at[2, 2].set(0)
         Qzf = 100.0 * jnp.eye(3)  # hardcode for the moment jnp.eye(self.model.n_z)
         Qzf = Qzf.at[2, 2].set(0)
-        R = jnp.array(np.diag([2,0,3,0,3,2])) * 0.00025 
-        R_du = jnp.array(np.diag([2,1,3,1,3,2])) * 0.005  # jnp.eye(self.model.n_u) * 0.01
-        N = 3
+        R = jnp.array(np.diag([1,1,0.1,1,0.1,1])) * 0.0025
+        R_du = jnp.array(np.diag([1,1,1,1,1,1])) * 0.005  # jnp.eye(self.model.n_u) * 0.01
+        N = 5
         
 
         gusto_config = GuSTOConfig(
