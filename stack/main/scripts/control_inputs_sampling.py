@@ -42,7 +42,7 @@ def set_adiabatic_control_offset(n_samples):
 
     return const_input
 
-def hypercube_controlled_sampling(control_variables, random_seed, num_points=1000):
+def hypercube_controlled_sampling(control_variables, random_seed, num_points=100):
     points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=1, excluded_neighbors=1)
     len_traj = 100 #100 = 1s
 
@@ -56,13 +56,13 @@ def hypercube_controlled_sampling(control_variables, random_seed, num_points=100
 
 
 
-def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=10, visits_per_point=3, excluded_neighbors=2):
+def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=10, visits_per_point=10, excluded_neighbors=2):
     np.random.seed(random_seed)
 
     # Define bounds
-    tip_radius = 80
-    mid_radius = 50
-    base_radius = 30
+    tip_radius = 110
+    mid_radius = 110
+    base_radius = 110
     maxs = np.array([mid_radius, tip_radius, base_radius, tip_radius, base_radius, mid_radius])
     mins = -maxs
 
@@ -212,7 +212,7 @@ def adiabatic_step_sampling(control_variables, seed):
 
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, tip_radius=80, mid_radius=50, base_radius=30, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, tip_radius=90, mid_radius=90, base_radius=90, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
@@ -572,7 +572,7 @@ def main(data_type, sampling_type, seed=None):
     control_variables = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']
     # data_dir for mark's mac starts with '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data'
     # data_dir for workstation is '/home/trunk/Documents/trunk-stack/stack/main/data'
-    data_dir = os.getenv('TRUNK_DATA', '/Users/markleone/Documents/Stanford/ASL/trunk-stack/stack/main/data')
+    data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
     if seed is not None:
         control_inputs_file = os.path.join(data_dir, f'trajectories/{data_type}/control_inputs_{sampling_type}_{seed}.csv')
     else:
@@ -609,6 +609,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'latin_hypercube_controlled'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
-    seed = 1                            # choose integer seed number
+    sampling_type = 'latin_hypercube'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
+    seed = 202                            # choose integer seed number
     main(data_type, sampling_type, seed)

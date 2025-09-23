@@ -16,7 +16,7 @@ class DummyMotorNode(Node):
     def __init__(self):
         super().__init__('motor_node')
         # match original parameter name
-        self.declare_parameter('secure_mode', True)
+        self.declare_parameter('secure_mode', False)
         self.MPC_SECURITY_MODE = self.get_parameter('secure_mode').value
 
         # allow callbacks in parallel
@@ -102,12 +102,13 @@ class MotorNode(Node):
         self.callback_group = ReentrantCallbackGroup()
 
         # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-        self.rest_positions = np.array([193.0, 189.0, 186.0, 183.0, 187.0, 204.0])
+        self.rest_positions = np.array([208.21, 189.0, 186.0, 183.0, 187.0, 211.82])
         self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
 
         # Define a safe region to operate the motors in (position and velocity):
-        self.limits_safe = np.array([51, 81, 31, 81, 31, 51])
-        self.delta_limits_safe = np.array([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
+        # self.limits_safe = np.array([51, 81, 31, 81, 31, 51]) # these should never exceed 180 degrees
+        self.limits_safe = np.array([111, 111, 111, 111,111,111] )# these should never exceed 180 degrees
+        self.delta_limits_safe = np.array([500.0, 500.0, 500.0, 500.0, 500.0, 500.0]) # TODO
 
         self.last_motor_positions = None
 
@@ -231,7 +232,7 @@ class MotorNode(Node):
         # Subselect tip
         y_centered_tip = y_centered[-3:]
 
-        if np.linalg.norm(y_centered_tip) > 0.15:
+        if np.linalg.norm(y_centered_tip) > 1.0:  # 1 meter from rest position is unsafe
             self.get_logger().error(
                 f"Unsafe trunk position at value commands at indices {np.linalg.norm(y_centered_tip)}. "
                 "Shutting down the motor node."
