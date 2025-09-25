@@ -212,7 +212,7 @@ def adiabatic_step_sampling(control_variables, seed):
 
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, tip_radius=90, mid_radius=90, base_radius=90, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, tip_radius=110, mid_radius=110, base_radius=110, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
@@ -609,6 +609,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'latin_hypercube'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
-    seed = 202                            # choose integer seed number
+    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
+    seed = 200                            # choose integer seed number
     main(data_type, sampling_type, seed)

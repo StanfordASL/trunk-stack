@@ -102,7 +102,9 @@ class DataCollectionNode(Node):
         self.stored_positions = []
         self.stored_orientations = []
         self.stored_angles = []
+        self.stored_currents = []
         self.last_motor_angles = None
+        self.last_motor_currents = None
         self.control_inputs = None
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
 
@@ -150,12 +152,14 @@ class DataCollectionNode(Node):
     def motor_angles_callback(self, msg):
         if self.data_type == 'dynamic' and (self.data_subtype == 'controlled' or self.data_subtype == 'adiabatic_global'):   
             self.last_motor_angles = self.extract_angles(msg)
-
+            self.last_motor_currents = self.extract_currents(msg)
             if not self.angle_callback_received:
                 self.get_logger().info('Motor angles callback received first message')
                 self.angle_callback_received = True
         else:  # allows you to get around angle callback if you are not doing a control trajectory
             self.angle_callback_received = True
+
+  
 
     def listener_callback(self, msg):
         if not self.angle_callback_received:
@@ -312,6 +316,11 @@ class DataCollectionNode(Node):
         if self.debug:
             self.get_logger().info('Published new motor control setting: ' + str(control_inputs))
 
+    def extract_currents(self, msg):
+        currents = msg.currents
+        self.last_motor_currents = currents
+        return currents
+
     def extract_angles(self, msg):
         angles = msg.positions
         self.angle_update_count += 1
@@ -342,6 +351,7 @@ class DataCollectionNode(Node):
         if self.collect_orientations:
             self.stored_orientations.append(self.extract_orientations(msg))
         self.stored_angles.append(self.last_motor_angles)  # store last motor angles when position is available
+        self.stored_currents.append(self.last_motor_currents)  # store last motor currents when position is available
         if self.debug:
             self.get_logger().info("Stored angles: " + str(self.last_motor_angles))
 
@@ -380,7 +390,7 @@ class DataCollectionNode(Node):
         # Populate the header row of the CSV file with states if it does not exist
         trajectory_csv_file = os.path.join(self.data_dir, f'trajectories/{self.data_type}/{self.results_name}.csv')
         if not os.path.exists(trajectory_csv_file):
-            header = ['ID'] + [f'{axis}{name}' for name in names for axis in ['x', 'y', 'z']] + [f'{axis}{name}' for name in names for axis in ['qx', 'qy', 'qz', 'w']] + [f'phi{num+1}' for num in range(6)] 
+            header = ['ID'] + [f'{axis}{name}' for name in names for axis in ['x', 'y', 'z']] + [f'{axis}{name}' for name in names for axis in ['qx', 'qy', 'qz', 'w']] + [f'phi{num+1}' for num in range(6)] + [f'current{num+1}' for num in range(6)]
             with open(trajectory_csv_file, 'w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(header)
@@ -413,8 +423,9 @@ class DataCollectionNode(Node):
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
                     angle_list = self.stored_angles[id]
+                    current_list = self.stored_currents[id]
                     ornt_list = self.stored_orientations[id]
-                    row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [coord for ornt in ornt_list for coord in [ornt.x, ornt.y, ornt.z, ornt.w]] + [angle for angle in angle_list]
+                    row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [coord for ornt in ornt_list for coord in [ornt.x, ornt.y, ornt.z, ornt.w]] + [angle for angle in angle_list] + [current for current in current_list]
                     writer.writerow(row)
                     
             if self.debug:
@@ -437,8 +448,9 @@ class DataCollectionNode(Node):
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
                     angle_list = self.stored_angles[id]
+                    current_list = self.stored_currents[id]
                     ornt_list = self.stored_orientations[id]
-                    row = [self.current_control_id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [coord for ornt in ornt_list for coord in [ornt.x, ornt.y, ornt.z, ornt.w]] + [angle for angle in angle_list]
+                    row = [self.current_control_id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [coord for ornt in ornt_list for coord in [ornt.x, ornt.y, ornt.z, ornt.w]] + [angle for angle in angle_list] + [current for current in current_list]
                     writer.writerow(row)
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
@@ -558,6 +570,8 @@ class DataCollectionNode_feedback(Node):
             QoSProfile(depth=10)
         )
         self.get_logger().info('Data collection node has been started.')
+    
+
 
     def motor_angles_callback(self, msg):
         if self.data_type == 'dynamic' and (
@@ -877,8 +891,11 @@ class DataCollectionNode_feedback(Node):
         if self.collect_orientations:
             self.stored_orientations.append(self.extract_orientations(msg))
         self.stored_angles.append(self.last_motor_angles)  # store last motor angles when position is available
+        self.stored_currents.append(self.last_motor_currents)  # store last motor currents when position is available
+
         if self.debug:
             self.get_logger().info("Stored angles: " + str(self.last_motor_angles))
+            self.get_logger().info("Stored currents: " + str(self.last_motor_currents))
 
     def check_settled(self, tolerance=0.00025, window=5):
         if len(self.check_settled_positions) < window:
@@ -952,6 +969,7 @@ class DataCollectionNode_feedback(Node):
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
                     angle_list = self.stored_angles[id]
+                    current_list = self.stored_currents[id]
                     ornt_list = self.stored_orientations[id]
                     row = [id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [coord for ornt in
                                                                                                    ornt_list for coord
@@ -961,7 +979,7 @@ class DataCollectionNode_feedback(Node):
                                                                                                                    for
                                                                                                                    angle
                                                                                                                    in
-                                                                                                                   angle_list]
+                                                                                                                   angle_list] + [current for current in current_list]
                     writer.writerow(row)
 
             if self.debug:
@@ -984,10 +1002,11 @@ class DataCollectionNode_feedback(Node):
                 writer = csv.writer(file)
                 for id, pos_list in enumerate(self.stored_positions):
                     angle_list = self.stored_angles[id]
+                    current_list = self.stored_currents[id]
                     ornt_list = self.stored_orientations[id]
                     row = [self.current_control_id] + [coord for pos in pos_list for coord in [pos.x, pos.y, pos.z]] + [
                         coord for ornt in ornt_list for coord in [ornt.x, ornt.y, ornt.z, ornt.w]] + [angle for angle in
-                                                                                                      angle_list]
+                                                                                                      angle_list] + [current for current in current_list]
                     writer.writerow(row)
             if self.debug:
                 self.get_logger().info(f'Stored the data corresponding to the {self.current_control_id}th trajectory.')
@@ -995,8 +1014,8 @@ class DataCollectionNode_feedback(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    # data_collection_node = DataCollectionNode()
-    data_collection_node = DataCollectionNode_feedback()
+    data_collection_node = DataCollectionNode()
+    # data_collection_node = DataCollectionNode_feedback()
     rclpy.spin(data_collection_node)
     data_collection_node.destroy_node()
     rclpy.shutdown()
