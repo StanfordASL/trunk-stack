@@ -5,8 +5,8 @@ import glob
 import os
 
 base_path = "/home/trunk/Documents/trunk-stack/stack/main/data/trajectories/dynamic/"
-base_name = "trialv2-201_zeropad_not_mod_"
-n_trials = 5
+base_name = "observations_controlled_200_"#"trialv2-201_zeropad_not_mod_"
+n_trials = 10
 
 xs = []
 ys = []

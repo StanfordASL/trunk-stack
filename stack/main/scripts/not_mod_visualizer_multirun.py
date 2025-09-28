@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 base_path = "/home/trunk/Documents/trunk-stack/stack/main/data/trajectories/dynamic/"
-base_name = "trialv2-201_zeropad_not_mod_"
+base_name = "observations_controlled_200_new"
 
 # === Figure 1: time plots ===
 fig, axs = plt.subplots(3, 1, figsize=(10, 8))
@@ -16,7 +17,7 @@ ax3d = fig3d.add_subplot(111, projection="3d")
 all_x, all_y, all_z = [], [], []
 all_3d = []
 
-for i in range(1, 11):  # loop over 10 trials
+for i in range(3, 5):  # loop over 10 trials
     filename = f"{base_path}{base_name}{i}.csv"
     df = pd.read_csv(filename)
 

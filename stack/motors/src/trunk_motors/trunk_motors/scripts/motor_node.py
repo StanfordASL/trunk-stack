@@ -10,7 +10,7 @@ import numpy as np
 from motor_utils.dynamixel_client_motor import DynamixelClient
 from interfaces.msg import AllMotorsControl, TrunkRigidBodies
 from interfaces.msg import AllMotorsStatus
-
+from std_msgs.msg import Float32MultiArray
 
 class DummyMotorNode(Node):
     def __init__(self):
@@ -52,11 +52,12 @@ class DummyMotorNode(Node):
         self.last_motor_positions = np.zeros(6)
 
         # publish dummy status at 100 Hz
-        self.timer = self.create_timer(1.0/100.0, self.read_status)
+        self.timer = self.create_timer(1.0/10.0, self.read_status)
 
         self.get_logger().info(
             'Dummy motor node initialized: publishing zeroed states at 100 Hz'
         )
+
 
     def command_positions(self, msg: AllMotorsControl):
         # record last commanded positions, but do not send to hardware
@@ -102,12 +103,12 @@ class MotorNode(Node):
         self.callback_group = ReentrantCallbackGroup()
 
         # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-        self.rest_positions = np.array([203.20, 189.0, 186.0, 183.0, 187.0, 219.37])
+        self.rest_positions = np.array([192.74, 189.0, 186.0, 183.0, 187.0, 187.82])
         self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
 
         # Define a safe region to operate the motors in (position and velocity):
         # self.limits_safe = np.array([51, 81, 31, 81, 31, 51]) # these should never exceed 180 degrees
-        self.limits_safe = np.array([111, 111, 111, 111,111,111] )# these should never exceed 180 degrees
+        self.limits_safe = np.array([111, 111, 111, 111,111,111] )# limits_safe[i] should never exceed 360 - rest_positions[i]
         self.delta_limits_safe = np.array([500.0, 500.0, 500.0, 500.0, 500.0, 500.0]) # TODO
 
         self.last_motor_positions = None
@@ -149,6 +150,12 @@ class MotorNode(Node):
             10
         )
 
+        self.currents_publisher = self.create_publisher(
+            Float32MultiArray,
+            '/motor_currents',
+            10
+        )
+
         # Old rest position for trunk motors
         # self.rest_position_trunk = np.array([0.09535884857177734, -0.1082666888833046, 0.10464410483837128,
         #                                    0.09557773104906082, -0.20486007630825043, 0.10213401371240616,
@@ -163,15 +170,18 @@ class MotorNode(Node):
 
         # read out initial positions
         self.get_logger().info('Initial motor status: ')
-        positions = self.read_status()
+        positions, currents = self.read_status()
         positions_raw = positions + self.rest_positions
 
         for idx, id in enumerate(self.motor_ids):
             self.get_logger().info(f"Motor {id} position: {positions[idx]:.2f} degrees")  # display in degrees
+            self.get_logger().info(f"Motor {id} current: {currents[idx]:.2f} mA")  # display in mA
         for idx, id in enumerate(self.motor_ids):
             self.get_logger().info(f"Motor {id} raw position: {positions_raw[idx]:.2f} degrees")  # display in degrees
 
         self.get_logger().info('Motor control node initialized!')
+
+
 
     def command_positions(self, msg):
         # commands new positions to the motors
@@ -260,7 +270,15 @@ class MotorNode(Node):
         msg.currents = currents.tolist()  # TODO: determine if in mA (should be)
 
         self.status_publisher.publish(msg)
-        return positions
+
+        # for idx, id in enumerate(self.motor_ids):
+        #        self.get_logger().info(f"Motor {id} current: {currents[idx]:.2f} mA")  # display in mA
+
+        currents_msg = Float32MultiArray()
+        currents_msg.data = currents.tolist()
+        self.currents_publisher.publish(currents_msg)
+        
+        return positions, currents
 
     def shutdown(self):
         # cleanup before shutdown
