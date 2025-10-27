@@ -103,12 +103,14 @@ class MotorNode(Node):
         self.callback_group = ReentrantCallbackGroup()
 
         # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-        self.rest_positions = np.array([192.74, 189.0, 186.0, 183.0, 187.0, 187.82])
+        self.rest_positions = np.array([303.93, 112.5, 120.15, 177.63, 139.04, 110.74])
         self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
+        #1-6 base, 2-4 is tip, 3-5 middle
 
         # Define a safe region to operate the motors in (position and velocity):
         # self.limits_safe = np.array([51, 81, 31, 81, 31, 51]) # these should never exceed 180 degrees
-        self.limits_safe = np.array([111, 111, 111, 111,111,111] )# limits_safe[i] should never exceed 360 - rest_positions[i]
+        #self.limits_safe = np.array([50, 111, 91, 111, 91, 50S] )# limits_safe[i] should never exceed 360 - rest_positions[i]   ABSOLUTE VALUES OF TRUNKV2
+        self.limits_safe = np.array([51, 111, 71, 111, 71, 51] )# limits_safe[i] should never exceed 360 - rest_positions[i]   TOTAL VALUES OF TRUNKV2
         self.delta_limits_safe = np.array([500.0, 500.0, 500.0, 500.0, 500.0, 500.0]) # TODO
 
         self.last_motor_positions = None

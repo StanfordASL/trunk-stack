@@ -42,9 +42,9 @@ def set_adiabatic_control_offset(n_samples):
 
     return const_input
 
-def hypercube_controlled_sampling(control_variables, random_seed, num_points=100):
+def hypercube_controlled_sampling(control_variables, random_seed, num_points=1000):
     points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=1, excluded_neighbors=1)
-    len_traj = 100 #100 = 1s
+    len_traj = 200 #100 = 1s
 
     # Repeat each row len_traj times
     control_inputs_df = points_df.loc[points_df.index.repeat(len_traj)].reset_index(drop=True)
@@ -56,14 +56,14 @@ def hypercube_controlled_sampling(control_variables, random_seed, num_points=100
 
 
 
-def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=10, visits_per_point=10, excluded_neighbors=2):
+def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=30, visits_per_point=1, excluded_neighbors=20):
     np.random.seed(random_seed)
 
     # Define bounds
     tip_radius = 110
-    mid_radius = 110
-    base_radius = 110
-    maxs = np.array([mid_radius, tip_radius, base_radius, tip_radius, base_radius, mid_radius])
+    mid_radius = 70
+    base_radius = 50
+    maxs = np.array([base_radius, tip_radius, mid_radius, tip_radius, mid_radius, base_radius])
     mins = -maxs
 
     # Latin Hypercube Sampling
@@ -210,16 +210,31 @@ def adiabatic_step_sampling(control_variables, seed):
 
     return control_inputs_df
 
+# for creating zeros control inputs
+def zero_control_sampling(control_variables, n_samples=1000):
+    control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
+    
+    control_inputs = np.zeros((n_samples, 6))
+
+    # convert to df
+    ids = np.arange(n_samples)
+    ids = ids[:, np.newaxis]
+    inputs = np.hstack((ids, control_inputs))
+    inputs_df = pd.DataFrame(inputs, columns=control_inputs_df.columns)
+    control_inputs_df = pd.concat([control_inputs_df, inputs_df], ignore_index=True)
+
+    return control_inputs_df
+
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, tip_radius=110, mid_radius=110, base_radius=110, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, tip_radius=110, mid_radius=70, base_radius=50, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
     seeds = seed * np.arange(1,7) # one for each control input
 
     # max displacement from rest pos in degrees
-    maxs = [mid_radius, tip_radius, base_radius, tip_radius, base_radius, mid_radius]  # tip:2, 4; mid: 1, 6; base: 3, 5
+    maxs = [base_radius, tip_radius, mid_radius, tip_radius, mid_radius, base_radius]  # tip:2, 4; mid: 1, 6; base: 3, 5
     mins = [-x for x in maxs]
 
     control_inputs = np.zeros((n_samples, 6))
@@ -600,6 +615,8 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = latin_hypercube_adiabatic_sampling(control_variables, seed)
     elif sampling_type == 'latin_hypercube_controlled':
         control_inputs_df = hypercube_controlled_sampling(control_variables, seed)
+    elif sampling_type == 'zero_control':
+        control_inputs_df = zero_control_sampling(control_variables)
     else:
         raise ValueError(f"Invalid sampling_type: {sampling_type}")
 
@@ -609,6 +626,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
-    seed = 200                            # choose integer seed number
+    sampling_type = 'zero_control'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
+    seed = 0                            # choose integer seed number
     main(data_type, sampling_type, seed)

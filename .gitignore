@@ -25,6 +25,7 @@ __pycache__/
 
 # Large files
 **/large_files/
+**/data/
 
 # External packages
 **/mocap_msgs/
