@@ -98,6 +98,8 @@ class MPCInitializerNode(Node):
         # Generate reference trajectory
         # z_ref, t = self._generate_ref_trajectory(10, dt, 'figure_eight', 0.03)
 
+
+        # TODO 1
         self.ref_traj = ReferenceTrajectoryGenerator(traj_config, mpc_config["dt"])
         self.ref_traj.sample_trajectory(traj_config["duration"])
         self.times = self.ref_traj.times

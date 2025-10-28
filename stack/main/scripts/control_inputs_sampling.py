@@ -227,7 +227,7 @@ def zero_control_sampling(control_variables, n_samples=1000):
 
 
 # for creating smooth random control trajectories
-def perlin_noise_sampling(control_variables, seed, tip_radius=110, mid_radius=70, base_radius=50, n_samples=15000):
+def perlin_noise_sampling(control_variables, seed, tip_radius=70, mid_radius=50, base_radius=30, n_samples=15000):
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     
     n_octaves = 120 # more octaves = more peaks in the graph (less smooth)
@@ -626,6 +626,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'zero_control'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
-    seed = 0                            # choose integer seed number
+    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
+    seed = 309                            # choose integer seed number
     main(data_type, sampling_type, seed)

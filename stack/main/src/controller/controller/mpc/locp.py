@@ -95,7 +95,7 @@ class LOCP:
             # If dynamics class has nonlinear_perf_mapping = False. In this case this class should
             # use self.H as shown above. This seems to be different from when not warm_starting
             if self.nonlinear_perf_mapping:
-                self.Hd = [cp.Parameter((self.n_z, self.n_x)) for i in range(self.N + 1)]
+                self.Hd = [cp.Parameter((self.n_z, self.n_x)) for i in range(self.N + 1)] 
                 self.cd = cp.Parameter((self.N + 1) * self.n_z)
 
             self.x0 = cp.Parameter(self.n_x)
