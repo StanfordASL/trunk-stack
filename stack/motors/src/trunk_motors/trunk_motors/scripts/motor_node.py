@@ -103,7 +103,7 @@ class MotorNode(Node):
         self.callback_group = ReentrantCallbackGroup()
 
         # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-        self.rest_positions = np.array([303.93, 112.5, 120.15, 177.63, 139.04, 110.74])
+        self.rest_positions = np.array([203.82, 174.29, 181.32, 181.76, 179.56, 180.88])
         self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
         #1-6 base, 2-4 is tip, 3-5 middle
 

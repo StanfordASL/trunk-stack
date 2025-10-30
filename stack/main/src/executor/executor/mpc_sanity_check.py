@@ -16,82 +16,10 @@ from controller.mpc_solver_node import jnp2arr              # type: ignore
 from interfaces.msg import AllMotorsControl, TrunkRigidBodies, AllMotorsStatus
 from interfaces.srv import ControlSolver
 
-from .dyn_system import System
-
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
 jax.config.update("jax_enable_x64", True)
 
-
-# config = {
-#     "actuator_lambda": [[-5.0, 0.0], [0.0, -5.5]]
-#     #"actuator_lambda": [[-6.5, 0.0], [0.0, -6.5]]
-# }
-
-
-@jax.jit
-def check_control_inputs(u_opt, u_previous=None):
-    """
-    Check control inputs for safety constraints, rejecting vector norms that are too large.
-    """
-
-    tip_range, mid_range, base_range = 111, 71, 51
-
-    """
-    scale = 1.0
-    tip_range *= scale
-    mid_range *= scale
-    base_range *= scale
-    """
-
-    u1, u2, u3, u4, u5, u6 = u_opt[0], u_opt[1], u_opt[2], u_opt[3], u_opt[4], u_opt[5]
-
-    # base tip mid tip mid base - trunk v2 orientation
-
-    # First we clip to max and min values FOR SAVETY ONLY SEND 0 RIGHT NOW
-    u2 = jnp.clip(u2, -tip_range, tip_range)
-    u4 = jnp.clip(u4, -tip_range, tip_range)
-
-    u3 = jnp.clip(u3, -mid_range, mid_range)
-    u5 = jnp.clip(u5, -mid_range, mid_range)
-
-    u1 = jnp.clip(u1, -base_range, base_range)
-    u6 = jnp.clip(u6, -base_range, base_range)
-
-    # Check the constraint: if the constraint is met, then keep previous control command
-    u_opt = jnp.array([u1, u2, u3, u4, u5, u6])
-
-    return u_opt
-
-
-@jax.jit
-def u2_to6u_mapping(u2, u4):
-    # angle and radius
-    teta = jnp.arctan2(u4, u2)
-    r_scaling = jnp.hypot(u2, u4)
-
-    # reconstruct sanity checks
-    # u2_calc = r_scaling * jnp.cos(teta)
-    # u4_calc = r_scaling * jnp.sin(teta)
-
-    # Check for debugging outside of JIT
-    #if not jnp.isclose(u2, u2_calc, atol=1e-6):
-    #    raise AssertionError(f"u2 mismatch: {u2_calc:.6f} != {u2:.6f}")
-    #if not jnp.isclose(u4, u4_calc, atol=1e-6):
-    #    raise AssertionError(f"u4 mismatch: {u4_calc:.6f} != {u4:.6f}")
-
-    # compute the six raw legs
-    u3 = r_scaling * jnp.cos(teta - jnp.pi / 3)
-    u5 = r_scaling * jnp.sin(teta - jnp.pi / 3)
-    u1 = -r_scaling * jnp.sin(teta - jnp.pi / 6)
-    u6 = -r_scaling * jnp.cos(teta - jnp.pi / 6)
-
-    # stack into a vector and apply your per‐leg weights
-    raw = jnp.stack([u1, u2, u3, u4, u5, u6])
-    weights = jnp.array([50, 80, 30, 80, 30, 50], dtype=raw.dtype)
-    scaled = raw * weights
-
-    return scaled  # tuple(scaled.tolist())
 
 
 class MPCNode(Node):
@@ -99,7 +27,7 @@ class MPCNode(Node):
     This node is responsible for running MPC.
     """
     def __init__(self):
-        super().__init__('mpc_node')
+        super().__init__('mpc_sanity_check')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # print debug messages
             ('n_z', 3),                                     # number of performance vars
@@ -156,24 +84,6 @@ class MPCNode(Node):
         # Execution occurs in multiple threads
         self.callback_group = ReentrantCallbackGroup()
 
-        # Subscribe to current positions
-        self.mocap_subscription = self.create_subscription(
-            TrunkRigidBodies,
-            '/trunk_rigid_bodies',
-            self.mocap_listener_callback,
-            QoSProfile(depth=3),
-            callback_group=self.callback_group
-        )
-
-        if self.collect_angles:
-            self.subscription_angles = self.create_subscription(
-                AllMotorsStatus,
-                '/all_motors_status',
-                self.motor_angles_callback,
-                QoSProfile(depth=3),
-                callback_group=self.callback_group
-            )
-
         # Create MPC solver service client
         self.mpc_client = self.create_client(
             ControlSolver,
@@ -186,13 +96,6 @@ class MPCNode(Node):
         
         # Request message definition
         self.req = ControlSolver.Request()
-
-        # Create publisher to execute found control inputs
-        self.controls_publisher = self.create_publisher(
-            AllMotorsControl,
-            '/all_motors_control',
-            QoSProfile(depth=3)
-        )
 
         # Maintain current observations because of the delay embedding
         self.latest_y = None
@@ -209,9 +112,6 @@ class MPCNode(Node):
 
         # Initialize by calling mpc callback function
         self.mpc_callback()
-
-        # JIT compile this function
-        check_control_inputs(jnp.zeros(self.n_u), self.u_previous)
 
         # Create timer to receive MPC results at fixed frequency
         self.controller_period = 0.02 # TODO: we need to reason about this
@@ -233,51 +133,6 @@ class MPCNode(Node):
         # Define reference time
         self.start_time = self.clock.now().nanoseconds / 1e9
 
-    def mocap_listener_callback(self, msg):
-        """
-        Callback to process mocap data, updating the latest observation.
-        """
-        if self.debug:
-            self.get_logger().info(f'Received mocap data: {msg.positions}.')
-
-        # 1) flatten and center, into simple list of positions, eg [x1, y1, z1, x2, y2, z2, ...]
-        y_new = jnp.array([coord for pos in msg.positions for coord in (pos.x, pos.y, pos.z)])
-        y_centered = y_new 
-
-        # 2) Reorder from [x1,y1,z1, x2,y2,z2, x3,y3,z3] → [x3,y3,z3, x2,y2,z2]
-        y_observables = y_centered[self.perm_idx]
-
-        # 3) pick your two motor‐angles as before
-        # if self.angle_callback_received:
-        #     u_current = jnp.array(self.last_motor_angles)[jnp.array([1, 3])] / 80.0
-        # else:
-        #     # If angles are not received yet, use zeros
-        #     u_current = jnp.zeros(self.n_u)
-
-        # 4) form your block the same way
-        block = y_observables
-
-        # Update the current observations, including delay embeddings
-        if self.latest_y is None:
-            # At initialization use current obs. as delay embedding
-            self.latest_y = jnp.tile(block, (self.n_delay + 1,))
-            self.start_time = self.clock.now().nanoseconds / 1e9
-        else:
-            # self.latest_y = jnp.concatenate([y_centered_tip, self.latest_y[:-self.n_z]])
-            self.latest_y = jnp.concatenate([block, self.latest_y[:-self.block_size]])
-        
-        self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
-
-    def motor_angles_callback(self, msg):
-
-        self.last_motor_angles = self.extract_angles(msg)
-
-        if not self.angle_callback_received:
-            self.get_logger().info('Motor angles callback received first message')
-            self.angle_callback_received = True
-        else:
-            self.angle_callback_received = True
-
     def execute_buffer_callback(self):
         """
         Execute the next control input from the buffer.
@@ -295,7 +150,6 @@ class MPCNode(Node):
 
             self.buffer_index += 1
 
-        self.publish_control_inputs(self.smooth_control_inputs.tolist())
         self.u_previous = self.smooth_control_inputs
 
     def mpc_callback(self):
@@ -311,8 +165,10 @@ class MPCNode(Node):
             self.send_request(0.0, self.y0, self.u_previous, wait=True)
             self.future.add_done_callback(self.service_callback)
             self.initialized = True
+            self.latest_y = self.y0
         elif self.latest_y is not None:
-            self.y0 = self.latest_y
+            self.t0 = self.clock.now().nanoseconds / 1e9 - self.start_time
+            self.y0 = jnp.tile(self.rest_y, (self.n_delay + 1,))
             self.send_request(self.t0, self.y0, self.u_previous, wait=False)
             self.future.add_done_callback(self.service_callback)
 
@@ -357,36 +213,8 @@ class MPCNode(Node):
                     self.control_buffer = new_buffer
                     self.buffer_index = 0
 
-                # Save to csv file
-                self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt,
-                                 self.y0[:self.n_y], response.solve_time)
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
-
-    def publish_control_inputs(self, control_inputs):
-
-        print(f"Publishing control inputs: {control_inputs}")
-
-        # if self.actuator_dynamics is None:
-        #     self.actuator_dynamics = Actuator(num_u=2, lambda_eigenvalues=config["actuator_lambda"], current_time=self.clock.now().nanoseconds / 1e9)
-
-        # real_control_inputs = self.actuator_dynamics(new_time=self.clock.now().nanoseconds / 1e9, new_u=control_inputs)
-        
-        control_inputs_clipped = check_control_inputs(control_inputs)
-        print(f"Publishing safe and scaled control inputs: {control_inputs_clipped}")
-
-        control_message = AllMotorsControl()
-        control_message.motors_control = tuple(control_inputs_clipped.tolist())
-        self.controls_publisher.publish(control_message)
-        if self.debug:
-            self.get_logger().info('Published new motor control setting: ' + str(control_inputs_clipped))
-
-    def extract_angles(self, msg):
-        angles = msg.positions
-        self.angle_update_count += 1
-        if self.debug:
-            self.get_logger().info("Received new angle status update, number " + str(self.angle_update_count))
-        return angles
 
     def initialize_csv(self):
         """
@@ -395,14 +223,6 @@ class MPCNode(Node):
         with open(self.results_file, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['topt', 'xopt', 'uopt', 'zopt', 'y', 'solve_time'])
-
-    def save_to_csv(self, topt, xopt, uopt, zopt, y, solve_time):
-        """
-        Save optimized quantities by MPC and observations to CSV file.
-        """
-        with open(self.results_file, mode='a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt), y.tolist(), solve_time])
 
 
 def main(args=None):

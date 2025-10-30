@@ -1,5 +1,5 @@
 import numpy as np
-
+import pandas as pd
 
 class ReferenceTrajectoryGenerator:
     def __init__(self, traj_config, dt):
@@ -15,6 +15,14 @@ class ReferenceTrajectoryGenerator:
         self.trajectory = None  # Will hold the pre-sampled trajectory if requested.
         self.dt = dt
         self.times = None
+        self.csv_path = traj_config["csv_path"] if "csv_path" in traj_config else None
+        self.csv_pt_ct = 0  # counter for csv points
+        
+        if self.csv_path is None:
+                raise ValueError("CSV path must be provided in mpc_initializer_node for 'controlled_csv' trajectory type.")
+        else:
+            self.data = np.loadtxt(self.csv_path, delimiter=',', skiprows=1)
+
 
     def _init_flower_resampling(self):
         """Precompute equidistant star points & velocities for one full cycle."""
@@ -86,6 +94,30 @@ class ReferenceTrajectoryGenerator:
                 return np.concatenate([pos, vel])
             else:
                 return pos
+            
+        elif self.traj_type == "controlled_csv":
+            # CSV has columns: ID,x1,y1,z1,x2,y2,z2,x3,y3,z3,qx1,qy1,qz1,w1,qx2,qy2,qz2,w2,qx3,qy3,qz3,w3,phi1,phi2,phi3,phi4,phi5,phi6,current1,current2,current3,current4,current5,current6
+            # we want to just track the tip position (x3,y3,z3)
+
+            #TODO: should we subtract the rest position here? No, roshan's model takes raw positions.
+            pos = np.array(self.data[self.csv_pt_ct, 7:10])  # x3, y3, z3
+
+            # rest_positions = np.array([0.10368,-0.14215,0.11343,0.10405,-0.27971,0.11191,0.10730,-0.40798,0.12463]) #updated 10/28/25
+            # pos = pos - rest_positions[6:9]  # center around rest position
+            # print(f"pos shape: {pos.shape}")
+            # print(f'pos: {pos}')
+            # print(f'csv_pt_ct: {self.csv_pt_ct}')
+
+            # csv is always sampled at 100 Hz (0.01 s), so we need to align that with the dt of the mpc
+            # i.e. if dt = 0.02, then we need to skip every other point
+            skip_rate = int(self.dt / 0.01)
+            self.csv_pt_ct += (skip_rate)  # already incremented
+
+            # TODO: need to make sure the dt is right
+            # print(pos)
+            return pos
+
+
         elif self.traj_type == "circle_with_ramp":
             radius = self.traj_params.get("radius", 1.0)
             ramp_duration = 4.0
@@ -105,6 +137,7 @@ class ReferenceTrajectoryGenerator:
                     vel = np.array([vx, vy, vz])
                     return np.concatenate([pos, vel])
                 else:
+                    print(pos)
                     return pos
             else:
                 # Circle phase
@@ -114,10 +147,11 @@ class ReferenceTrajectoryGenerator:
                 if self.include_velocity:
                     vx = -radius * self.traj_speed * np.sin(theta)
                     vy =  radius * self.traj_speed * np.cos(theta)
-                    vz = 0.0
+                    vz = x1,y1,z1,x2,y2,z2,x3,y3,z3,qx1,qy1,qz1
                     vel = np.array([vx, vy, vz])
                     return np.concatenate([pos, vel])
                 else:
+                    print(pos)
                     return pos
         elif self.traj_type == "eight":
             amplitude = self.traj_params.get("amplitude", 1.0)
