@@ -5,10 +5,11 @@ LOCP (Linear Optimal Control Problem) implementation, adopted from original GuST
 import cvxpy as cp
 import numpy as np
 from scipy.linalg import block_diag
-from cvxpy.atoms.affine.reshape import reshape
+from functools import partial
+from cvxpy.atoms.affine.reshape import reshape as cvxpy_reshape
+reshape = partial(cvxpy_reshape, order= 'F')
 import time
 import scipy.sparse as sp
-from scipy.sparse import csc_matrix
 import jax
 import jax.numpy as jnp
 
@@ -108,86 +109,232 @@ class LOCP:
 
             self._problem_setup()
 
+    def _convert_to_numpy(self, arr):
+        """
+        Convert JAX array to NumPy array properly.
+        CVXPY requires actual NumPy arrays, not JAX DeviceArrays.
+        """
+        import jax.numpy as jnp
+        
+        # If it's a JAX array, convert using __array__() interface
+        if isinstance(arr, jnp.ndarray):
+            return np.asarray(arr.__array__(), dtype=np.float64)
+        # If it's already numpy, ensure float64
+        elif isinstance(arr, np.ndarray):
+            return arr.astype(np.float64, copy=False)
+        # Otherwise try standard conversion
+        else:
+            return np.asarray(arr, dtype=np.float64)
+
+
     def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
         """
         Update the potentially changing LOCP data. xk is updated solution trajectory.
         """
+        import jax.numpy as jnp
+        
+        # Debug: Check if we're receiving JAX arrays
+        if self.verbose >= 2:
+            if isinstance(Ad[0], jnp.ndarray):
+                print("WARNING: Ad contains JAX arrays - converting to NumPy")
+            if isinstance(xk, jnp.ndarray):
+                print("WARNING: xk is JAX array - converting to NumPy")
 
         # If using warm start, set the parameters to their current values
         if self.warm_start:
             # Set parameters
             if full:
                 if z is not None:
-                    self.z.value = np.ravel(z[:self.N], order = 'F')
+                    z_flat = np.ravel(z[:self.N])
+                    if z_flat.shape[0] != self.N * self.n_z:
+                        raise ValueError(f"z shape mismatch: expected {self.N * self.n_z}, got {z_flat.shape[0]}")
+                    self.z.value = self._convert_to_numpy(z_flat)
                 else:
-                    self.z.value = np.zeros((self.N) * self.n_z)  # default set to 0
+                    self.z.value = np.zeros((self.N) * self.n_z, dtype=np.float64)
 
                 if u is not None:
-                    self.u_des.value = np.ravel(u, order = 'F')
+                    u_flat = np.ravel(u)
+                    if u_flat.shape[0] != self.N * self.n_u:
+                        raise ValueError(f"u_des shape mismatch: expected {self.N * self.n_u}, got {u_flat.shape[0]}")
+                    self.u_des.value = self._convert_to_numpy(u_flat)
                 else:
-                    self.u_des.value = np.zeros(self.N * self.n_u)  # default set to 0
+                    self.u_des.value = np.zeros(self.N * self.n_u, dtype=np.float64)
 
                 if self.Qzf is not None and zf is not None:
-                    self.zf.value = np.asarray(zf)
+                    self.zf.value = self._convert_to_numpy(zf)
                 elif self.Qzf is not None and zf is None:
-                    self.zf.value = np.zeros(self.n_z)  # default set to 0
+                    self.zf.value = np.zeros(self.n_z, dtype=np.float64)
 
-                
-
-                # Added observer linearizations here. Make sure to propogate Hd, Gd and cd as parameters in kwargs
+                # Update linearization matrices - Convert JAX to NumPy properly
                 for j in range(self.N):
-                    self.Ad[j].value = np.asarray(Ad[j])
-                    self.Bd[j].value = np.asarray(Bd[j])
+                    Ad_j = self._convert_to_numpy(Ad[j])
+                    Bd_j = self._convert_to_numpy(Bd[j])
+                    
+                    if Ad_j.shape != (self.n_x, self.n_x):
+                        raise ValueError(f"Ad[{j}] shape mismatch: expected {(self.n_x, self.n_x)}, got {Ad_j.shape}")
+                    if Bd_j.shape != (self.n_x, self.n_u):
+                        raise ValueError(f"Bd[{j}] shape mismatch: expected {(self.n_x, self.n_u)}, got {Bd_j.shape}")
+                    
+                    # Ensure contiguous C-order arrays
+                    self.Ad[j].value = np.ascontiguousarray(Ad_j)
+                    self.Bd[j].value = np.ascontiguousarray(Bd_j)
 
                 if self.nonlinear_perf_mapping:
-                    for j in range(self.N):
-                        self.Hd[j].value = np.asarray(kwargs.get('Hd')[j])
-                        self.Gd[j].value = np.asarray(kwargs.get('Gd')[j])
-
-                self.dd.value = np.ravel(np.asarray(dd), order='F')
-                if self.nonlinear_perf_mapping:
+                    Hd = kwargs.get('Hd')
+                    Gd = kwargs.get('Gd')
                     cd = kwargs.get('cd')
-                    self.cd.value = np.ravel(np.asarray(cd), order='F')
+                    
+                    if Hd is None or Gd is None or cd is None:
+                        raise ValueError("nonlinear_perf_mapping=True but Hd, Gd, or cd not provided")
+                    
+                    for j in range(self.N):
+                        Hd_j = self._convert_to_numpy(Hd[j])
+                        Gd_j = self._convert_to_numpy(Gd[j])
+                        
+                        if Hd_j.shape != (self.n_z, self.n_x):
+                            raise ValueError(f"Hd[{j}] shape mismatch: expected {(self.n_z, self.n_x)}, got {Hd_j.shape}")
+                        if Gd_j.shape != (self.n_z, self.n_u):
+                            raise ValueError(f"Gd[{j}] shape mismatch: expected {(self.n_z, self.n_u)}, got {Gd_j.shape}")
+                        
+                        self.Hd[j].value = np.ascontiguousarray(Hd_j)
+                        self.Gd[j].value = np.ascontiguousarray(Gd_j)
 
-                self.xk.value = np.asarray(xk)
-                self.x0.value = np.asarray(x0)
+                    cd_flat = np.ravel(self._convert_to_numpy(cd))
+                    if cd_flat.shape[0] != self.N * self.n_z:
+                        raise ValueError(f"cd shape mismatch: expected {self.N * self.n_z}, got {cd_flat.shape[0]}")
+                    self.cd.value = np.ascontiguousarray(cd_flat)
+
+                dd_flat = np.ravel(self._convert_to_numpy(dd))
+                if dd_flat.shape[0] != self.N * self.n_x:
+                    raise ValueError(f"dd shape mismatch: expected {self.N * self.n_x}, got {dd_flat.shape[0]}")
+                self.dd.value = np.ascontiguousarray(dd_flat)
+                
+                xk_array = self._convert_to_numpy(xk)
+                if xk_array.shape != (self.N, self.n_x):
+                    raise ValueError(f"xk shape mismatch: expected {(self.N, self.n_x)}, got {xk_array.shape}")
+                self.xk.value = np.ascontiguousarray(xk_array)
+                
+                x0_array = self._convert_to_numpy(x0)
+                if x0_array.shape[0] != self.n_x:
+                    raise ValueError(f"x0 shape mismatch: expected {self.n_x}, got {x0_array.shape[0]}")
+                self.x0.value = np.ascontiguousarray(x0_array)
 
             # Always update delta and omega
-            self.omega.value = omega
-            self.delta.value = delta
+            self.omega.value = float(omega)
+            self.delta.value = float(delta)
 
-        # Otherwise just build a new problem from scratch each time
         else:
+            # Non-warm-start path
             self.delta = delta
             self.omega = omega
             if z is not None:
-                self.z = np.ravel(z[:self.N], order='F')
+                self.z = self._convert_to_numpy(np.ravel(z[:self.N]))
             else:
-                self.z = np.zeros((self.N) * self.n_z)
+                self.z = np.zeros((self.N) * self.n_z, dtype=np.float64)
 
             if u is not None:
-                self.u_des = np.ravel(u, order='F')
+                self.u_des = self._convert_to_numpy(np.ravel(u))
             else:
-                self.u_des = np.zeros(self.N * self.n_u)
+                self.u_des = np.zeros(self.N * self.n_u, dtype=np.float64)
 
             if self.Qzf is not None and zf is not None:
-                self.zf = zf
+                self.zf = self._convert_to_numpy(zf)
             elif self.Qzf is not None and zf is None:
-                self.zf = np.zeros(self.n_z)
+                self.zf = np.zeros(self.n_z, dtype=np.float64)
 
-            self.Ad = np.asarray(Ad)
-            self.Bd = np.asarray(Bd)
-            self.dd = np.ravel(np.asarray(dd), order='F')
-            self.x0 = np.asarray(x0)
-            self.xk = np.asarray(xk)
+            self.Ad = [self._convert_to_numpy(Ad[j]) for j in range(self.N)]
+            self.Bd = [self._convert_to_numpy(Bd[j]) for j in range(self.N)]
+            self.dd = self._convert_to_numpy(np.ravel(dd))
+            self.x0 = self._convert_to_numpy(x0)
+            self.xk = self._convert_to_numpy(xk)
 
-            # Observer params here
             if self.nonlinear_perf_mapping:
-                self.Hd = np.asarray(kwargs.get('Hd'))
-                self.Gd = np.asarray(kwargs.get('Gd'))
-                self.cd = np.asarray(kwargs.get('cd'))
+                self.Hd = [self._convert_to_numpy(kwargs.get('Hd')[j]) for j in range(self.N)]
+                self.Gd = [self._convert_to_numpy(kwargs.get('Gd')[j]) for j in range(self.N)]
+                self.cd = self._convert_to_numpy(kwargs.get('cd'))
 
             self._problem_setup()
+
+    # def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
+    #     """
+    #     Update the potentially changing LOCP data. xk is updated solution trajectory.
+    #     """
+
+    #     # If using warm start, set the parameters to their current values
+    #     if self.warm_start:
+    #         # Set parameters
+    #         if full:
+    #             if z is not None:
+    #                 self.z.value = np.ravel(z[:self.N])
+    #             else:
+    #                 self.z.value = np.zeros((self.N) * self.n_z)  # default set to 0
+
+    #             if u is not None:
+    #                 self.u_des.value = np.ravel(u)
+    #             else:
+    #                 self.u_des.value = np.zeros(self.N * self.n_u)  # default set to 0
+
+    #             if self.Qzf is not None and zf is not None:
+    #                 self.zf.value = np.asarray(zf)
+    #             elif self.Qzf is not None and zf is None:
+    #                 self.zf.value = np.zeros(self.n_z)  # default set to 0
+
+                
+
+    #             # Added observer linearizations here. Make sure to propogate Hd, Gd and cd as parameters in kwargs
+    #             for j in range(self.N):
+    #                 self.Ad[j].value = np.asarray(Ad[j])
+    #                 self.Bd[j].value = np.asarray(Bd[j])
+
+    #             if self.nonlinear_perf_mapping:
+    #                 for j in range(self.N):
+    #                     self.Hd[j].value = np.asarray(kwargs.get('Hd')[j])
+    #                     self.Gd[j].value = np.asarray(kwargs.get('Gd')[j])
+
+    #             self.dd.value = np.ravel(np.asarray(dd))
+    #             if self.nonlinear_perf_mapping:
+    #                 cd = kwargs.get('cd')
+    #                 self.cd.value = np.ravel(np.asarray(cd))
+
+    #             self.xk.value = np.asarray(xk)
+    #             self.x0.value = np.asarray(x0)
+
+    #         # Always update delta and omega
+    #         self.omega.value = omega
+    #         self.delta.value = delta
+
+    #     # Otherwise just build a new problem from scratch each time
+    #     else:
+    #         self.delta = delta
+    #         self.omega = omega
+    #         if z is not None:
+    #             self.z = np.ravel(z[:self.N])
+    #         else:
+    #             self.z = np.zeros((self.N) * self.n_z)
+
+    #         if u is not None:
+    #             self.u_des = np.ravel(u)
+    #         else:
+    #             self.u_des = np.zeros(self.N * self.n_u)
+
+    #         if self.Qzf is not None and zf is not None:
+    #             self.zf = zf
+    #         elif self.Qzf is not None and zf is None:
+    #             self.zf = np.zeros(self.n_z)
+
+    #         self.Ad = np.asarray(Ad)
+    #         self.Bd = np.asarray(Bd)
+    #         self.dd = np.ravel(np.asarray(dd))
+    #         self.x0 = np.asarray(x0)
+    #         self.xk = np.asarray(xk)
+
+    #         # Observer params here
+    #         if self.nonlinear_perf_mapping:
+    #             self.Hd = np.asarray(kwargs.get('Hd'))
+    #             self.Gd = np.asarray(kwargs.get('Gd'))
+    #             self.cd = np.asarray(kwargs.get('cd'))
+
+    #         self._problem_setup()
 
     def solve(self):
         """
@@ -214,19 +361,47 @@ class LOCP:
         else:
             return np.inf, False, None
 
+    # def get_solution(self):
+    #     """
+    #     Extract the most recent solution from calling solve().
+    #     """
+    #     # NOTE: Dan mentioned that this reshape is inefficient, keep in numpy or something (can ask Dan)
+    #     x = jnp.reshape(self.x.value, (self.N, self.n_x))
+    #     #x = x[:self.N]  # Get first N entries, excluding the last one
+    #     u = jnp.reshape(self.u.value, (self.N, self.n_u))
+    #     if self.tr_active:
+    #         s = jnp.asarray(self.st.value)
+    #     else:
+    #         s = None
+    #     return x, u, s
+    
     def get_solution(self):
         """
         Extract the most recent solution from calling solve().
+        Returns arrays in shape (N, n_x) and (N, n_u) for compatibility.
         """
-        # NOTE: Dan mentioned that this reshape is inefficient, keep in numpy or something (can ask Dan)
-        x = jnp.reshape(self.x.value, (self.N, self.n_x))
-        #x = x[:self.N]  # Get first N entries, excluding the last one
-        u = jnp.reshape(self.u.value, (self.N, self.n_u))
+        # Get raw solution values
+        x_val = self.x.value
+        u_val = self.u.value
+        
+        # Convert to JAX arrays and reshape to 2D
+        x = jnp.asarray(x_val).reshape(self.N, self.n_x)
+        u = jnp.asarray(u_val).reshape(self.N, self.n_u)
+        
+        # Get slack variables if active
         if self.tr_active:
             s = jnp.asarray(self.st.value)
         else:
             s = None
+        
+        # Validation
+        if x.shape != (self.N, self.n_x):
+            raise ValueError(f"x solution has wrong shape: {x.shape}, expected {(self.N, self.n_x)}")
+        if u.shape != (self.N, self.n_u):
+            raise ValueError(f"u solution has wrong shape: {u.shape}, expected {(self.N, self.n_u)}")
+        
         return x, u, s
+
 
     def _problem_setup(self):
         """
@@ -243,7 +418,7 @@ class LOCP:
         J = 0
 
         # Control cost
-        Rfull = csc_matrix(block_diag(*[self.R for j in range(self.N)]), dtype =np.float64)
+        Rfull = sp.csc_matrix(block_diag(*[self.R for j in range(self.N)]))
         J += cp.quad_form(self.u - self.u_des, Rfull)
 
         # Performance cost (we expect all trajectories to be non-shifted i.e., about origin)
@@ -255,15 +430,15 @@ class LOCP:
         #    Qzfull = sp.csc_matrix(block_diag(*Qz_list))
 
         Qz_list = [self.Qz for _ in range(self.N)]
-        Qzfull = csc_matrix(block_diag(*Qz_list), dtype=np.float64)
+        Qzfull = sp.csc_matrix(block_diag(*Qz_list))
 
         if self.nonlinear_perf_mapping:
             #cdfull = np.reshape(self.cd, ((self.N)*self.n_z,)) if isinstance(self.cd, list) else \
             #    reshape(self.cd, ((self.N)*self.n_z,))
             #print(self.cd.shape)
 
-            cdfull = np.reshape(self.cd, ((self.N)*self.n_z,), order = 'F') if isinstance(self.cd, list) else \
-                reshape(self.cd, ((self.N)*self.n_z,), order = 'F')
+            cdfull = np.reshape(self.cd, ((self.N)*self.n_z,)) if isinstance(self.cd, list) else \
+                reshape(self.cd, ((self.N)*self.n_z,))
             
             
             if self.warm_start:
@@ -343,7 +518,7 @@ class LOCP:
         # Trust region constraints
         if self.tr_active:
             X_scale = self.x_scale.reshape(-1, 1).repeat(self.N, axis=1)
-            dx = cp.reshape(self.x, (self.n_x, self.N)) - self.xk.T
+            dx = reshape(self.x, (self.n_x, self.N)) - self.xk.T
             dx_scaled = cp.multiply(X_scale, dx)
             constr += [cp.norm(dx_scaled, 'inf', axis=0) <= self.delta + self.st]
 
@@ -364,8 +539,8 @@ class LOCP:
         # State constraints
         if self.X is not None:
             if self.nonlinear_perf_mapping:
-                cdfull = np.reshape(self.cd, ((self.N + 1) * self.n_z,), order = 'F') if isinstance(self.cd, list) else \
-                    reshape(self.cd, ((self.N + 1) * self.n_z,), order = 'F')
+                cdfull = np.reshape(self.cd, ((self.N + 1) * self.n_z,)) if isinstance(self.cd, list) else \
+                    reshape(self.cd, ((self.N + 1) * self.n_z,))
                 if self.warm_start:
                     Hfull = []
                     for j in range(self.N):
@@ -401,3 +576,71 @@ class LOCP:
         constr += [self.x[:self.n_x] == self.x0]
 
         return constr
+    
+    def validate_problem_data(self):
+        """
+        Validate all parameter shapes and values before solving.
+        Call this method before solve() to diagnose issues.
+        """
+        print("\n=== LOCP Problem Validation ===")
+        print(f"Horizon N: {self.N}")
+        print(f"State dim n_x: {self.n_x}")
+        print(f"Control dim n_u: {self.n_u}")
+        print(f"Perf var dim n_z: {self.n_z}")
+        
+        if self.warm_start:
+            print("\n--- Parameter Values ---")
+            print(f"x0: {self.x0.value.shape if self.x0.value is not None else 'None'}")
+            print(f"xk: {self.xk.value.shape if self.xk.value is not None else 'None'}")
+            print(f"delta: {self.delta.value if self.delta.value is not None else 'None'}")
+            print(f"omega: {self.omega.value if self.omega.value is not None else 'None'}")
+            print(f"z: {self.z.value.shape if self.z.value is not None else 'None'}")
+            print(f"u_des: {self.u_des.value.shape if self.u_des.value is not None else 'None'}")
+            print(f"dd: {self.dd.value.shape if self.dd.value is not None else 'None'}")
+            
+            print("\n--- Dynamics Linearization ---")
+            for j in range(min(3, self.N)):  # Show first 3
+                Ad_val = self.Ad[j].value
+                Bd_val = self.Bd[j].value
+                print(f"Ad[{j}]: {Ad_val.shape if Ad_val is not None else 'None'}")
+                print(f"Bd[{j}]: {Bd_val.shape if Bd_val is not None else 'None'}")
+                
+                if Ad_val is not None:
+                    if np.any(np.isnan(Ad_val)) or np.any(np.isinf(Ad_val)):
+                        print(f"  WARNING: Ad[{j}] contains NaN or Inf!")
+                if Bd_val is not None:
+                    if np.any(np.isnan(Bd_val)) or np.any(np.isinf(Bd_val)):
+                        print(f"  WARNING: Bd[{j}] contains NaN or Inf!")
+            
+            if self.nonlinear_perf_mapping:
+                print("\n--- Performance Mapping Linearization ---")
+                print(f"cd: {self.cd.value.shape if self.cd.value is not None else 'None'}")
+                for j in range(min(3, self.N)):
+                    Hd_val = self.Hd[j].value
+                    Gd_val = self.Gd[j].value
+                    print(f"Hd[{j}]: {Hd_val.shape if Hd_val is not None else 'None'}")
+                    print(f"Gd[{j}]: {Gd_val.shape if Gd_val is not None else 'None'}")
+                    
+                    if Hd_val is not None:
+                        if np.any(np.isnan(Hd_val)) or np.any(np.isinf(Hd_val)):
+                            print(f"  WARNING: Hd[{j}] contains NaN or Inf!")
+                    if Gd_val is not None:
+                        if np.any(np.isnan(Gd_val)) or np.any(np.isinf(Gd_val)):
+                            print(f"  WARNING: Gd[{j}] contains NaN or Inf!")
+        
+        print("\n--- Variable Shapes ---")
+        print(f"x: {self.x.shape}")
+        print(f"u: {self.u.shape}")
+        if self.tr_active:
+            print(f"st (slack): {self.st.shape}")
+        
+        print("\n--- Expected Shapes ---")
+        print(f"x should be: ({self.N * self.n_x},)")
+        print(f"u should be: ({self.N * self.n_u},)")
+        print(f"z should be: ({self.N * self.n_z},)")
+        print(f"dd should be: ({self.N * self.n_x},)")
+        if self.nonlinear_perf_mapping:
+            print(f"cd should be: ({self.N * self.n_z},)")
+        
+        print("=" * 40 + "\n")
+

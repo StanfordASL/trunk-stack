@@ -42,8 +42,38 @@ def set_adiabatic_control_offset(n_samples):
 
     return const_input
 
-def hypercube_controlled_sampling(control_variables, random_seed, num_points=1000):
-    points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=1, excluded_neighbors=1)
+
+def hypercube_controlled_sampling_zero_between(control_variables, random_seed, num_points=100):
+    points_df = latin_hypercube_adiabatic_sampling(
+        control_variables,
+        random_seed,
+        num_points=num_points,
+        visits_per_point=1,
+        excluded_neighbors=1
+    )
+
+    len_traj = 200  # samples per hold period (e.g., 2s at 100Hz if len_traj=200)
+    zero_row = pd.DataFrame([[0.0] * len(control_variables)], columns=control_variables)
+
+    # Build trajectory with zeros between each sampled point
+    traj_segments = []
+    for _, row in points_df.iterrows():
+        traj_segments.append(zero_row)  # return to zero before each step
+        traj_segments.append(pd.DataFrame([row[control_variables].values], columns=control_variables))
+    traj_segments.append(zero_row)  # final return to zero
+
+    # Concatenate and repeat each segment for len_traj steps
+    control_inputs_df = pd.concat(traj_segments, ignore_index=True)
+    control_inputs_df = control_inputs_df.loc[control_inputs_df.index.repeat(len_traj)].reset_index(drop=True)
+
+    # Add sequential ID
+    control_inputs_df.insert(0, 'ID', np.arange(len(control_inputs_df)))
+
+    return control_inputs_df
+
+
+def hypercube_controlled_sampling(control_variables, random_seed, num_points=50):
+    points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=10, excluded_neighbors=1)
     len_traj = 200 #100 = 1s
 
     # Repeat each row len_traj times
@@ -615,6 +645,8 @@ def main(data_type, sampling_type, seed=None):
         control_inputs_df = latin_hypercube_adiabatic_sampling(control_variables, seed)
     elif sampling_type == 'latin_hypercube_controlled':
         control_inputs_df = hypercube_controlled_sampling(control_variables, seed)
+    elif sampling_type == 'latin_hypercube_controlled_zero_between':
+        control_inputs_df = hypercube_controlled_sampling_zero_between(control_variables, seed)
     elif sampling_type == 'zero_control':
         control_inputs_df = zero_control_sampling(control_variables)
     else:
@@ -626,6 +658,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
-    seed = 311                            # choose integer seed number
+    sampling_type = 'latin_hypercube_controlled'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
+    seed = 408                            # choose integer seed number
     main(data_type, sampling_type, seed)

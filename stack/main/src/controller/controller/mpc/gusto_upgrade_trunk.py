@@ -427,6 +427,12 @@ class GuSTO:
             if new_solution:
                 self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, Gd = G_d, cd=c_d)
                 new_solution = False
+
+                # ADD THIS - Validates on first iteration or when verbose >= 2
+                if itr == 0 or self.verbose >= 2:
+                    print("\n=== Validating LOCP problem data (iteration {}) ===".format(itr))
+                    self.locp.validate_problem_data()
+
             else:
                 self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, Gd = G_d, cd=c_d, full=False)
 
@@ -438,10 +444,16 @@ class GuSTO:
 
             if not success:
                 print('Iteration {} of problem cannot be solved, see solver status for more information'.format(itr))
+
+                # ADD THIS - Diagnoses why the solve failed
+                print("\n=== Diagnosing failed solve ===")
+                self.locp.validate_problem_data()
+                print("=== End diagnosis ===\n")
+
                 self.xopt = jnp.copy(self.x_k)
                 self.uopt = jnp.copy(self.u_k)
                 if self.nonlinear_perf_mapping:
-                    self.zopt = self.performance_mapping(self.xopt.T).T
+                    self.zopt = self.performance_mapping(self.xopt.T, self.uopt.T).T
                 else:
                     self.zopt = jnp.transpose(self.H @ self.xopt.T)
                 return
