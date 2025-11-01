@@ -32,7 +32,7 @@ class GuSTOConfig:
     gamma_fail: float = 5               # cost function penalty term TODO: specify
     omega_max: float = 1e10             # cost function penalty term TODO: specify
     convg_thresh: float = 0.01          # convergence threshold
-    verbose: int = 0                    # verbosity level (0, 1, 2)
+    verbose: int = 2                    # verbosity level (0, 1, 2)
     warm_start: bool = True             # warm start the solver
     H: jnp.ndarray = None               # performance mapping matrix
     R_du: jnp.ndarray = None  # control rate weighting matrix
@@ -428,10 +428,10 @@ class GuSTO:
                 self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, Gd = G_d, cd=c_d)
                 new_solution = False
 
-                # ADD THIS - Validates on first iteration or when verbose >= 2
-                if itr == 0 or self.verbose >= 2:
-                    print("\n=== Validating LOCP problem data (iteration {}) ===".format(itr))
-                    self.locp.validate_problem_data()
+                # # ADD THIS - Validates on first iteration or when verbose >= 2
+                # if itr == 0 or self.verbose >= 2:
+                #     print("\n=== Validating LOCP problem data (iteration {}) ===".format(itr))
+                #     self.locp.validate_problem_data()
 
             else:
                 self.locp.update(A_d, B_d, d_d, x0, self.x_k, delta, omega, z=z, zf=zf, u=u, Hd=H_d, Gd = G_d, cd=c_d, full=False)
@@ -445,10 +445,10 @@ class GuSTO:
             if not success:
                 print('Iteration {} of problem cannot be solved, see solver status for more information'.format(itr))
 
-                # ADD THIS - Diagnoses why the solve failed
-                print("\n=== Diagnosing failed solve ===")
-                self.locp.validate_problem_data()
-                print("=== End diagnosis ===\n")
+                # # ADD THIS - Diagnoses why the solve failed
+                # print("\n=== Diagnosing failed solve ===")
+                # self.locp.validate_problem_data()
+                # print("=== End diagnosis ===\n")
 
                 self.xopt = jnp.copy(self.x_k)
                 self.uopt = jnp.copy(self.u_k)

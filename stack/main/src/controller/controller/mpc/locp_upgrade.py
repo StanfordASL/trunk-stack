@@ -127,214 +127,214 @@ class LOCP:
             return np.asarray(arr, dtype=np.float64)
 
 
-    def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
-        """
-        Update the potentially changing LOCP data. xk is updated solution trajectory.
-        """
-        import jax.numpy as jnp
-        
-        # Debug: Check if we're receiving JAX arrays
-        if self.verbose >= 2:
-            if isinstance(Ad[0], jnp.ndarray):
-                print("WARNING: Ad contains JAX arrays - converting to NumPy")
-            if isinstance(xk, jnp.ndarray):
-                print("WARNING: xk is JAX array - converting to NumPy")
-
-        # If using warm start, set the parameters to their current values
-        if self.warm_start:
-            # Set parameters
-            if full:
-                if z is not None:
-                    z_flat = np.ravel(z[:self.N])
-                    if z_flat.shape[0] != self.N * self.n_z:
-                        raise ValueError(f"z shape mismatch: expected {self.N * self.n_z}, got {z_flat.shape[0]}")
-                    self.z.value = self._convert_to_numpy(z_flat)
-                else:
-                    self.z.value = np.zeros((self.N) * self.n_z, dtype=np.float64)
-
-                if u is not None:
-                    u_flat = np.ravel(u)
-                    if u_flat.shape[0] != self.N * self.n_u:
-                        raise ValueError(f"u_des shape mismatch: expected {self.N * self.n_u}, got {u_flat.shape[0]}")
-                    self.u_des.value = self._convert_to_numpy(u_flat)
-                else:
-                    self.u_des.value = np.zeros(self.N * self.n_u, dtype=np.float64)
-
-                if self.Qzf is not None and zf is not None:
-                    self.zf.value = self._convert_to_numpy(zf)
-                elif self.Qzf is not None and zf is None:
-                    self.zf.value = np.zeros(self.n_z, dtype=np.float64)
-
-                # Update linearization matrices - Convert JAX to NumPy properly
-                for j in range(self.N):
-                    Ad_j = self._convert_to_numpy(Ad[j])
-                    Bd_j = self._convert_to_numpy(Bd[j])
-                    
-                    if Ad_j.shape != (self.n_x, self.n_x):
-                        raise ValueError(f"Ad[{j}] shape mismatch: expected {(self.n_x, self.n_x)}, got {Ad_j.shape}")
-                    if Bd_j.shape != (self.n_x, self.n_u):
-                        raise ValueError(f"Bd[{j}] shape mismatch: expected {(self.n_x, self.n_u)}, got {Bd_j.shape}")
-                    
-                    # Ensure contiguous C-order arrays
-                    self.Ad[j].value = np.ascontiguousarray(Ad_j)
-                    self.Bd[j].value = np.ascontiguousarray(Bd_j)
-
-                if self.nonlinear_perf_mapping:
-                    Hd = kwargs.get('Hd')
-                    Gd = kwargs.get('Gd')
-                    cd = kwargs.get('cd')
-                    
-                    if Hd is None or Gd is None or cd is None:
-                        raise ValueError("nonlinear_perf_mapping=True but Hd, Gd, or cd not provided")
-                    
-                    for j in range(self.N):
-                        Hd_j = self._convert_to_numpy(Hd[j])
-                        Gd_j = self._convert_to_numpy(Gd[j])
-                        
-                        if Hd_j.shape != (self.n_z, self.n_x):
-                            raise ValueError(f"Hd[{j}] shape mismatch: expected {(self.n_z, self.n_x)}, got {Hd_j.shape}")
-                        if Gd_j.shape != (self.n_z, self.n_u):
-                            raise ValueError(f"Gd[{j}] shape mismatch: expected {(self.n_z, self.n_u)}, got {Gd_j.shape}")
-                        
-                        self.Hd[j].value = np.ascontiguousarray(Hd_j)
-                        self.Gd[j].value = np.ascontiguousarray(Gd_j)
-
-                    cd_flat = np.ravel(self._convert_to_numpy(cd))
-                    if cd_flat.shape[0] != self.N * self.n_z:
-                        raise ValueError(f"cd shape mismatch: expected {self.N * self.n_z}, got {cd_flat.shape[0]}")
-                    self.cd.value = np.ascontiguousarray(cd_flat)
-
-                dd_flat = np.ravel(self._convert_to_numpy(dd))
-                if dd_flat.shape[0] != self.N * self.n_x:
-                    raise ValueError(f"dd shape mismatch: expected {self.N * self.n_x}, got {dd_flat.shape[0]}")
-                self.dd.value = np.ascontiguousarray(dd_flat)
-                
-                xk_array = self._convert_to_numpy(xk)
-                if xk_array.shape != (self.N, self.n_x):
-                    raise ValueError(f"xk shape mismatch: expected {(self.N, self.n_x)}, got {xk_array.shape}")
-                self.xk.value = np.ascontiguousarray(xk_array)
-                
-                x0_array = self._convert_to_numpy(x0)
-                if x0_array.shape[0] != self.n_x:
-                    raise ValueError(f"x0 shape mismatch: expected {self.n_x}, got {x0_array.shape[0]}")
-                self.x0.value = np.ascontiguousarray(x0_array)
-
-            # Always update delta and omega
-            self.omega.value = float(omega)
-            self.delta.value = float(delta)
-
-        else:
-            # Non-warm-start path
-            self.delta = delta
-            self.omega = omega
-            if z is not None:
-                self.z = self._convert_to_numpy(np.ravel(z[:self.N]))
-            else:
-                self.z = np.zeros((self.N) * self.n_z, dtype=np.float64)
-
-            if u is not None:
-                self.u_des = self._convert_to_numpy(np.ravel(u))
-            else:
-                self.u_des = np.zeros(self.N * self.n_u, dtype=np.float64)
-
-            if self.Qzf is not None and zf is not None:
-                self.zf = self._convert_to_numpy(zf)
-            elif self.Qzf is not None and zf is None:
-                self.zf = np.zeros(self.n_z, dtype=np.float64)
-
-            self.Ad = [self._convert_to_numpy(Ad[j]) for j in range(self.N)]
-            self.Bd = [self._convert_to_numpy(Bd[j]) for j in range(self.N)]
-            self.dd = self._convert_to_numpy(np.ravel(dd))
-            self.x0 = self._convert_to_numpy(x0)
-            self.xk = self._convert_to_numpy(xk)
-
-            if self.nonlinear_perf_mapping:
-                self.Hd = [self._convert_to_numpy(kwargs.get('Hd')[j]) for j in range(self.N)]
-                self.Gd = [self._convert_to_numpy(kwargs.get('Gd')[j]) for j in range(self.N)]
-                self.cd = self._convert_to_numpy(kwargs.get('cd'))
-
-            self._problem_setup()
-
     # def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
     #     """
     #     Update the potentially changing LOCP data. xk is updated solution trajectory.
     #     """
+    #     import jax.numpy as jnp
+        
+    #     # Debug: Check if we're receiving JAX arrays
+    #     if self.verbose >= 2:
+    #         if isinstance(Ad[0], jnp.ndarray):
+    #             print("WARNING: Ad contains JAX arrays - converting to NumPy")
+    #         if isinstance(xk, jnp.ndarray):
+    #             print("WARNING: xk is JAX array - converting to NumPy")
 
     #     # If using warm start, set the parameters to their current values
     #     if self.warm_start:
     #         # Set parameters
     #         if full:
     #             if z is not None:
-    #                 self.z.value = np.ravel(z[:self.N])
+    #                 z_flat = np.ravel(z[:self.N])
+    #                 if z_flat.shape[0] != self.N * self.n_z:
+    #                     raise ValueError(f"z shape mismatch: expected {self.N * self.n_z}, got {z_flat.shape[0]}")
+    #                 self.z.value = self._convert_to_numpy(z_flat)
     #             else:
-    #                 self.z.value = np.zeros((self.N) * self.n_z)  # default set to 0
+    #                 self.z.value = np.zeros((self.N) * self.n_z, dtype=np.float64)
 
     #             if u is not None:
-    #                 self.u_des.value = np.ravel(u)
+    #                 u_flat = np.ravel(u)
+    #                 if u_flat.shape[0] != self.N * self.n_u:
+    #                     raise ValueError(f"u_des shape mismatch: expected {self.N * self.n_u}, got {u_flat.shape[0]}")
+    #                 self.u_des.value = self._convert_to_numpy(u_flat)
     #             else:
-    #                 self.u_des.value = np.zeros(self.N * self.n_u)  # default set to 0
+    #                 self.u_des.value = np.zeros(self.N * self.n_u, dtype=np.float64)
 
     #             if self.Qzf is not None and zf is not None:
-    #                 self.zf.value = np.asarray(zf)
+    #                 self.zf.value = self._convert_to_numpy(zf)
     #             elif self.Qzf is not None and zf is None:
-    #                 self.zf.value = np.zeros(self.n_z)  # default set to 0
+    #                 self.zf.value = np.zeros(self.n_z, dtype=np.float64)
 
-                
-
-    #             # Added observer linearizations here. Make sure to propogate Hd, Gd and cd as parameters in kwargs
+    #             # Update linearization matrices - Convert JAX to NumPy properly
     #             for j in range(self.N):
-    #                 self.Ad[j].value = np.asarray(Ad[j])
-    #                 self.Bd[j].value = np.asarray(Bd[j])
+    #                 Ad_j = self._convert_to_numpy(Ad[j])
+    #                 Bd_j = self._convert_to_numpy(Bd[j])
+                    
+    #                 if Ad_j.shape != (self.n_x, self.n_x):
+    #                     raise ValueError(f"Ad[{j}] shape mismatch: expected {(self.n_x, self.n_x)}, got {Ad_j.shape}")
+    #                 if Bd_j.shape != (self.n_x, self.n_u):
+    #                     raise ValueError(f"Bd[{j}] shape mismatch: expected {(self.n_x, self.n_u)}, got {Bd_j.shape}")
+                    
+    #                 # Ensure contiguous C-order arrays
+    #                 self.Ad[j].value = np.ascontiguousarray(Ad_j)
+    #                 self.Bd[j].value = np.ascontiguousarray(Bd_j)
 
     #             if self.nonlinear_perf_mapping:
-    #                 for j in range(self.N):
-    #                     self.Hd[j].value = np.asarray(kwargs.get('Hd')[j])
-    #                     self.Gd[j].value = np.asarray(kwargs.get('Gd')[j])
-
-    #             self.dd.value = np.ravel(np.asarray(dd))
-    #             if self.nonlinear_perf_mapping:
+    #                 Hd = kwargs.get('Hd')
+    #                 Gd = kwargs.get('Gd')
     #                 cd = kwargs.get('cd')
-    #                 self.cd.value = np.ravel(np.asarray(cd))
+                    
+    #                 if Hd is None or Gd is None or cd is None:
+    #                     raise ValueError("nonlinear_perf_mapping=True but Hd, Gd, or cd not provided")
+                    
+    #                 for j in range(self.N):
+    #                     Hd_j = self._convert_to_numpy(Hd[j])
+    #                     Gd_j = self._convert_to_numpy(Gd[j])
+                        
+    #                     if Hd_j.shape != (self.n_z, self.n_x):
+    #                         raise ValueError(f"Hd[{j}] shape mismatch: expected {(self.n_z, self.n_x)}, got {Hd_j.shape}")
+    #                     if Gd_j.shape != (self.n_z, self.n_u):
+    #                         raise ValueError(f"Gd[{j}] shape mismatch: expected {(self.n_z, self.n_u)}, got {Gd_j.shape}")
+                        
+    #                     self.Hd[j].value = np.ascontiguousarray(Hd_j)
+    #                     self.Gd[j].value = np.ascontiguousarray(Gd_j)
 
-    #             self.xk.value = np.asarray(xk)
-    #             self.x0.value = np.asarray(x0)
+    #                 cd_flat = np.ravel(self._convert_to_numpy(cd))
+    #                 if cd_flat.shape[0] != self.N * self.n_z:
+    #                     raise ValueError(f"cd shape mismatch: expected {self.N * self.n_z}, got {cd_flat.shape[0]}")
+    #                 self.cd.value = np.ascontiguousarray(cd_flat)
+
+    #             dd_flat = np.ravel(self._convert_to_numpy(dd))
+    #             if dd_flat.shape[0] != self.N * self.n_x:
+    #                 raise ValueError(f"dd shape mismatch: expected {self.N * self.n_x}, got {dd_flat.shape[0]}")
+    #             self.dd.value = np.ascontiguousarray(dd_flat)
+                
+    #             xk_array = self._convert_to_numpy(xk)
+    #             if xk_array.shape != (self.N, self.n_x):
+    #                 raise ValueError(f"xk shape mismatch: expected {(self.N, self.n_x)}, got {xk_array.shape}")
+    #             self.xk.value = np.ascontiguousarray(xk_array)
+                
+    #             x0_array = self._convert_to_numpy(x0)
+    #             if x0_array.shape[0] != self.n_x:
+    #                 raise ValueError(f"x0 shape mismatch: expected {self.n_x}, got {x0_array.shape[0]}")
+    #             self.x0.value = np.ascontiguousarray(x0_array)
 
     #         # Always update delta and omega
-    #         self.omega.value = omega
-    #         self.delta.value = delta
+    #         self.omega.value = float(omega)
+    #         self.delta.value = float(delta)
 
-    #     # Otherwise just build a new problem from scratch each time
     #     else:
+    #         # Non-warm-start path
     #         self.delta = delta
     #         self.omega = omega
     #         if z is not None:
-    #             self.z = np.ravel(z[:self.N])
+    #             self.z = self._convert_to_numpy(np.ravel(z[:self.N]))
     #         else:
-    #             self.z = np.zeros((self.N) * self.n_z)
+    #             self.z = np.zeros((self.N) * self.n_z, dtype=np.float64)
 
     #         if u is not None:
-    #             self.u_des = np.ravel(u)
+    #             self.u_des = self._convert_to_numpy(np.ravel(u))
     #         else:
-    #             self.u_des = np.zeros(self.N * self.n_u)
+    #             self.u_des = np.zeros(self.N * self.n_u, dtype=np.float64)
 
     #         if self.Qzf is not None and zf is not None:
-    #             self.zf = zf
+    #             self.zf = self._convert_to_numpy(zf)
     #         elif self.Qzf is not None and zf is None:
-    #             self.zf = np.zeros(self.n_z)
+    #             self.zf = np.zeros(self.n_z, dtype=np.float64)
 
-    #         self.Ad = np.asarray(Ad)
-    #         self.Bd = np.asarray(Bd)
-    #         self.dd = np.ravel(np.asarray(dd))
-    #         self.x0 = np.asarray(x0)
-    #         self.xk = np.asarray(xk)
+    #         self.Ad = [self._convert_to_numpy(Ad[j]) for j in range(self.N)]
+    #         self.Bd = [self._convert_to_numpy(Bd[j]) for j in range(self.N)]
+    #         self.dd = self._convert_to_numpy(np.ravel(dd))
+    #         self.x0 = self._convert_to_numpy(x0)
+    #         self.xk = self._convert_to_numpy(xk)
 
-    #         # Observer params here
     #         if self.nonlinear_perf_mapping:
-    #             self.Hd = np.asarray(kwargs.get('Hd'))
-    #             self.Gd = np.asarray(kwargs.get('Gd'))
-    #             self.cd = np.asarray(kwargs.get('cd'))
+    #             self.Hd = [self._convert_to_numpy(kwargs.get('Hd')[j]) for j in range(self.N)]
+    #             self.Gd = [self._convert_to_numpy(kwargs.get('Gd')[j]) for j in range(self.N)]
+    #             self.cd = self._convert_to_numpy(kwargs.get('cd'))
 
     #         self._problem_setup()
+
+    def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
+        """
+        Update the potentially changing LOCP data. xk is updated solution trajectory.
+        """
+
+        # If using warm start, set the parameters to their current values
+        if self.warm_start:
+            # Set parameters
+            if full:
+                if z is not None:
+                    self.z.value = np.ravel(z[:self.N])
+                else:
+                    self.z.value = np.zeros((self.N) * self.n_z)  # default set to 0
+
+                if u is not None:
+                    self.u_des.value = np.ravel(u)
+                else:
+                    self.u_des.value = np.zeros(self.N * self.n_u)  # default set to 0
+
+                if self.Qzf is not None and zf is not None:
+                    self.zf.value = np.asarray(zf)
+                elif self.Qzf is not None and zf is None:
+                    self.zf.value = np.zeros(self.n_z)  # default set to 0
+
+                
+
+                # Added observer linearizations here. Make sure to propogate Hd, Gd and cd as parameters in kwargs
+                for j in range(self.N):
+                    self.Ad[j].value = np.asarray(Ad[j])
+                    self.Bd[j].value = np.asarray(Bd[j])
+
+                if self.nonlinear_perf_mapping:
+                    for j in range(self.N):
+                        self.Hd[j].value = np.asarray(kwargs.get('Hd')[j])
+                        self.Gd[j].value = np.asarray(kwargs.get('Gd')[j])
+
+                self.dd.value = np.ravel(np.asarray(dd))
+                if self.nonlinear_perf_mapping:
+                    cd = kwargs.get('cd')
+                    self.cd.value = np.ravel(np.asarray(cd))
+
+                self.xk.value = np.asarray(xk)
+                self.x0.value = np.asarray(x0)
+
+            # Always update delta and omega
+            self.omega.value = omega
+            self.delta.value = delta
+
+        # Otherwise just build a new problem from scratch each time
+        else:
+            self.delta = delta
+            self.omega = omega
+            if z is not None:
+                self.z = np.ravel(z[:self.N])
+            else:
+                self.z = np.zeros((self.N) * self.n_z)
+
+            if u is not None:
+                self.u_des = np.ravel(u)
+            else:
+                self.u_des = np.zeros(self.N * self.n_u)
+
+            if self.Qzf is not None and zf is not None:
+                self.zf = zf
+            elif self.Qzf is not None and zf is None:
+                self.zf = np.zeros(self.n_z)
+
+            self.Ad = np.asarray(Ad)
+            self.Bd = np.asarray(Bd)
+            self.dd = np.ravel(np.asarray(dd))
+            self.x0 = np.asarray(x0)
+            self.xk = np.asarray(xk)
+
+            # Observer params here
+            if self.nonlinear_perf_mapping:
+                self.Hd = np.asarray(kwargs.get('Hd'))
+                self.Gd = np.asarray(kwargs.get('Gd'))
+                self.cd = np.asarray(kwargs.get('cd'))
+
+            self._problem_setup()
 
     def solve(self):
         """
@@ -375,33 +375,60 @@ class LOCP:
     #         s = None
     #     return x, u, s
     
+    # def get_solution(self):
+    #     """
+    #     Extract the most recent solution from calling solve().
+    #     Returns arrays in shape (N, n_x) and (N, n_u) for compatibility.
+    #     """
+    #     # Get raw solution values
+    #     x_val = self.x.value
+    #     u_val = self.u.value
+        
+    #     # Convert to JAX arrays and reshape to 2D
+    #     x = jnp.asarray(x_val).reshape(self.N, self.n_x)
+    #     u = jnp.asarray(u_val).reshape(self.N, self.n_u)
+        
+    #     # Get slack variables if active
+    #     if self.tr_active:
+    #         s = jnp.asarray(self.st.value)
+    #     else:
+    #         s = None
+        
+    #     # Validation
+    #     if x.shape != (self.N, self.n_x):
+    #         raise ValueError(f"x solution has wrong shape: {x.shape}, expected {(self.N, self.n_x)}")
+    #     if u.shape != (self.N, self.n_u):
+    #         raise ValueError(f"u solution has wrong shape: {u.shape}, expected {(self.N, self.n_u)}")
+        
+    #     return x, u, s
+
     def get_solution(self):
         """
         Extract the most recent solution from calling solve().
-        Returns arrays in shape (N, n_x) and (N, n_u) for compatibility.
+        Returns NumPy arrays directly - avoid JAX conversion overhead.
         """
-        # Get raw solution values
+        # Get raw solution values (these are already NumPy arrays from CVXPY)
         x_val = self.x.value
         u_val = self.u.value
         
-        # Convert to JAX arrays and reshape to 2D
-        x = jnp.asarray(x_val).reshape(self.N, self.n_x)
-        u = jnp.asarray(u_val).reshape(self.N, self.n_u)
+        # Reshape WITHOUT converting to JAX (keep as NumPy)
+        # This is much faster than converting to JAX then back to NumPy
+        x = np.asarray(x_val).reshape(self.N, self.n_x)
+        u = np.asarray(u_val).reshape(self.N, self.n_u)
         
         # Get slack variables if active
         if self.tr_active:
-            s = jnp.asarray(self.st.value)
+            s = self.st.value  # Keep as NumPy, don't convert to JAX
         else:
             s = None
         
-        # Validation
-        if x.shape != (self.N, self.n_x):
-            raise ValueError(f"x solution has wrong shape: {x.shape}, expected {(self.N, self.n_x)}")
-        if u.shape != (self.N, self.n_u):
-            raise ValueError(f"u solution has wrong shape: {u.shape}, expected {(self.N, self.n_u)}")
+        # Validation (optional - can remove for speed)
+        # if x.shape != (self.N, self.n_x):
+        #     raise ValueError(f"x solution has wrong shape: {x.shape}, expected {(self.N, self.n_x)}")
+        # if u.shape != (self.N, self.n_u):
+        #     raise ValueError(f"u solution has wrong shape: {u.shape}, expected {(self.N, self.n_u)}")
         
         return x, u, s
-
 
     def _problem_setup(self):
         """
