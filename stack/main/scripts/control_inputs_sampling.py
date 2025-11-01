@@ -191,7 +191,7 @@ def latin_hypercube_adiabatic_sampling(
         row["ID"] = i
         control_inputs_df = pd.concat([control_inputs_df, pd.DataFrame([row])], ignore_index=True)
 
-    # Plot (assumes your helper exists)
+    # Plot
     plot_trajectory_graphs(control_inputs_df, control_variables, focus_node_idx=0)
 
     return control_inputs_df
