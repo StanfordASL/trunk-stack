@@ -86,30 +86,76 @@ def hypercube_controlled_sampling(control_variables, random_seed, num_points=50)
 
 
 
-def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=30, visits_per_point=1, excluded_neighbors=20):
+def latin_hypercube_adiabatic_sampling(
+    control_variables,
+    random_seed,
+    num_points=30,
+    visits_per_point=1,
+    excluded_neighbors=20,
+    large_displacements_only=True,
+    displacement_threshold=0.80,  # 80% of each control's full-scale magnitude
+):
+    """
+    Latin-hypercube sampling with optional 'large displacement' filtering.
+    A point is 'large displacement' if abs(u_j) >= displacement_threshold * max_abs_j
+    for ALL j (i.e., simultaneously large across all dims).
+    """
     np.random.seed(random_seed)
 
-    # Define bounds
-    tip_radius = 110
-    mid_radius = 70
-    base_radius = 50
-    maxs = np.array([base_radius, tip_radius, mid_radius, tip_radius, mid_radius, base_radius])
+    # Define symmetric bounds (mins = -maxs)
+    tip_radius  = 110
+    mid_radius  =  70
+    base_radius =  50
+    maxs = np.array([base_radius, tip_radius, mid_radius, tip_radius, mid_radius, base_radius], dtype=float)
     mins = -maxs
+    d = len(maxs)
 
-    # Latin Hypercube Sampling
-    sampler = qmc.LatinHypercube(d=6, seed=random_seed)
-    sample = sampler.random(n=num_points)
-    scaled_sample = qmc.scale(sample, mins, maxs)
+    # Prepare LHS sampler
+    sampler = qmc.LatinHypercube(d=d, seed=random_seed)
+
+    def lhs_scaled(n):
+        return qmc.scale(sampler.random(n=n), mins, maxs)
+
+    # --- Generate points (with optional large-displacement filtering) ---
+    if large_displacements_only:
+        # threshold per-dimension on absolute value
+        abs_thresh = displacement_threshold * maxs  # since bounds are symmetric
+        picked = []
+
+        # keep drawing batches until we have enough big-u samples
+        # (adaptive batch size to fill quickly but terminate)
+        while len(picked) < num_points:
+            need = num_points - len(picked)
+            n_batch = max(need * 6, 120)  # oversample factor; tweak as desired
+            batch = lhs_scaled(n_batch)
+            mask = np.all(np.abs(batch) >= abs_thresh, axis=1)
+            big = batch[mask]
+            if big.size:
+                take = big[:need]
+                picked.append(take)
+
+            # Optional safety: if it's somehow too strict, you could relax here.
+            # (Not doing so unless truly necessary.)
+        scaled_sample = np.vstack(picked)[:num_points]
+    else:
+        scaled_sample = lhs_scaled(num_points)
+
+    # Build DataFrame of control inputs (order set by control_variables)
     control_inputs = pd.DataFrame(scaled_sample, columns=control_variables)
 
-    # Precompute neighbor sets and distance matrix
+    # --- Build the adiabatic sequence with neighbor exclusion ---
+    # Distance/neighbor precompute on the final sample only
+    m = len(control_inputs)
+    # Ensure excluded_neighbors is feasible
+    excl = int(min(max(0, excluded_neighbors), max(0, m - 1)))
+
     distances = cdist(scaled_sample, scaled_sample)
     np.fill_diagonal(distances, np.inf)
     neighbor_indices = np.argsort(distances, axis=1)
-    near_neighbors = [set(neighbor_indices[i, :excluded_neighbors]) for i in range(num_points)]
+    near_neighbors = [set(neighbor_indices[i, :excl]) for i in range(m)]
 
     # Build visit pool
-    visit_pool = list(np.tile(np.arange(num_points), visits_per_point))
+    visit_pool = list(np.tile(np.arange(m), visits_per_point))
     visit_counts = Counter(visit_pool)
 
     # Start sequence
@@ -119,12 +165,12 @@ def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_point
     if visit_counts[current] == 0:
         visit_pool.remove(current)
 
-    for _ in range(num_points * visits_per_point - 1):
-        # Valid candidates are not in the near-neighbor list and have remaining visits
+    # Greedy far/valid walk
+    for step in range(m * visits_per_point - 1):
         candidates = [p for p in set(visit_pool) if p not in near_neighbors[current]]
 
         if not candidates:
-            print(f"Relaxation fallback triggered at step {_ + 1}, current node index = {current}")
+            # Relaxation fallback: jump to farthest remaining
             remaining = list(set(visit_pool))
             distances_to_current = distances[current, remaining]
             next_point = remaining[np.argmax(distances_to_current)]
@@ -134,10 +180,11 @@ def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_point
         sequence.append(next_point)
         visit_counts[next_point] -= 1
         if visit_counts[next_point] == 0:
+            # remove all occurrences of next_point efficiently
             visit_pool = [p for p in visit_pool if p != next_point]
         current = next_point
 
-    # Build control_inputs_df
+    # Build control_inputs_df with sequential IDs in path order
     control_inputs_df = pd.DataFrame(columns=['ID'] + control_variables)
     for i, idx in enumerate(sequence):
         row = control_inputs.iloc[idx].copy()
@@ -148,6 +195,7 @@ def latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_point
     plot_trajectory_graphs(control_inputs_df, control_variables, focus_node_idx=0)
 
     return control_inputs_df
+
   
 
 def adiabatic_global_sampling(control_variables, random_seed):
