@@ -132,7 +132,7 @@ class MPCSolverNode(Node):
             W_sm = self.W_sm,
             epsilon_sm = self.epsilon_sm,
             case_rbf = self.case_rbf,
-            solver='CLARABEL'
+            solver='CLARABEL',
         )
         """
         if z is not None and z.ndim == 2:

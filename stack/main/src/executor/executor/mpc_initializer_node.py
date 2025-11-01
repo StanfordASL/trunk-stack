@@ -182,7 +182,7 @@ class MPCInitializerNode(Node):
         self.model, self.exps_M, self.M, self.U_select, self.W_sm, self.epsilon_sm, self.case_rbf, self.V = setup_aSSM(dt=mpc_config["dt"], rk4=True)
 
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red, t=self.times, dt=mpc_config["dt"],
-                                                   ref_traj=self.ref_traj, U=u, dU=du, exps_M = self.exps_M , M = self.M, U_select = self.U_select, W_sm = self.W_sm, epsilon_sm = self.epsilon_sm, case_rbf = self.case_rbf, V = self.V , init_guess_type='shift', solver="CLARABEL")  # Was GUROBI
+                                                   ref_traj=self.ref_traj, U=u, dU=du, exps_M = self.exps_M , M = self.M, U_select = self.U_select, W_sm = self.W_sm, epsilon_sm = self.epsilon_sm, case_rbf = self.case_rbf, V = self.V , init_guess_type='shift', solver="OSQP")  # Was GUROBI
         
     
 
