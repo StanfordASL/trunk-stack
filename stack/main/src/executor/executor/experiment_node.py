@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import logging
 logging.getLogger('jax').setLevel(logging.ERROR)
 jax.config.update('jax_platform_name', 'cpu')
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 import rclpy                        # type: ignore
 from rclpy.node import Node         # type: ignore
 from rclpy.qos import QoSProfile    # type: ignore

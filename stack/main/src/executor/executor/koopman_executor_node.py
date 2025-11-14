@@ -99,14 +99,14 @@ class MPCNode(Node):
     This node is responsible for running MPC.
     """
     def __init__(self):
-        super().__init__('mpc_node')
+        super().__init__('koopman_executor_node')
         self.declare_parameters(namespace='', parameters=[
             ('debug', False),                               # print debug messages
             ('n_z', 3),                                     # number of performance vars
             ('n_u', 6),                                     # number of control inputs
-            ('n_obs', 6),                                   # 2D, 3D or 6D observations
-            ('n_delay', 3),                               # number of delays applied to observations
-            ('n_exec', 2),                                 # number of control inputs to execute from MPC solution
+            ('n_obs', 3),                                   # 2D, 3D or 6D observations
+            ('n_delay', 2),                               # number of delays applied to observations
+            ('n_exec', 1),                                 # number of control inputs to execute from MPC solution
             ('results_name', 'test_experiment')             # name of the results file
         ])
 
@@ -128,7 +128,7 @@ class MPCNode(Node):
 
         # Initialize the CSV file
         self.data_dir = os.getenv('TRUNK_DATA', '/home/trunk/Documents/trunk-stack/stack/main/data')
-        self.results_file = os.path.join(self.data_dir, f"trajectories/closed_loop/adiabatic/{self.results_name}.csv")
+        self.results_file = os.path.join(self.data_dir, f"trajectories/closed_loop/koopman/{self.results_name}.csv")
         self.initialize_csv()
 
         # Collect buffer of control inputs for multiple executions
@@ -153,7 +153,7 @@ class MPCNode(Node):
         self.n_y = self.block_size * (self.n_delay + 1)
 
         print(f"n_y: {self.n_y}, n_obs: {self.n_obs}, n_delay: {self.n_delay}, block_size: {self.block_size}")
-        assert self.n_y == 24, "wrong n_y calculated"
+        assert self.n_y == 9, "wrong n_y calculated"
 
         # TODO: give this to roshan
         # # Settled positions of the rigid bodies    
@@ -162,7 +162,7 @@ class MPCNode(Node):
         self.rest_positions = jnp.array([0.10266031324863434,-0.1355663388967514,0.11034716665744781,0.10138003528118134,-0.26911914348602295,0.10961201041936874,0.10081979632377625,-0.3945523500442505,0.11702537536621094])
 
 
-        self.perm_idx = jnp.array([6, 7, 8, 3, 4, 5])
+        self.perm_idx = jnp.array([6, 7, 8])
         self.rest_y = self.rest_positions[self.perm_idx]
 
         # Execution occurs in multiple threads
@@ -393,8 +393,8 @@ class MPCNode(Node):
                     self.buffer_index = 0
 
                 # Save to csv file
-                self.save_to_csv(response.t, response.xopt, response.uopt, response.zopt,
-                                 self.y0[:self.n_y], response.solve_time)
+                self.save_to_csv(response.t, response.uopt, 
+                                 self.y0[:self.n_y])
         except Exception as e:
             self.get_logger().error(f'Service call failed: {e}.')
 
@@ -429,15 +429,15 @@ class MPCNode(Node):
         """
         with open(self.results_file, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['topt', 'xopt', 'uopt', 'zopt', 'y', 'solve_time'])
+            writer.writerow(['topt', 'uopt',  'y'])
 
-    def save_to_csv(self, topt, xopt, uopt, zopt, y, solve_time):
+    def save_to_csv(self, topt, uopt, y):
         """
         Save optimized quantities by MPC and observations to CSV file.
         """
         with open(self.results_file, mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([list(topt), list(xopt), list(uopt), list(zopt), y.tolist(), solve_time])
+            writer.writerow([list(topt), list(uopt), y.tolist()])
 
 
 def main(args=None):

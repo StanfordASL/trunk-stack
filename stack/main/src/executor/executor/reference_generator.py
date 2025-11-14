@@ -10,8 +10,9 @@ class ReferenceTrajectoryGenerator:
         self.traj_speed = traj_config["speed"]
         self.center = np.array(traj_config.get("center", [0.0, 0.0]))
         self.traj_params = traj_config.get("parameters", {})
-        self.z_level = traj_config.get("z_level", 0.0)
+        self.z_level = self.traj_params.get("z_level", 0.0)
         self.include_velocity = traj_config.get("include_velocity", True)
+        self.rest_pos = traj_config["rest_pos"]
         self.trajectory = None  # Will hold the pre-sampled trajectory if requested.
         self.dt = dt
         self.times = None
@@ -79,12 +80,14 @@ class ReferenceTrajectoryGenerator:
             np.ndarray: If include_velocity is False: shape (3,) [x, y, z].
                         If include_velocity is True: shape (6,) [x, y, z, vx, vy, vz].
         """
+        # print(f"traj_type: {self.traj_type}")
         if self.traj_type == "circle":
             radius = self.traj_params.get("radius", 1.0)
             theta = self.traj_speed * t
             x = self.center[0] + radius * np.cos(theta)
             y = self.center[1] + radius * np.sin(theta)
             pos = np.array([x, y, self.z_level])
+            pos += self.rest_pos
             if self.include_velocity:
                 # Derivatives: dx/dt = -radius * traj_speed * sin(theta), dy/dt = radius * traj_speed * cos(theta)
                 vx = -radius * self.traj_speed * np.sin(theta)
@@ -94,7 +97,7 @@ class ReferenceTrajectoryGenerator:
                 return np.concatenate([pos, vel])
             else:
                 return pos
-            
+        
         elif self.traj_type == "controlled_csv":
             # CSV has columns: ID,x1,y1,z1,x2,y2,z2,x3,y3,z3,qx1,qy1,qz1,w1,qx2,qy2,qz2,w2,qx3,qy3,qz3,w3,phi1,phi2,phi3,phi4,phi5,phi6,current1,current2,current3,current4,current5,current6
             # we want to just track the tip position (x3,y3,z3)
@@ -117,48 +120,69 @@ class ReferenceTrajectoryGenerator:
             # print(pos)
             return pos
 
-
         elif self.traj_type == "circle_with_ramp":
             radius = self.traj_params.get("radius", 1.0)
             ramp_duration = 4.0
             v_tangent = radius / ramp_duration
             theta = self.traj_speed * max(t - ramp_duration, 0.0)  # offset time for circle start
-
+            
             if t < ramp_duration:
                 # Linear ramp phase before circle
                 frac = t / ramp_duration
-                x = self.center[0] + (radius - radius * (1 - frac))
+                
+                # Ramp x from center to center + radius
+                x = self.center[0] + radius * frac
+                
+                # Ramp z from initial z to target z_level
+                # Assuming you want to ramp from some initial z value to self.z_level
+                # You may need to define self.z_initial or adjust this logic
+                z = self.z_level * frac  # Ramps from 0 to z_level
+                
+                # Ramp y - stays at center during ramp (but ramping from 0 velocity)
                 y = self.center[1]
-                pos = np.array([x, y, self.z_level])
+                
+                # Output in x, z, y order
+                pos = np.array([x, z, y])
+                pos += self.rest_pos
+                # print(self.z_level)
+                
                 if self.include_velocity:
-                    vx = v_tangent
-                    vy = 0.0
-                    vz = 0.0
-                    vel = np.array([vx, vy, vz])
+                    vx = v_tangent  # x velocity during ramp
+                    vz = self.z_level / ramp_duration  # z velocity during ramp
+                    vy = 0.0  # y stays constant during ramp
+                    # Velocity also in x, z, y order
+                    vel = np.array([vx, vz, vy])
                     return np.concatenate([pos, vel])
                 else:
-                    print(pos)
                     return pos
             else:
                 # Circle phase
                 x = self.center[0] + radius * np.cos(theta)
                 y = self.center[1] + radius * np.sin(theta)
-                pos = np.array([x, y, self.z_level])
+                z = self.z_level
+                
+                # Output in x, z, y order
+                pos = np.array([x, z, y])
+                pos += self.rest_pos
+                
                 if self.include_velocity:
                     vx = -radius * self.traj_speed * np.sin(theta)
-                    vy =  radius * self.traj_speed * np.cos(theta)
-                    vz = x1,y1,z1,x2,y2,z2,x3,y3,z3,qx1,qy1,qz1
-                    vel = np.array([vx, vy, vz])
+                    vy = radius * self.traj_speed * np.cos(theta)
+                    vz = 0.0  # Fixed: was showing random variables
+                    # Velocity also in x, z, y order
+                    vel = np.array([vx, vz, vy])
                     return np.concatenate([pos, vel])
                 else:
-                    print(pos)
                     return pos
+
+
         elif self.traj_type == "eight":
             amplitude = self.traj_params.get("amplitude", 1.0)
             theta = self.traj_speed * t
             x = self.center[0] + amplitude * np.sin(theta)
             y = self.center[1] + amplitude * np.sin(2 * theta)
-            pos = np.array([x, y, self.z_level])
+            pos = np.array([x, self.z_level, y])
+            pos += self.rest_pos
             if self.include_velocity:
                 # Derivatives: dx/dt = amplitude * traj_speed * cos(theta),
                 #              dy/dt = 2 * amplitude * traj_speed * cos(2*theta)
@@ -197,6 +221,7 @@ class ReferenceTrajectoryGenerator:
                 x = self.center[0] + radius * np.cos(angle)
                 y = self.center[1] + radius * np.sin(angle)
                 pos = np.array([x, y, self.z_level])
+                pos += self.rest_pos
                 if self.include_velocity:
                     # Angular rate is constant: d(angle)/dt = self.traj_speed.
                     angle_dot = self.traj_speed
@@ -215,6 +240,7 @@ class ReferenceTrajectoryGenerator:
                                self.z_level])
                 C = np.array([self.center[0], self.center[1], self.z_level])
                 pos = (1 - u) * P1 + u * C
+                pos += self.rest_pos
                 if self.include_velocity:
                     T_line = L_line1 / v  # time to traverse this line segment
                     vel = (C - P1) / T_line
@@ -230,6 +256,7 @@ class ReferenceTrajectoryGenerator:
                                self.z_level])
                 C = np.array([self.center[0], self.center[1], self.z_level])
                 pos = (1 - u) * C + u * P2
+                pos += self.rest_pos
                 if self.include_velocity:
                     T_line = L_line2 / v  # time to traverse this line segment
                     vel = (P2 - C) / T_line
@@ -242,7 +269,7 @@ class ReferenceTrajectoryGenerator:
             mouth_angle = self.traj_params.get("mouth_angle", np.pi / 4)
             ramp_duration = 4.0
             v_ramp = radius / ramp_duration
-
+            
             # Define angles and lengths like in pacman
             start_angle = mouth_angle / 2
             end_angle = 2 * np.pi - mouth_angle / 2
@@ -252,18 +279,34 @@ class ReferenceTrajectoryGenerator:
             L_line2 = radius
             L_total = L_arc + L_line1 + L_line2
             v = self.traj_speed * radius
-
+            
             if t < ramp_duration:
-                # Ramp phase: move in a straight line toward starting point of arc
+                # Ramp phase: move toward starting point of arc
                 frac = t / ramp_duration
-                x = self.center[0] + (radius - radius * (1 - frac))
-                y = self.center[1]
-                pos = np.array([x, y, self.z_level])
+                
+                # Target point at end of ramp (start of arc)
+                x_target = self.center[0] + radius * np.cos(start_angle)
+                y_target = self.center[1] + radius * np.sin(start_angle)
+                
+                # Ramp x from center to target x position
+                x = self.center[0] + (x_target - self.center[0]) * frac
+                
+                # Ramp y from center to target y position  
+                y = self.center[1] + (y_target - self.center[1]) * frac
+                
+                # Ramp z from 0 to z_level
+                z = self.z_level * frac
+                
+                # Output in x, z, y order
+                pos = np.array([x, z, y])
+                pos += self.rest_pos
+                
                 if self.include_velocity:
-                    vx = v_ramp
-                    vy = 0.0
-                    vz = 0.0
-                    vel = np.array([vx, vy, vz])
+                    vx = (x_target - self.center[0]) / ramp_duration
+                    vz = self.z_level / ramp_duration
+                    vy = (y_target - self.center[1]) / ramp_duration
+                    # Velocity also in x, z, y order
+                    vel = np.array([vx, vz, vy])
                     return np.concatenate([pos, vel])
                 else:
                     return pos
@@ -271,48 +314,191 @@ class ReferenceTrajectoryGenerator:
                 # Shift time and compute regular pacman trajectory
                 t_shifted = t - ramp_duration
                 s = (v * t_shifted) % L_total
-
+                
                 if s < L_arc:
                     angle = start_angle + s / radius
                     x = self.center[0] + radius * np.cos(angle)
                     y = self.center[1] + radius * np.sin(angle)
-                    pos = np.array([x, y, self.z_level])
+                    z = self.z_level
+                    
+                    # Output in x, z, y order
+                    pos = np.array([x, z, y])
+                    pos += self.rest_pos
+                    
                     if self.include_velocity:
                         angle_dot = self.traj_speed
                         vx = -radius * np.sin(angle) * angle_dot
                         vy = radius * np.cos(angle) * angle_dot
-                        vel = np.array([vx, vy, 0.0])
+                        vz = 0.0
+                        # Velocity in x, z, y order
+                        vel = np.array([vx, vz, vy])
                         return np.concatenate([pos, vel])
                     else:
                         return pos
+                        
                 elif s < L_arc + L_line1:
                     s_line = s - L_arc
                     u = s_line / L_line1
-                    P1 = np.array([self.center[0] + radius * np.cos(end_angle),
-                                self.center[1] + radius * np.sin(end_angle),
-                                self.z_level])
-                    C = np.array([self.center[0], self.center[1], self.z_level])
-                    pos = (1 - u) * P1 + u * C
+                    
+                    P1_x = self.center[0] + radius * np.cos(end_angle)
+                    P1_y = self.center[1] + radius * np.sin(end_angle)
+                    P1_z = self.z_level
+                    
+                    C_x = self.center[0]
+                    C_y = self.center[1]
+                    C_z = self.z_level
+                    
+                    # Interpolate each coordinate
+                    x = (1 - u) * P1_x + u * C_x
+                    y = (1 - u) * P1_y + u * C_y
+                    z = (1 - u) * P1_z + u * C_z
+                    
+                    # Output in x, z, y order
+                    pos = np.array([x, z, y])
+                    pos += self.rest_pos
+                    
                     if self.include_velocity:
                         T_line = L_line1 / v
-                        vel = (C - P1) / T_line
+                        vx = (C_x - P1_x) / T_line
+                        vy = (C_y - P1_y) / T_line
+                        vz = (C_z - P1_z) / T_line
+                        # Velocity in x, z, y order
+                        vel = np.array([vx, vz, vy])
                         return np.concatenate([pos, vel])
                     else:
                         return pos
                 else:
                     s_line = s - (L_arc + L_line1)
                     u = s_line / L_line2
-                    P2 = np.array([self.center[0] + radius * np.cos(start_angle),
-                                self.center[1] + radius * np.sin(start_angle),
-                                self.z_level])
-                    C = np.array([self.center[0], self.center[1], self.z_level])
-                    pos = (1 - u) * C + u * P2
+                    
+                    P2_x = self.center[0] + radius * np.cos(start_angle)
+                    P2_y = self.center[1] + radius * np.sin(start_angle)
+                    P2_z = self.z_level
+                    
+                    C_x = self.center[0]
+                    C_y = self.center[1]
+                    C_z = self.z_level
+                    
+                    # Interpolate each coordinate
+                    x = (1 - u) * C_x + u * P2_x
+                    y = (1 - u) * C_y + u * P2_y
+                    z = (1 - u) * C_z + u * P2_z
+                    
+                    # Output in x, z, y order
+                    pos = np.array([x, z, y])
+                    pos += self.rest_pos
+                    
                     if self.include_velocity:
                         T_line = L_line2 / v
-                        vel = (P2 - C) / T_line
+                        vx = (P2_x - C_x) / T_line
+                        vy = (P2_y - C_y) / T_line
+                        vz = (P2_z - C_z) / T_line
+                        # Velocity in x, z, y order
+                        vel = np.array([vx, vz, vy])
                         return np.concatenate([pos, vel])
                     else:
                         return pos
+
+        elif self.traj_type == "pacman_3d":
+            radius = self.traj_params.get("radius", 1.0)
+            mouth_angle = self.traj_params.get("mouth_angle", np.pi / 4)
+            
+            # Define angles for the pacman arc
+            start_angle = mouth_angle / 2
+            end_angle = 2 * np.pi - mouth_angle / 2
+            arc_span = end_angle - start_angle
+            
+            # Calculate path lengths
+            # The two mouth lines are vertical ramps
+            L_line1 = self.z_level  # First mouth line: vertical UP from origin
+            L_arc = radius * arc_span  # Arc portion at constant z_level
+            L_line2 = self.z_level  # Second mouth line: vertical DOWN to origin
+            L_total = L_line1 + L_arc + L_line2
+            
+            v = self.traj_speed * radius  # Speed along the path
+            s = (v * t) % L_total  # Current position along path
+            
+            # Calculate the starting and ending points of the arc at z_level
+            # These are where the mouth lines connect to the arc
+            x_start = self.center[0] + radius * np.cos(start_angle)
+            y_start = self.center[1] + radius * np.sin(start_angle)
+            x_end = self.center[0] + radius * np.cos(end_angle)
+            y_end = self.center[1] + radius * np.sin(end_angle)
+            
+            if s < L_line1:
+                # First mouth line: vertical ramp UP from origin to start of arc
+                u = s / L_line1  # Progress along first line [0, 1]
+                
+                # Interpolate from origin to start point of arc
+                x = self.center[0] + u * (x_start - self.center[0])
+                y = self.center[1] + u * (y_start - self.center[1])
+                z = u * self.z_level
+                
+                # Output in x, z, y order
+                pos = np.array([x, z, y])
+                pos += self.rest_pos
+                
+                if self.include_velocity:
+                    T_line1 = L_line1 / v
+                    vx = (x_start - self.center[0]) / T_line1
+                    vz = self.z_level / T_line1
+                    vy = (y_start - self.center[1]) / T_line1
+                    # Velocity in x, z, y order
+                    vel = np.array([vx, vz, vy])
+                    return np.concatenate([pos, vel])
+                else:
+                    return pos
+                    
+            elif s < L_line1 + L_arc:
+                # Arc portion: pacman shape at constant z_level
+                s_arc = s - L_line1
+                angle = start_angle + s_arc / radius
+                
+                x = self.center[0] + radius * np.cos(angle)
+                y = self.center[1] + radius * np.sin(angle)
+                z = self.z_level  # Constant z during arc
+                
+                # Output in x, z, y order
+                pos = np.array([x, z, y])
+                pos += self.rest_pos
+                
+                if self.include_velocity:
+                    angle_dot = self.traj_speed
+                    vx = -radius * np.sin(angle) * angle_dot
+                    vz = 0.0  # No vertical motion during arc
+                    vy = radius * np.cos(angle) * angle_dot
+                    # Velocity in x, z, y order
+                    vel = np.array([vx, vz, vy])
+                    return np.concatenate([pos, vel])
+                else:
+                    return pos
+                    
+            else:
+                # Second mouth line: vertical ramp DOWN from end of arc back to origin
+                s_line2 = s - (L_line1 + L_arc)
+                u = s_line2 / L_line2  # Progress along second line [0, 1]
+                
+                # Interpolate from end point of arc back to origin
+                x = x_end + u * (self.center[0] - x_end)
+                y = y_end + u * (self.center[1] - y_end)
+                z = (1 - u) * self.z_level  # Ramp down from z_level to 0
+                
+                # Output in x, z, y order
+                pos = np.array([x, z, y])
+                pos += self.rest_pos
+                
+                if self.include_velocity:
+                    T_line2 = L_line2 / v
+                    vx = (self.center[0] - x_end) / T_line2
+                    vz = -self.z_level / T_line2  # Negative (going down)
+                    vy = (self.center[1] - y_end) / T_line2
+                    # Velocity in x, z, y order
+                    vel = np.array([vx, vz, vy])
+                    return np.concatenate([pos, vel])
+                else:
+                    return pos
+
+
 
         elif self.traj_type == "flower":
             # lazy‐init the equidistant star
@@ -326,7 +512,8 @@ class ReferenceTrajectoryGenerator:
 
             # build position
             xy = self._flower_pts[idx]
-            pos = np.array([xy[0], xy[1], self.z_level])
+            pos = np.array([xy[0], self.z_level, xy[1]])
+            pos += self.rest_pos
 
             if self.include_velocity:
                 vx, vy = self._flower_vels[idx]

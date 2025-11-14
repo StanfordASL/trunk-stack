@@ -38,6 +38,8 @@ setup(
             'ffpid_node = executor.ffpid_node:main',
             'openloop_mpc_node = executor.openloop_mpc_node:main',
             'mpc_sanity_check = executor.mpc_sanity_check:main',
+            'koopman_executor_node = executor.koopman_executor_node:main',
+            'koopman_initializer_node = executor.koopman_initializer_node:main'
         ],
     },
 )

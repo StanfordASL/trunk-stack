@@ -50,7 +50,7 @@ class LOCP:
         self.nonlinear_perf_mapping = nonlinear_perf_mapping
 
         # Ensure we have a self.H in SSM class such that 2nd dim is dim of RO state
-        self.n_x = 2
+        self.n_x = 5
         self.n_z = Qz.shape[0]
         self.n_u = R.shape[0]
 
@@ -255,86 +255,555 @@ class LOCP:
 
     #         self._problem_setup()
 
+
+    # def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
+    #     """
+    #     Update the potentially changing LOCP data. xk is updated solution trajectory.
+    #     Properly handles JAX GPU arrays by converting to NumPy CPU arrays.
+    #     """
+        
+    #     # Helper to convert JAX GPU arrays to NumPy CPU arrays
+    #     def to_cpu_numpy(arr):
+    #         if hasattr(arr, '__cuda_array_interface__') or hasattr(arr, 'device'):
+    #             # It's a JAX array on GPU - copy to CPU first
+    #             return np.asarray(arr)  # This triggers the transfer
+    #         return np.asarray(arr)
+        
+    #     if self.warm_start:
+    #         if full:
+    #             # Convert all JAX arrays to NumPy before setting parameters
+    #             if z is not None:
+    #                 self.z.value = to_cpu_numpy(np.ravel(z[:self.N]))
+    #             else:
+    #                 self.z.value = np.zeros((self.N) * self.n_z)
+
+    #             if u is not None:
+    #                 self.u_des.value = to_cpu_numpy(np.ravel(u))
+    #             else:
+    #                 self.u_des.value = np.zeros(self.N * self.n_u)
+
+    #             if self.Qzf is not None and zf is not None:
+    #                 self.zf.value = to_cpu_numpy(zf)
+    #             elif self.Qzf is not None:
+    #                 self.zf.value = np.zeros(self.n_z)
+
+    #             # Convert dynamics matrices (these are on GPU!)
+    #             for j in range(self.N):
+    #                 self.Ad[j].value = to_cpu_numpy(Ad[j])
+    #                 self.Bd[j].value = to_cpu_numpy(Bd[j])
+
+    #             if self.nonlinear_perf_mapping:
+    #                 Hd = kwargs.get('Hd')
+    #                 Gd = kwargs.get('Gd')
+    #                 cd = kwargs.get('cd')
+                    
+    #                 for j in range(self.N):
+    #                     self.Hd[j].value = to_cpu_numpy(Hd[j])
+    #                     self.Gd[j].value = to_cpu_numpy(Gd[j])
+                    
+    #                 self.cd.value = to_cpu_numpy(np.ravel(cd))
+
+    #             self.dd.value = to_cpu_numpy(np.ravel(dd))
+    #             self.xk.value = to_cpu_numpy(xk)
+    #             self.x0.value = to_cpu_numpy(x0)
+
+    #         # Always update delta and omega (these are scalars)
+    #         self.omega.value = float(omega)
+    #         self.delta.value = float(delta)
+
+    #     else:
+    #         # Non-warm-start path
+    #         self.delta = delta
+    #         self.omega = omega
+            
+    #         if z is not None:
+    #             self.z = to_cpu_numpy(np.ravel(z[:self.N]))
+    #         else:
+    #             self.z = np.zeros((self.N) * self.n_z)
+
+    #         if u is not None:
+    #             self.u_des = to_cpu_numpy(np.ravel(u))
+    #         else:
+    #             self.u_des = np.zeros(self.N * self.n_u)
+
+    #         if self.Qzf is not None and zf is not None:
+    #             self.zf = to_cpu_numpy(zf)
+    #         elif self.Qzf is not None:
+    #             self.zf = np.zeros(self.n_z)
+
+    #         self.Ad = [to_cpu_numpy(Ad[j]) for j in range(self.N)]
+    #         self.Bd = [to_cpu_numpy(Bd[j]) for j in range(self.N)]
+    #         self.dd = to_cpu_numpy(np.ravel(dd))
+    #         self.x0 = to_cpu_numpy(x0)
+    #         self.xk = to_cpu_numpy(xk)
+
+    #         if self.nonlinear_perf_mapping:
+    #             Hd = kwargs.get('Hd')
+    #             Gd = kwargs.get('Gd')
+    #             cd = kwargs.get('cd')
+    #             self.Hd = [to_cpu_numpy(Hd[j]) for j in range(self.N)]
+    #             self.Gd = [to_cpu_numpy(Gd[j]) for j in range(self.N)]
+    #             self.cd = to_cpu_numpy(cd)
+
+    #         self._problem_setup()
+
     def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
         """
         Update the potentially changing LOCP data. xk is updated solution trajectory.
+        
+        conversion done here 
+        OPTIMIZED VERSION: Minimizes JAX→NumPy conversions by batching operations.
+        
+        Args:
+            Ad: Dynamics A matrices (N,n_x,n_x) array or list of (n_x,n_x) arrays
+            Bd: Dynamics B matrices (N,n_x,n_u) array or list of (n_x,n_u) arrays  
+            dd: Dynamics offset vector (N*n_x,) or (N,n_x) array
+            x0: Initial state (n_x,) array
+            xk: Linearization trajectory (N,n_x) array
+            delta: Trust region radius (scalar)
+            omega: Slack variable weight (scalar)
+            z: Performance variable reference (N*n_z,) or (N,n_z) array, optional
+            zf: Terminal performance reference (n_z,) array, optional
+            u: Control reference (N*n_u,) or (N,n_u) array, optional
+            full: Whether to update all parameters or just delta/omega
+            **kwargs: Additional parameters (Hd, Gd, cd for nonlinear_perf_mapping)
         """
-
-        # If using warm start, set the parameters to their current values
+        
         if self.warm_start:
-            # Set parameters
             if full:
+                # ================================================================
+                # OPTIMIZATION 1: Batch convert all JAX arrays to NumPy at once
+                # This is THE critical optimization - do ALL GPU→CPU transfers
+                # in one go rather than in a loop
+                # ================================================================
+                
+                # Convert main dynamics matrices
+                # If Ad/Bd are already lists of arrays, convert element by element
+                # If they're 3D arrays, convert once then index
+                if isinstance(Ad, (list, tuple)):
+                    # List of matrices - convert each (less efficient but handle it)
+                    Ad_np = [np.asarray(Ad[j], dtype=np.float64) for j in range(self.N)]
+                    Bd_np = [np.asarray(Bd[j], dtype=np.float64) for j in range(self.N)]
+                else:
+                    # Batched array - SINGLE conversion then index (most efficient!)
+                    Ad_np = np.asarray(Ad, dtype=np.float64)  # Shape: (N, n_x, n_x)
+                    Bd_np = np.asarray(Bd, dtype=np.float64)  # Shape: (N, n_x, n_u)
+                
+                # Convert trajectory and initial state
+                dd_np = np.asarray(dd, dtype=np.float64)
+                x0_np = np.asarray(x0, dtype=np.float64)
+                xk_np = np.asarray(xk, dtype=np.float64)
+                
+                # Convert optional performance variables
                 if z is not None:
-                    self.z.value = np.ravel(z[:self.N])
+                    z_np = np.asarray(z, dtype=np.float64)
                 else:
-                    self.z.value = np.zeros((self.N) * self.n_z)  # default set to 0
-
+                    z_np = None
+                    
                 if u is not None:
-                    self.u_des.value = np.ravel(u)
+                    u_np = np.asarray(u, dtype=np.float64)
                 else:
-                    self.u_des.value = np.zeros(self.N * self.n_u)  # default set to 0
-
+                    u_np = None
+                
                 if self.Qzf is not None and zf is not None:
-                    self.zf.value = np.asarray(zf)
-                elif self.Qzf is not None and zf is None:
-                    self.zf.value = np.zeros(self.n_z)  # default set to 0
+                    zf_np = np.asarray(zf, dtype=np.float64)
+                else:
+                    zf_np = None
+                
+                # Convert nonlinear performance mapping matrices if needed
+                if self.nonlinear_perf_mapping:
+                    Hd_arg = kwargs.get('Hd')
+                    Gd_arg = kwargs.get('Gd')
+                    cd_arg = kwargs.get('cd')
+                    
+                    if Hd_arg is None or Gd_arg is None or cd_arg is None:
+                        raise ValueError(
+                            "nonlinear_perf_mapping=True but Hd, Gd, or cd not provided in kwargs"
+                        )
+                    
+                    # Batch convert performance mapping matrices
+                    if isinstance(Hd_arg, (list, tuple)):
+                        Hd_np = [np.asarray(Hd_arg[j], dtype=np.float64) for j in range(self.N)]
+                        Gd_np = [np.asarray(Gd_arg[j], dtype=np.float64) for j in range(self.N)]
+                    else:
+                        Hd_np = np.asarray(Hd_arg, dtype=np.float64)
+                        Gd_np = np.asarray(Gd_arg, dtype=np.float64)
+                    
+                    cd_np = np.asarray(cd_arg, dtype=np.float64)
+                
+                # ================================================================
+                # OPTIMIZATION 2: Set CVXPY parameters from pre-converted arrays
+                # No more GPU→CPU transfers here - just setting parameter values
+                # ================================================================
+                
+                # Set performance reference
+                if z_np is not None:
+                    z_flat = z_np.ravel()[:self.N * self.n_z]  # Ensure correct length
+                    self.z.value = z_flat
+                else:
+                    self.z.value = np.zeros(self.N * self.n_z, dtype=np.float64)
+                
+                # Set control reference
+                if u_np is not None:
+                    u_flat = u_np.ravel()[:self.N * self.n_u]  # Ensure correct length
+                    self.u_des.value = u_flat
+                else:
+                    self.u_des.value = np.zeros(self.N * self.n_u, dtype=np.float64)
+                
+                # Set terminal performance reference
+                if self.Qzf is not None:
+                    if zf_np is not None:
+                        self.zf.value = zf_np
+                    else:
+                        self.zf.value = np.zeros(self.n_z, dtype=np.float64)
+                
+                # Set dynamics matrices (now just indexing pre-converted arrays)
+                if isinstance(Ad_np, list):
+                    # Was originally a list - already converted above
+                    for j in range(self.N):
+                        self.Ad[j].value = Ad_np[j]
+                        self.Bd[j].value = Bd_np[j]
+                else:
+                    # Was a batched array - index into it (very fast)
+                    for j in range(self.N):
+                        self.Ad[j].value = Ad_np[j]  # Just indexing, no conversion!
+                        self.Bd[j].value = Bd_np[j]
+                
+                # Set nonlinear performance mapping if needed
+                if self.nonlinear_perf_mapping:
+                    if isinstance(Hd_np, list):
+                        for j in range(self.N):
+                            self.Hd[j].value = Hd_np[j]
+                            self.Gd[j].value = Gd_np[j]
+                    else:
+                        for j in range(self.N):
+                            self.Hd[j].value = Hd_np[j]
+                            self.Gd[j].value = Gd_np[j]
+                    
+                    cd_flat = cd_np.ravel()[:self.N * self.n_z]
+                    self.cd.value = cd_flat
+                
+                # Set dynamics offset and trajectories
+                dd_flat = dd_np.ravel()[:self.N * self.n_x]
+                self.dd.value = dd_flat
+                
+                self.xk.value = xk_np
+                self.x0.value = x0_np
+            
+            # ================================================================
+            # Always update trust region parameters (these are just scalars)
+            # ================================================================
+            self.omega.value = float(omega)
+            self.delta.value = float(delta)
+        
+        else:
+            # ================================================================
+            # Non-warm-start path: Rebuild problem from scratch
+            # Less efficient but needed if warm_start=False
+            # ================================================================
+            self.delta = delta
+            self.omega = omega
+            
+            # Convert and store all parameters
+            if z is not None:
+                z_np = np.asarray(z, dtype=np.float64)
+                self.z = z_np.ravel()[:self.N * self.n_z]
+            else:
+                self.z = np.zeros(self.N * self.n_z, dtype=np.float64)
+            
+            if u is not None:
+                u_np = np.asarray(u, dtype=np.float64)
+                self.u_des = u_np.ravel()[:self.N * self.n_u]
+            else:
+                self.u_des = np.zeros(self.N * self.n_u, dtype=np.float64)
+            
+            if self.Qzf is not None:
+                if zf is not None:
+                    self.zf = np.asarray(zf, dtype=np.float64)
+                else:
+                    self.zf = np.zeros(self.n_z, dtype=np.float64)
+            
+            # Convert dynamics matrices
+            if isinstance(Ad, (list, tuple)):
+                self.Ad = [np.asarray(Ad[j], dtype=np.float64) for j in range(self.N)]
+                self.Bd = [np.asarray(Bd[j], dtype=np.float64) for j in range(self.N)]
+            else:
+                Ad_np = np.asarray(Ad, dtype=np.float64)
+                Bd_np = np.asarray(Bd, dtype=np.float64)
+                self.Ad = [Ad_np[j] for j in range(self.N)]
+                self.Bd = [Bd_np[j] for j in range(self.N)]
+            
+            dd_np = np.asarray(dd, dtype=np.float64)
+            self.dd = dd_np.ravel()[:self.N * self.n_x]
+            
+            self.x0 = np.asarray(x0, dtype=np.float64)
+            self.xk = np.asarray(xk, dtype=np.float64)
+            
+            # Handle nonlinear performance mapping
+            if self.nonlinear_perf_mapping:
+                Hd_arg = kwargs.get('Hd')
+                Gd_arg = kwargs.get('Gd')
+                cd_arg = kwargs.get('cd')
+                
+                if Hd_arg is None or Gd_arg is None or cd_arg is None:
+                    raise ValueError(
+                        "nonlinear_perf_mapping=True but Hd, Gd, or cd not provided"
+                    )
+                
+                if isinstance(Hd_arg, (list, tuple)):
+                    self.Hd = [np.asarray(Hd_arg[j], dtype=np.float64) for j in range(self.N)]
+                    self.Gd = [np.asarray(Gd_arg[j], dtype=np.float64) for j in range(self.N)]
+                else:
+                    Hd_np = np.asarray(Hd_arg, dtype=np.float64)
+                    Gd_np = np.asarray(Gd_arg, dtype=np.float64)
+                    self.Hd = [Hd_np[j] for j in range(self.N)]
+                    self.Gd = [Gd_np[j] for j in range(self.N)]
+                
+                cd_np = np.asarray(cd_arg, dtype=np.float64)
+                self.cd = cd_np.ravel()[:self.N * self.n_z]
+            
+            # Rebuild the problem with new parameters
+            self._problem_setup()
+
+
+    # def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
+    #     """
+    #     Update the potentially changing LOCP data. xk is updated solution trajectory.
+        
+    #     OPTIMIZED VERSION: Expects NumPy arrays (no conversion overhead).
+        
+    #     Args:
+    #         Ad: Dynamics A matrices - NumPy array (N,n_x,n_x) or list of (n_x,n_x)
+    #         Bd: Dynamics B matrices - NumPy array (N,n_x,n_u) or list of (n_x,n_u)
+    #         dd: Dynamics offset vector - NumPy array (N*n_x,) or (N,n_x)
+    #         x0: Initial state - NumPy array (n_x,)
+    #         xk: Linearization trajectory - NumPy array (N,n_x)
+    #         delta: Trust region radius (scalar)
+    #         omega: Slack variable weight (scalar)
+    #         z: Performance variable reference - NumPy array, optional
+    #         zf: Terminal performance reference - NumPy array, optional
+    #         u: Control reference - NumPy array, optional
+    #         full: Whether to update all parameters or just delta/omega
+    #         **kwargs: Additional parameters (Hd, Gd, cd for nonlinear_perf_mapping)
+    #     """
+        
+    #     if self.warm_start:
+    #         if full:
+    #             # ================================================================
+    #             # Set performance reference
+    #             # ================================================================
+    #             if z is not None:
+    #                 z_flat = z.ravel()[:self.N * self.n_z]
+    #                 self.z.value = z_flat
+    #             else:
+    #                 self.z.value = np.zeros(self.N * self.n_z, dtype=np.float64)
+                
+    #             # Set control reference
+    #             if u is not None:
+    #                 u_flat = u.ravel()[:self.N * self.n_u]
+    #                 self.u_des.value = u_flat
+    #             else:
+    #                 self.u_des.value = np.zeros(self.N * self.n_u, dtype=np.float64)
+                
+    #             # Set terminal performance reference
+    #             if self.Qzf is not None:
+    #                 if zf is not None:
+    #                     self.zf.value = zf
+    #                 else:
+    #                     self.zf.value = np.zeros(self.n_z, dtype=np.float64)
+                
+    #             # Set dynamics matrices
+    #             if isinstance(Ad, list):
+    #                 # List of matrices
+    #                 for j in range(self.N):
+    #                     self.Ad[j].value = Ad[j]
+    #                     self.Bd[j].value = Bd[j]
+    #             else:
+    #                 # Batched array - index directly
+    #                 for j in range(self.N):
+    #                     self.Ad[j].value = Ad[j]
+    #                     self.Bd[j].value = Bd[j]
+                
+    #             # Set nonlinear performance mapping if needed
+    #             if self.nonlinear_perf_mapping:
+    #                 Hd = kwargs.get('Hd')
+    #                 Gd = kwargs.get('Gd')
+    #                 cd = kwargs.get('cd')
+                    
+    #                 if Hd is None or Gd is None or cd is None:
+    #                     raise ValueError(
+    #                         "nonlinear_perf_mapping=True but Hd, Gd, or cd not provided in kwargs"
+    #                     )
+                    
+    #                 if isinstance(Hd, list):
+    #                     for j in range(self.N):
+    #                         self.Hd[j].value = Hd[j]
+    #                         self.Gd[j].value = Gd[j]
+    #                 else:
+    #                     for j in range(self.N):
+    #                         self.Hd[j].value = Hd[j]
+    #                         self.Gd[j].value = Gd[j]
+                    
+    #                 cd_flat = cd.ravel()[:self.N * self.n_z]
+    #                 self.cd.value = cd_flat
+                
+    #             # Set dynamics offset and trajectories
+    #             dd_flat = dd.ravel()[:self.N * self.n_x]
+    #             self.dd.value = dd_flat
+                
+    #             self.xk.value = xk
+    #             self.x0.value = x0
+            
+    #         # ================================================================
+    #         # Always update trust region parameters (these are just scalars)
+    #         # ================================================================
+    #         self.omega.value = float(omega)
+    #         self.delta.value = float(delta)
+        
+    #     else:
+    #         # ================================================================
+    #         # Non-warm-start path: Rebuild problem from scratch
+    #         # ================================================================
+    #         self.delta = delta
+    #         self.omega = omega
+            
+    #         # Store parameters directly (no conversion)
+    #         if z is not None:
+    #             self.z = z.ravel()[:self.N * self.n_z]
+    #         else:
+    #             self.z = np.zeros(self.N * self.n_z, dtype=np.float64)
+            
+    #         if u is not None:
+    #             self.u_des = u.ravel()[:self.N * self.n_u]
+    #         else:
+    #             self.u_des = np.zeros(self.N * self.n_u, dtype=np.float64)
+            
+    #         if self.Qzf is not None:
+    #             if zf is not None:
+    #                 self.zf = zf
+    #             else:
+    #                 self.zf = np.zeros(self.n_z, dtype=np.float64)
+            
+    #         # Store dynamics matrices
+    #         if isinstance(Ad, list):
+    #             self.Ad = Ad
+    #             self.Bd = Bd
+    #         else:
+    #             # Convert batched array to list by indexing
+    #             self.Ad = [Ad[j] for j in range(self.N)]
+    #             self.Bd = [Bd[j] for j in range(self.N)]
+            
+    #         self.dd = dd.ravel()[:self.N * self.n_x]
+    #         self.x0 = x0
+    #         self.xk = xk
+            
+    #         # Handle nonlinear performance mapping
+    #         if self.nonlinear_perf_mapping:
+    #             Hd = kwargs.get('Hd')
+    #             Gd = kwargs.get('Gd')
+    #             cd = kwargs.get('cd')
+                
+    #             if Hd is None or Gd is None or cd is None:
+    #                 raise ValueError(
+    #                     "nonlinear_perf_mapping=True but Hd, Gd, or cd not provided"
+    #                 )
+                
+    #             if isinstance(Hd, list):
+    #                 self.Hd = Hd
+    #                 self.Gd = Gd
+    #             else:
+    #                 self.Hd = [Hd[j] for j in range(self.N)]
+    #                 self.Gd = [Gd[j] for j in range(self.N)]
+                
+    #             self.cd = cd.ravel()[:self.N * self.n_z]
+            
+    #         # Rebuild the problem with new parameters
+    #         self._problem_setup()
+
+        
+    # def update(self, Ad, Bd, dd, x0, xk, delta, omega, z=None, zf=None, u=None, full=True, **kwargs):
+        # """
+        # Update the potentially changing LOCP data. xk is updated solution trajectory. Original 
+        # """
+        # #print(type(Ad),type(Bd),type(dd))
+
+        # #assert isinstance(Ad, np.ndarray), f"Expected a NumPy array, got {type(Ad)}"
+
+        # # If using warm start, set the parameters to their current values
+        # if self.warm_start:
+        #     # Set parameters
+        #     if full:
+        #         if z is not None:
+        #             self.z.value = np.ravel(z[:self.N])
+        #         else:
+        #             self.z.value = np.zeros((self.N) * self.n_z)  # default set to 0
+
+        #         if u is not None:
+        #             self.u_des.value = np.ravel(u)
+        #         else:
+        #             self.u_des.value = np.zeros(self.N * self.n_u)  # default set to 0
+
+        #         if self.Qzf is not None and zf is not None:
+        #             self.zf.value = np.asarray(zf)
+        #         elif self.Qzf is not None and zf is None:
+        #             self.zf.value = np.zeros(self.n_z)  # default set to 0
 
                 
 
-                # Added observer linearizations here. Make sure to propogate Hd, Gd and cd as parameters in kwargs
-                for j in range(self.N):
-                    self.Ad[j].value = np.asarray(Ad[j])
-                    self.Bd[j].value = np.asarray(Bd[j])
+        #         # Added observer linearizations here. Make sure to propogate Hd, Gd and cd as parameters in kwargs
+        #         for j in range(self.N):
+        #             self.Ad[j].value = np.asarray(Ad[j])
+        #             self.Bd[j].value = np.asarray(Bd[j])
 
-                if self.nonlinear_perf_mapping:
-                    for j in range(self.N):
-                        self.Hd[j].value = np.asarray(kwargs.get('Hd')[j])
-                        self.Gd[j].value = np.asarray(kwargs.get('Gd')[j])
+        #         if self.nonlinear_perf_mapping:
+        #             for j in range(self.N):
+        #                 self.Hd[j].value = np.asarray(kwargs.get('Hd')[j])
+        #                 self.Gd[j].value = np.asarray(kwargs.get('Gd')[j])
 
-                self.dd.value = np.ravel(np.asarray(dd))
-                if self.nonlinear_perf_mapping:
-                    cd = kwargs.get('cd')
-                    self.cd.value = np.ravel(np.asarray(cd))
+        #         self.dd.value = np.ravel(np.asarray(dd))
+        #         if self.nonlinear_perf_mapping:
+        #             cd = kwargs.get('cd')
+        #             self.cd.value = np.ravel(np.asarray(cd))
 
-                self.xk.value = np.asarray(xk)
-                self.x0.value = np.asarray(x0)
+        #         self.xk.value = np.asarray(xk)
+        #         self.x0.value = np.asarray(x0)
 
-            # Always update delta and omega
-            self.omega.value = omega
-            self.delta.value = delta
+        #     # Always update delta and omega
+        #     self.omega.value = omega
+        #     self.delta.value = delta
 
-        # Otherwise just build a new problem from scratch each time
-        else:
-            self.delta = delta
-            self.omega = omega
-            if z is not None:
-                self.z = np.ravel(z[:self.N])
-            else:
-                self.z = np.zeros((self.N) * self.n_z)
+        # # Otherwise just build a new problem from scratch each time
+        # else:
+        #     self.delta = delta
+        #     self.omega = omega
+        #     if z is not None:
+        #         self.z = np.ravel(z[:self.N])
+        #     else:
+        #         self.z = np.zeros((self.N) * self.n_z)
 
-            if u is not None:
-                self.u_des = np.ravel(u)
-            else:
-                self.u_des = np.zeros(self.N * self.n_u)
+        #     if u is not None:
+        #         self.u_des = np.ravel(u)
+        #     else:
+        #         self.u_des = np.zeros(self.N * self.n_u)
 
-            if self.Qzf is not None and zf is not None:
-                self.zf = zf
-            elif self.Qzf is not None and zf is None:
-                self.zf = np.zeros(self.n_z)
+        #     if self.Qzf is not None and zf is not None:
+        #         self.zf = zf
+        #     elif self.Qzf is not None and zf is None:
+        #         self.zf = np.zeros(self.n_z)
 
-            self.Ad = np.asarray(Ad)
-            self.Bd = np.asarray(Bd)
-            self.dd = np.ravel(np.asarray(dd))
-            self.x0 = np.asarray(x0)
-            self.xk = np.asarray(xk)
+        #     self.Ad = np.asarray(Ad)
+        #     self.Bd = np.asarray(Bd)
+        #     self.dd = np.ravel(np.asarray(dd))
+        #     self.x0 = np.asarray(x0)
+        #     self.xk = np.asarray(xk)
 
-            # Observer params here
-            if self.nonlinear_perf_mapping:
-                self.Hd = np.asarray(kwargs.get('Hd'))
-                self.Gd = np.asarray(kwargs.get('Gd'))
-                self.cd = np.asarray(kwargs.get('cd'))
+        #     # Observer params here
+        #     if self.nonlinear_perf_mapping:
+        #         self.Hd = np.asarray(kwargs.get('Hd'))
+        #         self.Gd = np.asarray(kwargs.get('Gd'))
+        #         self.cd = np.asarray(kwargs.get('cd'))
 
-            self._problem_setup()
+        #     self._problem_setup()
 
     def solve(self):
         """
@@ -438,6 +907,7 @@ class LOCP:
         constraints = self._set_constraints()
         self.prob = cp.Problem(cp.Minimize(J), constraints)
 
+    
     def _set_objective(self):
         """
         Compute the quadratic part of the objective.
@@ -516,6 +986,82 @@ class LOCP:
 
         return J
 
+    # def _set_constraints(self):
+    #     constr = []
+
+    #     # Dynamics constraints
+    #     if self.warm_start:
+    #         Adfull = self._build_block_param_matrix_fast(
+    #             self.Ad[:-1], self.n_x, self.n_x, self.N - 1
+    #         )
+    #         Bdfull = self._build_block_param_matrix_fast(
+    #             self.Bd[:-1], self.n_x, self.n_u, self.N - 1
+    #         )
+    #     else:
+    #         Adfull = block_diag(*self.Ad[:-1])
+    #         Bdfull = block_diag(*self.Bd[:-1])
+        
+    #     constr += [
+    #         self.x[self.n_x:] == Adfull @ self.x[:-self.n_x] + Bdfull @ self.u[:-self.n_u] + self.dd[:-self.n_x]
+    #     ]
+
+    #     # ============================================================
+    #     # SIMPLIFIED Trust region - L2 norm instead of inf norm
+    #     # This reduces from (n_x * N) constraints to just N constraints!
+    #     # ============================================================
+    #     if self.tr_active:
+    #         dx = reshape(self.x, (self.n_x, self.N)) - self.xk.T
+    #         dx_scaled = cp.multiply(self.X_scale_mat, dx)
+            
+    #         # OPTION A: Single L2 norm per timestep (N second-order cone constraints)
+    #         for k in range(self.N):
+    #             constr += [cp.norm(dx_scaled[:, k], 2) <= (self.delta + self.st[k]) * np.sqrt(self.n_x)]
+            
+    #         # OPTION B: If you want to keep inf norm but faster, use this:
+    #         # (Still creates n_x*N constraints but formulated more efficiently)
+    #         # constr += [cp.abs(dx_scaled) <= self.delta + self.st]
+            
+    #         constr += [self.st >= 0]
+
+    #     # Control constraints
+    #     if self.U is not None:
+    #         constr += [self.UAfull @ self.u <= self.Ubfull]
+
+    #     if self.dU is not None:
+    #         constr += [self.dUAfull @ (self.u[self.n_u:] - self.u[:-self.n_u]) <= self.dUbfull]
+
+    #     # State constraints
+    #     if self.X is not None:
+    #         if self.nonlinear_perf_mapping:
+    #             cdfull = reshape(self.cd, ((self.N + 1) * self.n_z,))
+                
+    #             if self.warm_start:
+    #                 Hfull = self._build_block_param_matrix_fast(
+    #                     self.Hd[1:], self.n_z, self.n_x, self.N
+    #                 )
+    #                 Gfull = self._build_block_param_matrix_fast(
+    #                     self.Gd[1:], self.n_z, self.n_u, self.N
+    #                 )
+    #             else:
+    #                 Hfull = block_diag(*[self.Hd[j + 1] for j in range(self.N)])
+    #                 Gfull = block_diag(*[self.Gd[j + 1] for j in range(self.N)])
+
+    #             cdfull = cdfull[self.n_z:]
+    #             XAfull = self.XAfull_block @ Hfull
+    #             Xbfull = self.Xbfull - self.XAfull_block @ cdfull
+    #             constr += [XAfull @ self.x[self.n_z:] <= Xbfull]
+    #         else:
+    #             constr += [self.XAfull_block @ self.x[self.n_x:] <= self.Xbfull]
+
+    #     # Terminal constraints
+    #     if self.Xf is not None:
+    #         constr += [self.Xf.A @ self.x[-self.n_x:] <= self.Xf.b]
+
+    #     # Initial condition
+    #     constr += [self.x[:self.n_x] == self.x0]
+
+    #     return constr
+
     def _set_constraints(self):
         constr = []
 
@@ -548,7 +1094,7 @@ class LOCP:
             dx = reshape(self.x, (self.n_x, self.N)) - self.xk.T
             dx_scaled = cp.multiply(X_scale, dx)
             constr += [cp.norm(dx_scaled, 'inf', axis=0) <= self.delta + self.st]
-
+           
             # Slack variable positivity
             constr += [self.st >= 0]
 

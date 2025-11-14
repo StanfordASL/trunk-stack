@@ -9,8 +9,8 @@ from .mpc.gusto_upgrade_trunk import GuSTO
 import numpy as np
 
 
-def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=None, zf=None,
-                       U=None, X=None, Xf=None, dU=None, exps_M = None, M = None, U_select = None, W_sm = None, epsilon_sm = None, case_rbf = None, V = None, init_guess_type='shift',init_node=False, **kwargs):
+def run_mpc_solver_node(K_r=None , I=None, exps_I = None, x0=None, t=None, dt=None, ref_traj=None, u=None, zf=None,
+                       U=None, X=None, Xf=None, dU=None, init_guess_type='shift', init_node=False, **kwargs):
     """
     Function that builds a ROS node to run MPC and runs it continuously. This node
     provides a service that at each query will run MPC once.
@@ -36,7 +36,7 @@ def run_mpc_solver_node(model, config, x0, t=None, dt=None, ref_traj=None, u=Non
     assert t is not None or dt is not None, "Either t array or dt must be provided."
     if init_node:
         rclpy.init()
-    node = MPCSolverNode(model, config, x0, t=t, dt=dt, ref_traj=ref_traj, u=u, zf=zf, U=U, X=X, Xf=Xf, dU=dU, exps_M = exps_M, M = M, U_select = U_select, W_sm = W_sm, epsilon_sm = epsilon_sm, case_rbf = case_rbf, V = V, init_guess_type=init_guess_type,
+    node = MPCSolverNode( K_r = K_r , I=I, exps_I = exps_I, x0=None, t=t, dt=dt, ref_traj=ref_traj, u=u, zf=zf, U=U, X=X, Xf=Xf, dU=dU, init_guess_type=init_guess_type,
                          **kwargs)
     rclpy.spin(node)
     rclpy.shutdown()
@@ -64,28 +64,23 @@ class MPCSolverNode(Node):
     Defines a service provider node that will run the GuSTO MPC implementation.
     """
 
-    def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None,
-                 U=None, dU=None, exps_M = None, M = None, U_select = None, W_sm = None, epsilon_sm = None, case_rbf = None, V = None, init_guess_type='shift',**kwargs):
+    def __init__(self, K_r=None, I=None, exps_I=None, x0=None, t=None, zf=None, dt=None, ref_traj=None, u=None,
+                 U=None, dU=None, init_guess_type='shift',**kwargs):
         
-        self.model = model
-    
-        self.dt = model.dt
-        self.config = config
+       
+        self.dt = dt
         self.U = U
         self.dU = dU
 
-        self.exps_M = exps_M
-        self.M = M
-        self.U_select = U_select
-        self.W_sm = W_sm
-        self.epsilon_sm = epsilon_sm
-        self.case_rbf = case_rbf
-        self.V = V
+        self.K_r = K_r
+        self.I = I 
+        self.exps_I = exps_I
 
+        
         # Extract dimensions
-        self.n_x = model.n_x     # state dimension
-        self.n_u = model.n_u     # control dimension
-        self.n_z = self.config.H.shape[0] # performance dimension
+        self.n_x = 9     # state dimension
+        self.n_u = 6     # control dimension
+        self.n_z = 3 # performance dimension
         
         # shift = self.model.ssm.specified_params["shift_steps"]  # Is 0 if there is no subsampling
         # num_delay = self.model.ssm.specified_params["embedding_up_to"]
@@ -97,7 +92,7 @@ class MPCSolverNode(Node):
             self.dt = dt
         elif dt is None and t is not None:
             self.dt = t[1] - t[0]
-        self.N = config.N
+        self.N = 10
         self.t = t
 
         # Define target values
@@ -108,55 +103,55 @@ class MPCSolverNode(Node):
         
         # New code
 
-         # Initialize GuSTO with zeros as initial guess
-        self.u_init = jnp.zeros((self.N, self.n_u))
-        self.x_init = self.model.multistep_dynamics(x0, self.u_init)
-        self.x_init = self.x_init[:self.N]
-        # can be such that x0 is full state...
-        z_ref_win = self.ref_traj[0:self.N]
-        print(z_ref_win.shape)
-        #print(f"x_init shape: {x_init.shape}, z_ref_win shape: {z_ref_win.shape}")
-        self.gusto = GuSTO(
-            self.model, 
-            self.config,
-            x0,
-            self.u_init,
-            self.x_init,
-            z=z_ref_win,
-            zf=z_ref_win[-1],
-            U=U,
-            dU=dU,
-            start_with_solve=True,
-            exps_M=self.exps_M,
-            M=self.M,
-            U_select = self.U_select,
-            W_sm = self.W_sm,
-            epsilon_sm = self.epsilon_sm,
-            case_rbf = self.case_rbf,
-            solver='CLARABEL',
-        )
-        """
-        if z is not None and z.ndim == 2:
-            self.z_interp = interp1d(t, z, axis=0, bounds_error=False, fill_value=(z[0, :], z[-1, :]))
+        #  # Initialize GuSTO with zeros as initial guess
+        # self.u_init = jnp.zeros((self.N, self.n_u))
+        # self.x_init = self.model.multistep_dynamics(x0, self.u_init)
+        # self.x_init = self.x_init[:self.N]
+        # # can be such that x0 is full state...
+        # z_ref_win = self.ref_traj[0:self.N]
+        # print(z_ref_win.shape)
+        # #print(f"x_init shape: {x_init.shape}, z_ref_win shape: {z_ref_win.shape}")
+        # self.gusto = GuSTO(
+        #     self.model, 
+        #     self.config,
+        #     x0,
+        #     self.u_init,
+        #     self.x_init,
+        #     z=z_ref_win,
+        #     zf=z_ref_win[-1],
+        #     U=U,
+        #     dU=dU,
+        #     start_with_solve=True,
+        #     exps_M=self.exps_M,
+        #     M=self.M,
+        #     U_select = self.U_select,
+        #     W_sm = self.W_sm,
+        #     epsilon_sm = self.epsilon_sm,
+        #     case_rbf = self.case_rbf,
+        #     solver='CLARABEL',
+        # )
+        # """
+        # if z is not None and z.ndim == 2:
+        #     self.z_interp = interp1d(t, z, axis=0, bounds_error=False, fill_value=(z[0, :], z[-1, :]))
 
-        if u is not None and u.ndim == 2:
-            self.u_interp = interp1d(t, u, axis=0, bounds_error=False, fill_value=(u[0, :], u[-1, :]))
-        """
-        # Set up GuSTO and run first solve with a simple initial guess
-        # self.u_init = jnp.zeros((config.N, self.model.n_u))
+        # if u is not None and u.ndim == 2:
+        #     self.u_interp = interp1d(t, u, axis=0, bounds_error=False, fill_value=(u[0, :], u[-1, :]))
+        # """
+        # # Set up GuSTO and run first solve with a simple initial guess
+        # # self.u_init = jnp.zeros((config.N, self.model.n_u))
         
-        # self.x_init = self.model.rollout(x0, self.u_init, self.dt)
+        # # self.x_init = self.model.rollout(x0, self.u_init, self.dt)
 
-        # self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1],
-        #                    zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)
+        # # self.gusto = GuSTO(self.model, config, x0, self.u_init, self.x_init, z=jnp.array(self.ref_traj.eval())[:self.N+1],
+        # #                    zf=jnp.array(self.ref_traj.eval())[self.N+1], U=U, dU=dU, **kwargs)
 
-        self.xopt, self.uopt, _, _ = self.gusto.get_solution()
+        # self.xopt, self.uopt, _, _ = self.gusto.get_solution()
 
-        self.x_prev = self.xopt
-        self.u_prev = self.uopt
-        self.t_idx = 0
+        # self.x_prev = self.xopt
+        # self.u_prev = self.uopt
+        # self.t_idx = 0
 
-        self.topt = self.dt * jnp.arange(self.N) # additional time-keeper not involved compute_control
+        # self.topt = self.dt * jnp.arange(self.N) # additional time-keeper not involved compute_control
 
         
        
@@ -202,10 +197,13 @@ class MPCSolverNode(Node):
             response.done = False
 
         # 3) Set initial condition for solve
-        current_state = jnp.array(request.y0[:6])
+        current_state = np.array(request.y0[:3])
+        self.t_idx = int(self.t0 / self.dt)
+        us_xs_0_ubar = self.I @ self.eval_monomials_single_sm(full_ref[self.t_idx, :], self.exps_I) 
+        u = -self.K_r @ np.tile((current_state - full_ref[self.t_idx, :]).reshape(-1, 1), (3, 1)) + us_xs_0_ubar.reshape(-1, 1)# LQR control law around current position
+     
         #print(current_state)
 
-        reduced_x = self.V.T @ (jnp.array(request.y0) - jnp.tile(current_state.squeeze(), 4)).flatten()  # Reduced state for the aSSM model
         #print(reduced_x)
         #reduced_x = 0*reduced_x
         # # 3) Reconstruct y0 from the delayed embedding
@@ -232,7 +230,6 @@ class MPCSolverNode(Node):
 
         # self.u_prev = jnp.array(request.u0) # in case of delays we have this input - maybe bring this back for delays?
         # print(self.u_prev.shape)
-        self.xopt, self.uopt, zopt, t_solve =self.compute_control(reduced_x)
         # print(t_solve)
         # CHANGED
         # 5) Update u_ref_init by shifting in the previous input
@@ -304,14 +301,12 @@ class MPCSolverNode(Node):
         # xopt_extracted = self.xopt[:, : self.model.n_x]
 
         # 10) Package the response
-        self.topt = self.t0 + self.dt * jnp.arange(self.N)
+        self.topt = jnp.array([self.t0, self.t0])
+        self.uopt = u 
         print(self.topt)
         response.t = jnp2arr(self.topt)
-        response.xopt = jnp2arr(self.xopt)
         response.uopt = jnp2arr(self.uopt)
-        response.zopt = jnp2arr(zopt.T)
-        response.solve_time = t_solve
-
+        
         return response
     
     def compute_control(self, state: jnp.ndarray):
@@ -450,3 +445,20 @@ class MPCSolverNode(Node):
     #         u = None
 
     #     return z, zf, u
+
+    def eval_monomials_single_sm(self, xi, exps):
+        """Evaluate monomials at a single point with constant term added"""
+        xi = jnp.asarray(xi).flatten()
+        x = xi.reshape(1, -1, 1)  # Shape: (1, 9, 1)
+        
+        # Add dimension to exps for broadcasting
+        exps_expanded = exps[:, :, None]  # Shape: (219, 9, 1)
+        
+        powered = x ** exps_expanded  # Now broadcasting works: (1, 9, 1) ** (219, 9, 1)
+        u = jnp.prod(powered, axis=1, keepdims=True)  # Shape: (219, 1)
+        # Reshape u to 2D before concatenating
+        u = u.squeeze(axis=-1)  # Shape: (219, 1)
+        
+        # Add constant term (1)
+        u = jnp.vstack([u, jnp.ones((1, 1))])
+        return u
