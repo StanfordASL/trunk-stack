@@ -60,17 +60,17 @@ class MPCInitializerNode(Node):
                 "N": 10
             },
             "trajectory": {
-                "type": "circle_with_ramp",  # Options: "circle", "circle_with_ramp", "eight", "pacman_3d", "pacman", "pacman_with_ramp", "flower", "controlled_csv"
-                "duration": 40.0,  # Duration of the simulation in seconds
+                "type": "controlled_csv",  # Options: "circle", "circle_with_ramp", "eight", "pacman_3d", "pacman", "pacman_with_ramp", "flower", "controlled_csv"
+                "duration": 30.0,  # Duration of the simulation in seconds
                 "speed": 0.25,  # Angular speed (rad/s)
                 "include_velocity": False,
                 "csv_path": os.path.join(self.data_dir, 'trajectories/dynamic/observations_controlled_310.csv'),
                 "rest_pos": [0.1008, -0.39455, 0.117025], # in x, y, z mocap order for tip
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
-                    "radius": 0.2,  # [m]  For "circle" and "pacman"
-                    "amplitude": 0.2,  # [m]  For "eight"
-                    "z_level": 0.09,  # [m]  Constant z-coordinate
+                    "radius": 0.1,  # [m]  For "circle" and "pacman"
+                    "amplitude": 0.1,  # [m]  For "eight"
+                    "z_level": 0.05,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
                 }
             },
@@ -161,6 +161,10 @@ class MPCInitializerNode(Node):
         else:
             #du = HyperRectangle([float(duc)] * self.model.n_u, [-float(duc)] * self.model.n_u)
             du = None
+        
+        # SET STATE CONSTRAINTS (X)
+        X = None
+        
 
         gusto_config = GuSTOConfig(
             Qz=Qz,
@@ -178,7 +182,7 @@ class MPCInitializerNode(Node):
         self.model, self.exps_M, self.M, self.U_select, self.W_sm, self.epsilon_sm, self.case_rbf, self.V = setup_aSSM(dt=mpc_config["dt"], rk4=False)
 
         self.mpc_solver_node = run_mpc_solver_node(self.model, gusto_config, x0_red, t=self.times, dt=mpc_config["dt"],
-                                                   ref_traj=self.ref_traj, U=u, dU=du, exps_M = self.exps_M , M = self.M, U_select = self.U_select, W_sm = self.W_sm, epsilon_sm = self.epsilon_sm, case_rbf = self.case_rbf, V = self.V , init_guess_type='shift', solver="OSQP")  # Was GUROBI
+                                                   ref_traj=self.ref_traj, U=u, dU=du, X=X, exps_M = self.exps_M , M = self.M, U_select = self.U_select, W_sm = self.W_sm, epsilon_sm = self.epsilon_sm, case_rbf = self.case_rbf, V = self.V , init_guess_type='shift', solver="OSQP")  # Was GUROBI
         
     
 

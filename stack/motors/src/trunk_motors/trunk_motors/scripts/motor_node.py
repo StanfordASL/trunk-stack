@@ -103,22 +103,23 @@ class MotorNode(Node):
         self.callback_group = ReentrantCallbackGroup()
 
         # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-        self.rest_positions = np.array([203.12, 171.91, 174.11, 175.08, 176.40, 182.02])
+        self.rest_positions = np.array([196.26, 165.85, 172.88, 171.12, 174.99, 181.76])
         self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
         #1-6 base, 2-4 is tip, 3-5 middle
 
         # Define a safe region to operate the motors in (position and velocity):
         # self.limits_safe = np.array([51, 81, 31, 81, 31, 51]) # these should never exceed 180 degrees
         #self.limits_safe = np.array([50, 111, 91, 111, 91, 50S] )# limits_safe[i] should never exceed 360 - rest_positions[i]   ABSOLUTE VALUES OF TRUNKV2
-        self.limits_safe = np.array([51, 111, 71, 111, 71, 51] )# limits_safe[i] should never exceed 360 - rest_positions[i]   TOTAL VALUES OF TRUNKV2
+        # self.limits_safe = np.array([51, 111, 71, 111, 71, 51] )# limits_safe[i] should never exceed 360 - rest_positions[i]   WE USED THIS week of 11/10
+        #self.limits_safe = np.array([56, 56, 56, 56, 56, 56] ) #DO NOT CHANGE THIS
 
-        # self.limits_safe = np.array([30, 90, 50, 90, 50, 30] )# limits_safe[i] should never exceed 360 - rest_positions[i]   TOTAL VALUES OF TRUNKV2 - what they were using
+        self.limits_safe = np.array([30, 90, 50, 90, 50, 30] )# limits_safe[i] should never exceed 360 - rest_positions[i]   TOTAL VALUES OF TRUNKV2 - what they were using
         self.delta_limits_safe = np.array([500.0, 500.0, 500.0, 500.0, 500.0, 500.0]) # TODO
 
         self.last_motor_positions = None
 
         # initialize motors client
-        self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB0') # might be ttyusb0 or ttyusb1 depending on what other devices are plugged in
+        self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB1') # might be ttyusb0 or ttyusb1 depending on what other devices are plugged in
 
         # connect to motors
         self.dxl_client.connect()

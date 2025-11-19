@@ -65,7 +65,7 @@ class MPCSolverNode(Node):
     """
 
     def __init__(self, model, config, x0, t=None, zf=None, dt=None, ref_traj=None, u=None,
-                 U=None, dU=None, exps_M = None, M = None, U_select = None, W_sm = None, epsilon_sm = None, case_rbf = None, V = None, init_guess_type='shift',**kwargs):
+                 U=None, dU=None, X=None, exps_M = None, M = None, U_select = None, W_sm = None, epsilon_sm = None, case_rbf = None, V = None, init_guess_type='shift',**kwargs):
         
         self.model = model
     
@@ -73,6 +73,7 @@ class MPCSolverNode(Node):
         self.config = config
         self.U = U
         self.dU = dU
+        self.X = X
 
         self.exps_M = exps_M
         self.M = M
@@ -126,6 +127,7 @@ class MPCSolverNode(Node):
             zf=z_ref_win[-1],
             U=U,
             dU=dU,
+            X=self.X,
             start_with_solve=True,
             exps_M=self.exps_M,
             M=self.M,
@@ -207,7 +209,7 @@ class MPCSolverNode(Node):
 
         reduced_x = self.V.T @ (jnp.array(request.y0) - jnp.tile(current_state.squeeze(), 4)).flatten()  # Reduced state for the aSSM model
         #print(reduced_x)
-        #reduced_x = 0*reduced_x
+        # reduced_x = 0*reduced_x
         # # 3) Reconstruct y0 from the delayed embedding
         # y0_np = np.array(request.y0)  # purely for debugging or sanity checks
         # print("Received request.y0 of shape:", y0_np.shape)

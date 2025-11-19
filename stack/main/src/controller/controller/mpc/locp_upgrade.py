@@ -1112,8 +1112,8 @@ class LOCP:
         # State constraints
         if self.X is not None:
             if self.nonlinear_perf_mapping:
-                cdfull = np.reshape(self.cd, ((self.N + 1) * self.n_z,)) if isinstance(self.cd, list) else \
-                    reshape(self.cd, ((self.N + 1) * self.n_z,))
+                cdfull = np.reshape(self.cd, ((self.N) * self.n_z,)) if isinstance(self.cd, list) else \
+                    reshape(self.cd, ((self.N) * self.n_z,))
                 if self.warm_start:
                     Hfull = []
                     for j in range(self.N):
@@ -1134,8 +1134,9 @@ class LOCP:
                 # Take only last N of cdfull
                 cdfull = cdfull[self.n_z:]
                 XAfull = block_diag(*[self.X.A for j in range(self.N)]) @ Hfull
+                XCfull = block_diag(*[self.X.A for j in range(self.N)]) @ Gfull
                 Xbfull = np.tile(self.X.b, self.N) - block_diag(*[self.X.A for j in range(self.N)]) @ cdfull
-                constr += [XAfull @ self.x[self.n_z:] <= Xbfull]
+                constr += [XAfull @ self.x[self.n_x:] + XCfull @ self.u[self.n_u:] <= Xbfull]
             else:
                 XAfull = block_diag(*[self.X.A for j in range(self.N)])
                 Xbfull = np.tile(self.X.b, self.N)

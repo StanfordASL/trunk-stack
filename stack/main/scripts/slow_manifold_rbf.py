@@ -507,8 +507,8 @@ def load_robot_data(control_path, observation_path):
     U_data = U_data.astype(np.float32)
     Y_data = Y_data.astype(np.float32)
     
-    U_data = U_data[300:100000:5,:]
-    Y_data = Y_data[300:100000:5,:]
+    # U_data = U_data[,:]
+    # Y_data = Y_data[,:]
     # Print some statistics
     print("\nControl inputs (U) statistics:")
     print(f"  Min: {U_data.min(axis=0)}")
@@ -670,8 +670,8 @@ if __name__ == "__main__":
     import os
     
     # Define paths
-    control_path = 'stack/main/data/trajectories/dynamic/control_inputs_controlled_410.csv'
-    observation_path = 'stack/main/data/trajectories/dynamic/observations_controlled_410.csv'
+    control_path = 'stack/main/data/trajectories/dynamic/control_inputs_controlled_411_n100.csv'
+    observation_path = 'stack/main/data/trajectories/dynamic/observations_controlled_411_n100.csv'
     
     # Check if files exist
     if not os.path.exists(control_path):
@@ -716,11 +716,11 @@ if __name__ == "__main__":
     U_centers_jax = jnp.array(U_centers)
     W_jax = jnp.array(W)
     
-    # Save the fitted model
-    print("\nSaving model...")
-    np.save('stack/main/data/models/ssm/rbf_centers.npy', U_centers)
-    np.save('stack/main/data/models/ssm/rbf_weights.npy', W)
-    print("Saved rbf_centers.npy and rbf_weights.npy")
+    # # Save the fitted model
+    # print("\nSaving model...")
+    # np.save('stack/main/data/models/ssm/rbf_centers.npy', U_centers)
+    # np.save('stack/main/data/models/ssm/rbf_weights.npy', W)
+    # print("Saved rbf_centers.npy and rbf_weights.npy")
     
     # Test evaluation on some actual data points
     print("\n" + "="*60)
@@ -779,8 +779,8 @@ if __name__ == "__main__":
     print(f"Time for 1000 points: {elapsed*1000:.2f} ms")
     print(f"Time per point: {elapsed/1000*1000:.3f} ms")
 
-    control_path_test = 'stack/main/data/trajectories/dynamic/control_inputs_controlled_310.csv'
-    observation_path_test = 'stack/main/data/trajectories/dynamic/observations_controlled_310.csv'
+    control_path_test = 'stack/main/data/trajectories/dynamic/control_inputs_controlled_30.csv'
+    observation_path_test = 'stack/main/data/trajectories/dynamic/observations_controlled_30.csv'
 
     print("="*60)
     print("Loading Robot Test Data")
@@ -797,10 +797,26 @@ if __name__ == "__main__":
     y3_true = Y_data_test[:, 1]
     y3_pred = np.array(predictions)[:, 1]
 
+    x3_true = Y_data_test[:, 0]
+    x3_pred = np.array(predictions)[:, 0]
+
+    z3_true = Y_data_test[:, 2]
+    z3_pred = np.array(predictions)[:, 2]
+
     # Create time vector (assuming sequential samples)
     time = np.arange(len(y3_true))
 
     # Plot
+    plt.figure(figsize=(12, 6))
+    plt.plot(time, x3_true, 'b-', linewidth=2, label='True x3', alpha=0.7)
+    plt.plot(time, x3_pred, 'r--', linewidth=2, label='Predicted x3', alpha=0.7)
+    plt.xlabel('Time (sample index)', fontsize=12)
+    plt.ylabel('x3', fontsize=12)
+    plt.title('x3 Trajectory: True vs Predicted', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=11)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
     plt.figure(figsize=(12, 6))
     plt.plot(time, y3_true, 'b-', linewidth=2, label='True y3', alpha=0.7)
     plt.plot(time, y3_pred, 'r--', linewidth=2, label='Predicted y3', alpha=0.7)
@@ -810,6 +826,17 @@ if __name__ == "__main__":
     plt.legend(fontsize=11)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(time, z3_true, 'b-', linewidth=2, label='True z3', alpha=0.7)
+    plt.plot(time, z3_pred, 'r--', linewidth=2, label='Predicted z3', alpha=0.7)
+    plt.xlabel('Time (sample index)', fontsize=12)
+    plt.ylabel('z3', fontsize=12)
+    plt.title('z3 Trajectory: True vs Predicted', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=11)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
     plt.savefig('y3_trajectory.png', dpi=150, bbox_inches='tight')
     print("Plot saved as: y3_trajectory.png")
     plt.show()

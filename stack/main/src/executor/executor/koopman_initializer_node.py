@@ -55,17 +55,17 @@ class MPCInitializerNode(Node):
                 "N": 10
             },
             "trajectory": {
-                "type": "eight",  # Options: "circle", "circle_with_ramp", "eight", "pacman_3d", "pacman", "pacman_with_ramp", "flower", "controlled_csv"
-                "duration": 40.0,  # Duration of the simulation in seconds
+                "type": "controlled_csv",  # Options: "circle", "circle_with_ramp", "eight", "pacman_3d", "pacman", "pacman_with_ramp", "flower", "controlled_csv"
+                "duration": 30.0,  # Duration of the simulation in seconds
                 "speed": 0.25,  # Angular speed (rad/s)
                 "include_velocity": False,
-                "csv_path": os.path.join(self.data_dir, 'trajectories/dynamic/observations_controlled_310.csv'),
+                "csv_path": os.path.join(self.data_dir, 'trajectories/dynamic/observations_controlled_311.csv'),
                 "rest_pos": [0.1008, -0.39455, 0.117025], # in x, y, z mocap order for tip
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
                     "radius": 0.2,  # [m]  For "circle" and "pacman"
                     "amplitude": 0.2,  # [m]  For "eight"
-                    "z_level": 0.05,  # [m]  Constant z-coordinate
+                    "z_level": 0.09,  # [m]  Constant z-coordinate
                     "mouth_angle": 0.7854  # [rad] Defines the size of the pacman mouth (default π/4)
                 }
             },

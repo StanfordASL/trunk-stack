@@ -133,7 +133,7 @@ def rbf_eval_single_jax(u, U_select, W, epsilon, case_rbf):
     u_expanded = u[:, None]  # Shape: (d, 1)
     diff = U_select - u_expanded  # Broadcasting: (d, M) - (d, 1) = (d, M)
    # Define scaling factors as JAX array
-    scaling = jnp.array([30, 90, 50, 90, 50, 30])[:, None]  # Shape: (d, 1)
+    scaling = jnp.array([30.0,90.0, 50.0, 90.0, 50.0, 30.0])[:, None]  # Shape: (d, 1)
     
     # Apply scaling (element-wise division)
     diff = diff / scaling  # Broadcasting: (d, M) / (d, 1) = (d, M)
@@ -654,7 +654,7 @@ def setup_aSSM(dt, rk4=False):
     print(U_select.shape)
     print(W_sm.shape)
     # U_select = np.load('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/rbf_centers.npy')
-    # W_sm = np.load('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/rbf_weights.npy')
+    # # W_sm = np.load('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/rbf_weights.npy')
     # U_select = jnp.array(U_select)
     # W_sm = jnp.array(W_sm)
     # print(U_select.shape)
