@@ -104,7 +104,7 @@ class MotorNode(Node):
 
         # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
         #self.rest_positions = np.array([196.26, 165.85, 172.88, 171.12, 174.99, 181.76]) before 11/19/25
-        self.rest_positions = np.array([146.60, 124.54, 137.81, 109.69, 126.74, 149.59])
+        self.rest_positions = np.array([148.71, 126.74, 136.49, 150.12, 125.86, 150.38])
 
         self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
         #1-6 base, 2-4 is tip, 3-5 middle
