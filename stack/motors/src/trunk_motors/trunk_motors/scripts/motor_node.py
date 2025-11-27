@@ -103,7 +103,9 @@ class MotorNode(Node):
         self.callback_group = ReentrantCallbackGroup()
 
         # CHANGE THIS WHENEVER TENDONS ARE RE-TENSIONED
-        self.rest_positions = np.array([196.26, 165.85, 172.88, 171.12, 174.99, 181.76])
+        #self.rest_positions = np.array([196.26, 165.85, 172.88, 171.12, 174.99, 181.76])
+        self.rest_positions = np.array([148.71, 126.74, 136.49, 150.12, 125.86, 150.38])
+
         self.motor_ids = [1, 2, 3, 4, 5, 6]  # all 6 trunk motors
         #1-6 base, 2-4 is tip, 3-5 middle
 
@@ -119,7 +121,7 @@ class MotorNode(Node):
         self.last_motor_positions = None
 
         # initialize motors client
-        self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB1') # might be ttyusb0 or ttyusb1 depending on what other devices are plugged in
+        self.dxl_client = DynamixelClient(motor_ids=self.motor_ids, port='/dev/ttyUSB0') # might be ttyusb0 or ttyusb1 depending on what other devices are plugged in
 
         # connect to motors
         self.dxl_client.connect()
