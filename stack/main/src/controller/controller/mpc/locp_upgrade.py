@@ -465,8 +465,12 @@ class LOCP:
                         self.Bd[j].value = Bd_np[j]
                 else:
                     # Was a batched array - index into it (very fast)
+                    print(f'Bd: {Bd}')
+                    print(f'Bd_np: {Bd_np}')
                     for j in range(self.N):
                         self.Ad[j].value = Ad_np[j]  # Just indexing, no conversion!
+                        print(j)
+                        print(self.Bd[j].value)
                         self.Bd[j].value = Bd_np[j]
                 
                 # Set nonlinear performance mapping if needed

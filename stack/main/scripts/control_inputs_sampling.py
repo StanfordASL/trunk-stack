@@ -72,7 +72,7 @@ def hypercube_controlled_sampling_zero_between(control_variables, random_seed, n
     return control_inputs_df
 
 
-def hypercube_controlled_sampling(control_variables, random_seed, num_points=300):
+def hypercube_controlled_sampling(control_variables, random_seed, num_points=30):
     points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=1, excluded_neighbors=1)
     len_traj = 500 #100 = 1s
 
@@ -90,9 +90,9 @@ def latin_hypercube_adiabatic_sampling(
     control_variables,
     random_seed,
     num_points=30,
-    visits_per_point=1,
+    visits_per_point=10,
     excluded_neighbors=20,
-    large_displacements_only=True,
+    large_displacements_only=False,
     displacement_threshold=0.80,  # 80% of each control's full-scale magnitude
 ):
     """
@@ -103,7 +103,7 @@ def latin_hypercube_adiabatic_sampling(
     np.random.seed(random_seed)
 
     # Define symmetric bounds (mins = -maxs)
-    tip_radius  = 110
+    tip_radius  = 100
     mid_radius  =  70
     base_radius =  50
     maxs = np.array([base_radius, tip_radius, mid_radius, tip_radius, mid_radius, base_radius], dtype=float)
@@ -706,6 +706,6 @@ def main(data_type, sampling_type, seed=None):
 
 if __name__ == '__main__':
     data_type = 'dynamic'                   # 'steady_state' or 'dynamic'
-    sampling_type = 'random_smooth'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
-    seed = 30                           # choose integer seed number
+    sampling_type = 'latin_hypercube_controlled'      # 'circle', 'beta', 'targeted', 'uniform', 'sinusoidal', 'adiabatic_manual', 'adiabatic_step', 'adiabatic_global', 'random_smooth', or 'latin_hypercube'
+    seed = 421                           # choose integer seed number
     main(data_type, sampling_type, seed)

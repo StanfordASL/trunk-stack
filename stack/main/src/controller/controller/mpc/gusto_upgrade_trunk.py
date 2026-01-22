@@ -188,7 +188,7 @@ class GuSTO:
         diff = self.U_select - u_expanded  # Broadcasting: (d, M) - (d, 1) = (d, M)
 
         # Define scaling factors as JAX array
-        scaling = jnp.array([30.0,90.0, 50.0, 90.0, 50.0, 30.0])[:, None]  # Shape: (d, 1)
+        scaling = jnp.array([50.0, 100.0, 70.0, 100.0, 70.0, 50.0])[:, None]  # Shape: (d, 1)
     
         # Apply scaling (element-wise division)
         diff = diff / scaling  # Broadcasting: (d, M) / (d, 1) = (d, M)
@@ -487,7 +487,7 @@ class GuSTO:
                 if self.max_gusto_iters >= 1:
                     t0 = time.time()
                     A_d, B_d, d_d = self._get_dynamics_linearizations(self.x_k, self.u_k)
-                    
+
                     if self.nonlinear_perf_mapping:
                         H_d, G_d, c_d = self._get_perf_mapping_linearizations(self.x_k, self.u_k)
                     else:

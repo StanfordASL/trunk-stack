@@ -1,9 +1,9 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import scipy.io
-from mpl_toolkits.mplot3d import Axes3D  # Add this import at the top
+# from mpl_toolkits.mplot3d import Axes3D  # Add this import at the top
 from functools import partial
 import os
 import pandas as pd
@@ -636,7 +636,7 @@ def setup_aSSM(dt, rk4=False):
     Setup function to create an aSSM_strategy_rad_bas model from MATLAB data.
     """                          
 
-    mat_data = scipy.io.loadmat('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/aSSM_model_trunk_5D.mat')  # Replace with your .mat file path
+    mat_data = scipy.io.loadmat('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/aSSM_model_trunk_5D_Dec15.mat')  # Replace with your .mat file path
     #mat_data = scipy.io.loadmat('FO_aSSM_model_elastica.mat')  # Replace with your .mat file path
     # 
     # Extract exps_R and R

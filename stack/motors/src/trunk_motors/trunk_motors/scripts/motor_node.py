@@ -113,7 +113,7 @@ class MotorNode(Node):
         #self.limits_safe = np.array([50, 111, 91, 111, 91, 50S] )# limits_safe[i] should never exceed 360 - rest_positions[i]   ABSOLUTE VALUES OF TRUNKV2
         # self.limits_safe = np.array([51, 111, 71, 111, 71, 51] )# limits_safe[i] should never exceed 360 - rest_positions[i]   WE USED THIS week of 11/10
 
-        self.limits_safe = np.array([30, 90, 50, 90, 50, 30] )# limits_safe[i] should never exceed 360 - rest_positions[i]   TOTAL VALUES OF TRUNKV2 - what they were using
+        self.limits_safe = np.array([50, 100, 70, 100, 70, 50] )# limits_safe[i] should never exceed 360 - rest_positions[i]   TOTAL VALUES OF TRUNKV2 - what they were using
         self.delta_limits_safe = np.array([500.0, 500.0, 500.0, 500.0, 500.0, 500.0]) # TODO
 
         self.last_motor_positions = None
