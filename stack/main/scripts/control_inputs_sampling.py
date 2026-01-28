@@ -73,7 +73,7 @@ def hypercube_controlled_sampling_zero_between(control_variables, random_seed, n
 
 
 def hypercube_controlled_sampling(control_variables, random_seed, num_points=30):
-    points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=1, excluded_neighbors=1)
+    points_df = latin_hypercube_adiabatic_sampling(control_variables, random_seed, num_points=num_points, visits_per_point=10, excluded_neighbors=20)
     len_traj = 500 #100 = 1s
 
     # Repeat each row len_traj times
