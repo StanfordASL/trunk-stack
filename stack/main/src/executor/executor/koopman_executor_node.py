@@ -35,7 +35,7 @@ def check_control_inputs(u_opt, u_previous=None):
     Check control inputs for safety constraints, rejecting vector norms that are too large.
     """
 
-    tip_range, mid_range, base_range = 90, 50, 30
+    tip_range, mid_range, base_range = 100, 70, 50
 
     """
     scale = 1.0
@@ -159,8 +159,7 @@ class MPCNode(Node):
         # # Settled positions of the rigid bodies    
         #self.rest_positions = jnp.array([0.09799, -0.13890, 0.11180, 0.10088, -0.270407, 0.11062, 0.102355, -0.396328, 0.1140190]) #updated 10/31/25
         #self.rest_positions = jnp.array([0.102355, -0.396328, 0.1140190, 0.10088, -0.270407, 0.11062, 0.09799, -0.13890, 0.11180]) #updated 10/31/25
-        self.rest_positions = jnp.array([0.10266031324863434,-0.1355663388967514,0.11034716665744781,0.10138003528118134,-0.26911914348602295,0.10961201041936874,0.10081979632377625,-0.3945523500442505,0.11702537536621094])
-
+        self.rest_positions = jnp.array([0.10383334010839462,-0.13241368532180786,0.11284910887479782,0.10240490734577179,-0.26203832030296326,0.10141391307115555,0.10374041646718979,-0.38608667254447937,0.09813001751899719])
 
         self.perm_idx = jnp.array([6, 7, 8])
         self.rest_y = self.rest_positions[self.perm_idx]

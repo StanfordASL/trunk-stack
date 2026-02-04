@@ -193,7 +193,7 @@ class GuSTO:
         # Apply scaling (element-wise division)
         diff = diff / scaling  # Broadcasting: (d, M) / (d, 1) = (d, M)
     
-        dist = jnp.sqrt(jnp.sum(diff**2, axis=0, keepdims=True))  # Shape: (1, M)
+        dist = jnp.sqrt(jnp.sum(diff**2, axis=0, keepdims=True)+1e-12)  # Shape: (1, M)
         
         # Compute RBF
         # if case_rbf:

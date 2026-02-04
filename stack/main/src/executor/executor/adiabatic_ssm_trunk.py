@@ -133,12 +133,12 @@ def rbf_eval_single_jax(u, U_select, W, epsilon, case_rbf):
     u_expanded = u[:, None]  # Shape: (d, 1)
     diff = U_select - u_expanded  # Broadcasting: (d, M) - (d, 1) = (d, M)
    # Define scaling factors as JAX array
-    scaling = jnp.array([30.0,90.0, 50.0, 90.0, 50.0, 30.0])[:, None]  # Shape: (d, 1)
+    scaling = jnp.array([50.0, 100.0, 70.0, 100.0, 70.0, 50.0])[:, None]  # Shape: (d, 1)
     
     # Apply scaling (element-wise division)
     diff = diff / scaling  # Broadcasting: (d, M) / (d, 1) = (d, M)
     
-    dist = jnp.sqrt(jnp.sum(diff**2, axis=0, keepdims=True))  # Shape: (1, M)
+    dist = jnp.sqrt(jnp.sum(diff**2, axis=0, keepdims=True)+1e-12)  # Shape: (1, M)
     
     # Compute RBF
     # if case_rbf:
@@ -587,7 +587,8 @@ class aSSM_strategy_rad_bas(System):
                 # Compute RBF once (not 4 times!)
                 xbar_full = rbf_eval_single_jax(u, self.U_select, self.W, self.epsilon, self.case_rbf)
                 xbar = xbar_full[:3].squeeze()
-                
+                self.get_logger().info(f'xbar = {xbar}')
+
                 # Define RK4 function with pre-computed xbar
                 def f_rk4(x_val):
                     """Continuous dynamics with cached RBF."""
@@ -610,6 +611,7 @@ class aSSM_strategy_rad_bas(System):
                     lambda ui: rbf_eval_single_jax(ui, self.U_select, self.W, self.epsilon, self.case_rbf).squeeze()
                 )(u)
                 xbar_batch = xbar_batch_full[:, :3]
+                self.get_logger().info(f'xbar_batch = {xbar_batch}')
                 
                 # Define RK4 function with pre-computed xbar_batch
                 def f_rk4_batch(x_val):
@@ -636,7 +638,7 @@ def setup_aSSM(dt, rk4=False):
     Setup function to create an aSSM_strategy_rad_bas model from MATLAB data.
     """                          
 
-    mat_data = scipy.io.loadmat('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/aSSM_model_trunk_5D_Dec15.mat')  # Replace with your .mat file path
+    mat_data = scipy.io.loadmat('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/aSSM_model_trunk_5D_Jan30.mat')  # Replace with your .mat file path
     #mat_data = scipy.io.loadmat('FO_aSSM_model_elastica.mat')  # Replace with your .mat file path
     # 
     # Extract exps_R and R
@@ -654,7 +656,7 @@ def setup_aSSM(dt, rk4=False):
     print(U_select.shape)
     print(W_sm.shape)
     # U_select = np.load('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/rbf_centers.npy')
-    # # W_sm = np.load('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/rbf_weights.npy')
+    # W_sm = np.load('/home/trunk/Documents/trunk-stack/stack/main/data/models/ssm/rbf_weights.npy')
     # U_select = jnp.array(U_select)
     # W_sm = jnp.array(W_sm)
     # print(U_select.shape)

@@ -34,12 +34,12 @@ class PPOInitializerNode(Node):
         # You can edit these defaults in one place and reuse for all controllers.
         config = {
             "trajectory": {
-                "type": "controlled_csv",  # must match ReferenceTrajectoryGenerator supported types
+                "type": "spiral",  # must match ReferenceTrajectoryGenerator supported types
                 "duration": 30.0,
-                "speed": 0.25,
+                "speed": 0.5,
                 "include_velocity": False,
                 "csv_path": os.path.join(self.data_dir, "trajectories/dynamic/observations_controlled_310.csv"),
-                "rest_pos": [0.1008, -0.39455, 0.117025],
+                "rest_pos": [0.10643, -0.38418, 0.10180], #updated 1/28
                 "parameters": {
                     "center": [0.0, 0.0],
                     "radius": 0.2,

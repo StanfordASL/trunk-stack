@@ -80,6 +80,8 @@ class ReferenceTrajectoryGenerator:
             np.ndarray: If include_velocity is False: shape (3,) [x, y, z].
                         If include_velocity is True: shape (6,) [x, y, z, vx, vy, vz].
         """
+        
+
         # print(f"traj_type: {self.traj_type}")
         if self.traj_type == "circle":
             radius = self.traj_params.get("radius", 1.0)
@@ -98,6 +100,65 @@ class ReferenceTrajectoryGenerator:
             else:
                 return pos
         
+        elif self.traj_type == "spiral":
+            """
+            Spiral trajectory that starts at the origin and moves outward in radius
+            while ascending to z_level over a fixed duration.
+
+            Uses the SAME conventions as other trajectories:
+              - radius comes from traj_params["radius"]
+              - z comes from self.z_level
+              - angular speed is self.traj_speed
+              - position ordering: [x, z, y]
+              - velocity ordering: [vx, vz, vy]
+
+            Additional parameter:
+              - duration (float): total spiral time [s]
+            """
+            radius = self.traj_params.get("radius", 1.0)
+            duration = float(self.traj_params.get("duration", 10.0))
+            duration = max(duration, 1e-9)
+
+            # normalized time in [0, 1]
+            if t <= 0.0:
+                tau = 0.0
+            elif t >= duration:
+                tau = 1.0
+            else:
+                tau = t / duration
+
+            # linearly increase radius and height
+            r = radius * tau
+            z = self.z_level * tau
+
+            # angular position (loops set implicitly by traj_speed)
+            theta = self.traj_speed * min(t, duration)
+
+            x = self.center[0] + r * np.cos(theta)
+            y = self.center[1] + r * np.sin(theta)
+
+            pos = np.array([x, z, y]) + self.rest_pos
+
+            if self.include_velocity:
+                if t >= duration:
+                    vx = 0.0
+                    vy = 0.0
+                    vz = 0.0
+                else:
+                    r_dot = radius / duration
+                    z_dot = self.z_level / duration
+                    theta_dot = self.traj_speed
+
+                    vx = r_dot * np.cos(theta) - r * np.sin(theta) * theta_dot
+                    vy = r_dot * np.sin(theta) + r * np.cos(theta) * theta_dot
+                    vz = z_dot
+
+                vel = np.array([vx, vz, vy])
+                return np.concatenate([pos, vel])
+            else:
+                return pos
+
+
         elif self.traj_type == "controlled_csv":
             # CSV has columns: ID,x1,y1,z1,x2,y2,z2,x3,y3,z3,qx1,qy1,qz1,w1,qx2,qy2,qz2,w2,qx3,qy3,qz3,w3,phi1,phi2,phi3,phi4,phi5,phi6,current1,current2,current3,current4,current5,current6
             # we want to just track the tip position (x3,y3,z3)
