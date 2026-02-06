@@ -9,8 +9,9 @@ class ReferenceTrajectoryGenerator:
         self.traj_type = traj_config["type"]
         self.traj_speed = traj_config["speed"]
         self.center = np.array(traj_config.get("center", [0.0, 0.0]))
+        self.duration = traj_config["duration"]
         self.traj_params = traj_config.get("parameters", {})
-        self.z_level = self.traj_params.get("z_level", 0.0)
+        self.z_level = traj_config.get("z_level", self.traj_params.get("z_level", 0.0))
         self.include_velocity = traj_config.get("include_velocity", True)
         self.rest_pos = traj_config["rest_pos"]
         self.trajectory = None  # Will hold the pre-sampled trajectory if requested.
@@ -102,37 +103,33 @@ class ReferenceTrajectoryGenerator:
         
         elif self.traj_type == "spiral":
             """
-            Spiral trajectory that starts at the origin and moves outward in radius
-            while ascending to z_level over a fixed duration.
+            True 3D spiral (expanding helix):
+            - radius grows linearly
+            - z increases continuously with angular progress
 
-            Uses the SAME conventions as other trajectories:
-              - radius comes from traj_params["radius"]
-              - z comes from self.z_level
-              - angular speed is self.traj_speed
-              - position ordering: [x, z, y]
-              - velocity ordering: [vx, vz, vy]
-
-            Additional parameter:
-              - duration (float): total spiral time [s]
+            Conventions:
+            radius      -> traj_params["radius"]
+            z final     -> self.z_level
+            speed       -> self.traj_speed (rad/s)
+            pos         -> [x, z, y]
+            vel         -> [vx, vz, vy]
             """
             radius = self.traj_params.get("radius", 1.0)
-            duration = float(self.traj_params.get("duration", 10.0))
+            duration = self.duration
             duration = max(duration, 1e-9)
 
-            # normalized time in [0, 1]
-            if t <= 0.0:
-                tau = 0.0
-            elif t >= duration:
-                tau = 1.0
-            else:
-                tau = t / duration
+            # Clamp time
+            t_eff = min(max(t, 0.0), duration)
 
-            # linearly increase radius and height
-            r = radius * tau
-            z = self.z_level * tau
+            # Angular progress
+            theta = self.traj_speed * t_eff
+            theta_final = self.traj_speed * duration
 
-            # angular position (loops set implicitly by traj_speed)
-            theta = self.traj_speed * min(t, duration)
+            # Radial expansion
+            r = radius * (t_eff / duration)
+
+            # Height tied to angular progress (true 3D spiral)
+            z = self.z_level * (theta / theta_final)
 
             x = self.center[0] + r * np.cos(theta)
             y = self.center[1] + r * np.sin(theta)
@@ -141,13 +138,11 @@ class ReferenceTrajectoryGenerator:
 
             if self.include_velocity:
                 if t >= duration:
-                    vx = 0.0
-                    vy = 0.0
-                    vz = 0.0
+                    vx = vy = vz = 0.0
                 else:
                     r_dot = radius / duration
-                    z_dot = self.z_level / duration
                     theta_dot = self.traj_speed
+                    z_dot = self.z_level / duration
 
                     vx = r_dot * np.cos(theta) - r * np.sin(theta) * theta_dot
                     vy = r_dot * np.sin(theta) + r * np.cos(theta) * theta_dot

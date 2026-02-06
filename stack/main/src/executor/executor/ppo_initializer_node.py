@@ -36,7 +36,7 @@ class PPOInitializerNode(Node):
             "trajectory": {
                 "type": "spiral",  # must match ReferenceTrajectoryGenerator supported types
                 "duration": 30.0,
-                "speed": 0.5,
+                "speed": 1.0,
                 "include_velocity": False,
                 "csv_path": os.path.join(self.data_dir, "trajectories/dynamic/observations_controlled_310.csv"),
                 "rest_pos": [0.10643, -0.38418, 0.10180], #updated 1/28

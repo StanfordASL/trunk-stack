@@ -35,7 +35,7 @@ def check_control_inputs(u_opt, u_previous=None):
     Check control inputs for safety constraints, rejecting vector norms that are too large.
     """
 
-    tip_range, mid_range, base_range = 90, 50, 30
+    tip_range, mid_range, base_range = 100, 70, 50
 
     """
     scale = 1.0

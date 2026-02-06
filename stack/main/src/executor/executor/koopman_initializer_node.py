@@ -55,11 +55,11 @@ class MPCInitializerNode(Node):
                 "N": 10
             },
             "trajectory": {
-                "type": "spiral",  # Options: "circle", "circle_with_ramp", "eight", "pacman_3d", "pacman", "pacman_with_ramp", "flower", "controlled_csv"
+                "type": "eight",  # Options: "circle", "circle_with_ramp", "eight", "pacman_3d", "pacman", "pacman_with_ramp", "flower", "controlled_csv"
                 "duration": 30.0,  # Duration of the simulation in seconds
-                "speed": 0.5,  # Angular speed (rad/s)
+                "speed": 0.45,  # Angular speed (rad/s)
                 "include_velocity": False,
-                "csv_path": os.path.join(self.data_dir, 'trajectories/dynamic/observations_controlled_311.csv'),
+                "csv_path": os.path.join(self.data_dir, 'trajectories/dynamic/observations_controlled_310.csv'),
                 "rest_pos": [0.10643, -0.38418, 0.10180], # in x, y, z mocap order for tip
                 "parameters": {
                     "center": [0.0, 0.0],  # Center of the (x,y) trajectory
